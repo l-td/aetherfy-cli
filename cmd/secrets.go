@@ -194,7 +194,7 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	// Confirm
 	output.Warning.Printf("Delete secret '%s' from agent '%s'? [y/N] ", key, agentID)
 	var confirm string
-	fmt.Scanln(&confirm)
+	_, _ = fmt.Scanln(&confirm)
 	if strings.ToLower(confirm) != "y" {
 		output.PrintInfo("Cancelled")
 		return nil

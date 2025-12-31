@@ -160,7 +160,7 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 		output.Warning.Printf("This will permanently delete agent '%s' and all its deployments.\n", name)
 		fmt.Print("Type the agent name to confirm: ")
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != name {
 			output.PrintInfo("Deletion cancelled.")
 			return nil

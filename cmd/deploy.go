@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -161,15 +162,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 func watchDeployment(client *api.Client, agentID, deploymentID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
-	timeout := time.After(10 * time.Minute)
 	lastStatus := ""
 
 	for {
 		select {
-		case <-timeout:
+		case <-ctx.Done():
 			output.PrintWarning("Deployment watch timed out")
 			return
 		case <-ticker.C:

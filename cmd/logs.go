@@ -97,25 +97,22 @@ func streamLogs(client *api.Client, agentID string) error {
 
 	lastTimestamp := time.Time{}
 
-	for {
-		select {
-		case <-ticker.C:
-			logs, err := client.GetDeploymentLogs(agentID, 100)
-			if err != nil {
-				output.PrintWarning("Failed to fetch logs: %v", err)
-				continue
-			}
+	for range ticker.C {
+		logs, err := client.GetDeploymentLogs(agentID, 100)
+		if err != nil {
+			output.PrintWarning("Failed to fetch logs: %v", err)
+			continue
+		}
 
-			// Print only new logs
-			for _, log := range logs {
-				if log.Timestamp.After(lastTimestamp) {
-					timestamp := log.Timestamp.Format("15:04:05")
-					levelColor := getLevelColor(log.Level)
-					output.Dim.Printf("%s ", timestamp)
-					levelColor.Printf("[%s] ", log.Level)
-					fmt.Println(log.Message)
-					lastTimestamp = log.Timestamp
-				}
+		// Print only new logs
+		for _, log := range logs {
+			if log.Timestamp.After(lastTimestamp) {
+				timestamp := log.Timestamp.Format("15:04:05")
+				levelColor := getLevelColor(log.Level)
+				output.Dim.Printf("%s ", timestamp)
+				levelColor.Printf("[%s] ", log.Level)
+				fmt.Println(log.Message)
+				lastTimestamp = log.Timestamp
 			}
 		}
 	}
