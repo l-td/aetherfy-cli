@@ -116,6 +116,7 @@ func streamLogs(client *api.Client, agentID string) error {
 			}
 		}
 	}
+	return nil
 }
 
 func getLevelColor(level string) *output.ColorPrinter {
