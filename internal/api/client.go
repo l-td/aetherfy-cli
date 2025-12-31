@@ -1,0 +1,153 @@
+package api
+
+import (
+	"bytes"
+	"fmt"
+	"time"
+
+	"github.com/aetherfy/cli/internal/config"
+	"github.com/go-resty/resty/v2"
+)
+
+// Client wraps the HTTP client for API calls
+type Client struct {
+	http    *resty.Client
+	baseURL string
+	apiKey  string
+	verbose bool
+}
+
+// NewClient creates a new API client
+func NewClient() *Client {
+	cfg := config.Get()
+	creds := config.GetCredentials()
+
+	client := resty.New()
+	client.SetTimeout(30 * time.Second)
+	client.SetRetryCount(2)
+	client.SetRetryWaitTime(1 * time.Second)
+
+	c := &Client{
+		http:    client,
+		baseURL: cfg.APIURL,
+		apiKey:  creds.APIKey,
+		verbose: cfg.Verbose,
+	}
+
+	// Set default headers
+	client.SetHeader("Content-Type", "application/json")
+	client.SetHeader("Accept", "application/json")
+	client.SetHeader("User-Agent", "afy-cli/1.0")
+
+	// Set auth header if API key is available
+	if c.apiKey != "" {
+		client.SetHeader("Authorization", "Bearer "+c.apiKey)
+	}
+
+	return c
+}
+
+// NewClientWithKey creates a client with a specific API key (for login validation)
+func NewClientWithKey(apiKey string) *Client {
+	cfg := config.Get()
+
+	client := resty.New()
+	client.SetTimeout(30 * time.Second)
+	client.SetHeader("Content-Type", "application/json")
+	client.SetHeader("Accept", "application/json")
+	client.SetHeader("User-Agent", "afy-cli/1.0")
+	client.SetHeader("Authorization", "Bearer "+apiKey)
+
+	return &Client{
+		http:    client,
+		baseURL: cfg.APIURL,
+		apiKey:  apiKey,
+		verbose: cfg.Verbose,
+	}
+}
+
+// SetVerbose enables/disables verbose logging
+func (c *Client) SetVerbose(verbose bool) {
+	c.verbose = verbose
+	if verbose {
+		c.http.SetDebug(true)
+	}
+}
+
+// url builds a full URL from a path
+func (c *Client) url(path string) string {
+	return c.baseURL + path
+}
+
+// Get performs a GET request
+func (c *Client) Get(path string, result interface{}) error {
+	resp, err := c.http.R().
+		SetResult(result).
+		Get(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
+// Post performs a POST request
+func (c *Client) Post(path string, body interface{}, result interface{}) error {
+	resp, err := c.http.R().
+		SetBody(body).
+		SetResult(result).
+		Post(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
+// PostFile uploads a file via POST
+func (c *Client) PostFile(path string, fileName string, fileBytes []byte, result interface{}) error {
+	resp, err := c.http.R().
+		SetFileReader("file", fileName, bytes.NewReader(fileBytes)).
+		SetResult(result).
+		Post(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
+// Delete performs a DELETE request
+func (c *Client) Delete(path string) error {
+	resp, err := c.http.R().
+		Delete(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
+// handleResponse checks for errors in the response
+func (c *Client) handleResponse(resp *resty.Response) error {
+	if resp.IsError() {
+		return parseAPIError(resp)
+	}
+	return nil
+}
+
+// CheckConnection verifies API connectivity
+func (c *Client) CheckConnection() error {
+	resp, err := c.http.R().Get(c.baseURL + "/../health")
+	if err != nil {
+		return fmt.Errorf("connection failed: %w", err)
+	}
+	if resp.IsError() {
+		return fmt.Errorf("API returned status %d", resp.StatusCode())
+	}
+	return nil
+}
