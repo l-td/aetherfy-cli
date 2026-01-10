@@ -2,19 +2,14 @@ package api
 
 // ValidateAPIKey checks if the API key is valid by making a test request
 func (c *Client) ValidateAPIKey() (*UserInfo, error) {
-	// Use agents list endpoint to validate - it requires auth
-	var agents []Agent
-	err := c.Get("/agents", &agents)
+	// Use the /auth/me endpoint to validate and get user info
+	var userInfo UserInfo
+	err := c.Get("/auth/me", &userInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	// API key is valid - we don't have a /me endpoint, so return minimal info
-	return &UserInfo{
-		UserID: "authenticated",
-		Email:  "",
-		Tier:   "",
-	}, nil
+	return &userInfo, nil
 }
 
 // GetHealth checks if the API is reachable

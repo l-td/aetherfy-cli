@@ -10,6 +10,7 @@ type Agent struct {
 	Description  string    `json:"description,omitempty"`
 	Status       string    `json:"status"`
 	AgentType    string    `json:"agent_type"`
+	Runtime      string    `json:"runtime,omitempty"`
 	Region       string    `json:"region,omitempty"`
 	SpawnEnabled bool      `json:"spawn_enabled"`
 	CreatedAt    time.Time `json:"created_at"`
@@ -21,6 +22,7 @@ type AgentCreateRequest struct {
 	Name         string `json:"name"`
 	Description  string `json:"description,omitempty"`
 	AgentType    string `json:"agent_type,omitempty"`
+	Runtime      string `json:"runtime,omitempty"`
 	SpawnEnabled bool   `json:"spawn_enabled,omitempty"`
 }
 

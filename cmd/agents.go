@@ -78,12 +78,14 @@ var agentsCreateCmd = &cobra.Command{
 var (
 	agentDescription string
 	agentType        string
+	agentRuntime     string
 	spawnEnabled     bool
 )
 
 func init() {
 	agentsCreateCmd.Flags().StringVarP(&agentDescription, "description", "d", "", "Agent description")
 	agentsCreateCmd.Flags().StringVarP(&agentType, "type", "t", "SERVICE", "Agent type: SERVICE or JOB")
+	agentsCreateCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "python3.11", "Runtime: python3.11, node20, or bun")
 	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent")
 }
 
@@ -109,6 +111,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 		Name:         name,
 		Description:  agentDescription,
 		AgentType:    agentType,
+		Runtime:      agentRuntime,
 		SpawnEnabled: spawnEnabled,
 	})
 	sp.Stop()
