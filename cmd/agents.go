@@ -110,7 +110,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	agent, err := client.CreateAgent(&api.AgentCreateRequest{
 		Name:         name,
 		Description:  agentDescription,
-		AgentType:    agentType,
+		AgentType:    strings.ToLower(agentType), // Backend expects lowercase
 		Runtime:      agentRuntime,
 		SpawnEnabled: spawnEnabled,
 	})
