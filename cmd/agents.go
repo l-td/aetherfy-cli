@@ -42,14 +42,14 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// Check output format first
+	if config.Get().OutputFormat == "json" {
+		return output.JSON(agents)
+	}
+
 	if len(agents) == 0 {
 		output.PrintInfo("No agents found. Create one with 'afy agents create <name>'")
 		return nil
-	}
-
-	// Check output format
-	if config.Get().OutputFormat == "json" {
-		return output.JSON(agents)
 	}
 
 	// Table output
