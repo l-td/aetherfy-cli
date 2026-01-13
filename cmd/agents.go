@@ -156,25 +156,25 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	name := args[0]
+	idOrName := args[0]
 
 	// Confirm deletion
 	if !forceDelete {
-		output.Warning.Printf("This will permanently delete agent '%s' and all its deployments.\n", name)
+		output.Warning.Printf("This will permanently delete agent '%s' and all its deployments.\n", idOrName)
 		fmt.Print("Type the agent name to confirm: ")
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
-		if confirm != name {
+		if confirm != idOrName {
 			output.PrintInfo("Deletion cancelled.")
 			return nil
 		}
 	}
 
-	sp := output.NewSpinner(fmt.Sprintf("Deleting agent '%s'...", name))
+	sp := output.NewSpinner(fmt.Sprintf("Deleting agent '%s'...", idOrName))
 	sp.Start()
 
 	client := api.NewClient()
-	err := client.DeleteAgent(name)
+	err := client.DeleteAgent(idOrName)
 	sp.Stop()
 
 	if err != nil {
@@ -182,7 +182,7 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	output.PrintSuccess("Agent '%s' deleted successfully.", name)
+	output.PrintSuccess("Agent '%s' deleted successfully.", idOrName)
 	return nil
 }
 

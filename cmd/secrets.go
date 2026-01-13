@@ -33,13 +33,13 @@ func runSecretsList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	agentID := args[0]
+	agentIDOrName := args[0]
 
 	sp := output.NewSpinner("Fetching secrets...")
 	sp.Start()
 
 	client := api.NewClient()
-	secrets, err := client.ListSecrets(agentID)
+	secrets, err := client.ListSecrets(agentIDOrName)
 	sp.Stop()
 
 	if err != nil {
@@ -48,9 +48,9 @@ func runSecretsList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(secrets) == 0 {
-		output.PrintInfo("No secrets found for agent '%s'", agentID)
+		output.PrintInfo("No secrets found for agent '%s'", agentIDOrName)
 		output.Println("")
-		output.Println("Set a secret with: afy secrets set " + agentID + " KEY=value")
+		output.Println("Set a secret with: afy secrets set " + agentIDOrName + " KEY=value")
 		return nil
 	}
 
@@ -107,7 +107,7 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	agentID := args[0]
+	agentIDOrName := args[0]
 	pairs := args[1:]
 
 	client := api.NewClient()
@@ -133,7 +133,7 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		}
 		value = strings.TrimSpace(value)
 
-		if err := client.SetSecret(agentID, key, value); err != nil {
+		if err := client.SetSecret(agentIDOrName, key, value); err != nil {
 			output.PrintError("Failed to set secret: %v", err)
 			return nil
 		}
@@ -163,7 +163,7 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 			continue
 		}
 
-		if err := client.SetSecret(agentID, key, value); err != nil {
+		if err := client.SetSecret(agentIDOrName, key, value); err != nil {
 			output.PrintError("Failed to set '%s': %v", key, err)
 			continue
 		}
@@ -188,11 +188,11 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	agentID := args[0]
+	agentIDOrName := args[0]
 	key := args[1]
 
 	// Confirm
-	output.Warning.Printf("Delete secret '%s' from agent '%s'? [y/N] ", key, agentID)
+	output.Warning.Printf("Delete secret '%s' from agent '%s'? [y/N] ", key, agentIDOrName)
 	var confirm string
 	_, _ = fmt.Scanln(&confirm)
 	if strings.ToLower(confirm) != "y" {
@@ -204,7 +204,7 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	err := client.DeleteSecret(agentID, key)
+	err := client.DeleteSecret(agentIDOrName, key)
 	sp.Stop()
 
 	if err != nil {
