@@ -71,18 +71,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		output.PrintError("Invalid path: %v", err)
-		return nil
+		os.Exit(1)
 	}
 
 	// Check path exists
 	info, err := os.Stat(absPath)
 	if err != nil {
 		output.PrintError("Path not found: %s", absPath)
-		return nil
+		os.Exit(1)
 	}
 	if !info.IsDir() {
 		output.PrintError("Path must be a directory: %s", absPath)
-		return nil
+		os.Exit(1)
 	}
 
 	output.PrintInfo("Deploying from: %s", absPath)
@@ -98,14 +98,14 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		output.Dim.Println("  name: my-agent")
 		output.Dim.Println("  runtime: python3.11")
 		output.Dim.Println("  entrypoint: main.py")
-		return nil
+		os.Exit(1)
 	}
 
 	// TODO: Parse aetherfy.yaml to get agent name if not specified
 	agentID := deployAgent
 	if agentID == "" {
 		output.PrintError("Agent ID required. Use --agent flag or specify 'name' in aetherfy.yaml")
-		return nil
+		os.Exit(1)
 	}
 
 	// Load ignore patterns
@@ -123,7 +123,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to create archive: %v", err)
-		return nil
+		os.Exit(1)
 	}
 
 	sizeMB := float64(len(zipData)) / 1024 / 1024
@@ -139,7 +139,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)
-		return nil
+		os.Exit(1)
 	}
 
 	output.PrintSuccess("Deployment started!")
