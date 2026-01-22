@@ -12,8 +12,8 @@ func (c *Client) Deploy(agentID string, zipData []byte, region string) (*DeployR
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	// Add the file
-	part, err := writer.CreateFormFile("file", "code.zip")
+	// Add the file - backend expects "code_archive" field with .tar.gz extension
+	part, err := writer.CreateFormFile("code_archive", "code.tar.gz")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create form file: %w", err)
 	}

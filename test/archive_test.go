@@ -1,8 +1,10 @@
 package test
 
 import (
-	"archive/zip"
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestCreateZipArchive(t *testing.T) {
+func TestCreateTarball(t *testing.T) {
 	// Create temp directory with test files
 	tmpDir := t.TempDir()
 
@@ -23,26 +25,19 @@ func TestCreateZipArchive(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "src", "utils.py"), []byte("# utils"), 0644))
 
 	// Create archive
-	data, err := archive.CreateZip(tmpDir)
+	data, err := archive.CreateTarballWithValidation(tmpDir)
 	require.NoError(t, err)
 	assert.NotEmpty(t, data)
 
-	// Verify it's a valid ZIP
-	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	require.NoError(t, err)
-
-	// Check files are included
-	fileNames := make([]string, 0, len(reader.File))
-	for _, f := range reader.File {
-		fileNames = append(fileNames, f.Name)
-	}
+	// Verify it's a valid gzipped tarball
+	fileNames := extractTarballFileNames(t, data)
 
 	assert.Contains(t, fileNames, "main.py")
 	assert.Contains(t, fileNames, "aetherfy.yaml")
 	assert.Contains(t, fileNames, "src/utils.py")
 }
 
-func TestCreateZipArchive_ExcludesIgnored(t *testing.T) {
+func TestCreateTarball_ExcludesIgnored(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create files including ones that should be ignored
@@ -54,16 +49,10 @@ func TestCreateZipArchive_ExcludesIgnored(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "__pycache__", "main.pyc"), []byte("bytecode"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".env"), []byte("SECRET=xxx"), 0644))
 
-	data, err := archive.CreateZip(tmpDir)
+	data, err := archive.CreateTarballWithValidation(tmpDir)
 	require.NoError(t, err)
 
-	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
-	require.NoError(t, err)
-
-	fileNames := make([]string, 0, len(reader.File))
-	for _, f := range reader.File {
-		fileNames = append(fileNames, f.Name)
-	}
+	fileNames := extractTarballFileNames(t, data)
 
 	// Should include
 	assert.Contains(t, fileNames, "main.py")
@@ -77,18 +66,18 @@ func TestCreateZipArchive_ExcludesIgnored(t *testing.T) {
 	}
 }
 
-func TestCreateZipArchive_EmptyDirectory(t *testing.T) {
+func TestCreateTarball_EmptyDirectory(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	_, err := archive.CreateZip(tmpDir)
+	_, err := archive.CreateTarballWithValidation(tmpDir)
 	assert.Error(t, err) // Should fail - no aetherfy.yaml
 }
 
-func TestCreateZipArchive_MissingAetherfyYaml(t *testing.T) {
+func TestCreateTarball_MissingAetherfyYaml(t *testing.T) {
 	tmpDir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "main.py"), []byte("print('hello')"), 0644))
 
-	_, err := archive.CreateZip(tmpDir)
+	_, err := archive.CreateTarballWithValidation(tmpDir)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "aetherfy.yaml")
 }
@@ -144,4 +133,27 @@ func TestShouldIgnore(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+// extractTarballFileNames extracts file names from a gzipped tarball
+func extractTarballFileNames(t *testing.T, data []byte) []string {
+	t.Helper()
+
+	gzipReader, err := gzip.NewReader(bytes.NewReader(data))
+	require.NoError(t, err)
+	defer gzipReader.Close()
+
+	tarReader := tar.NewReader(gzipReader)
+	var fileNames []string
+
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		fileNames = append(fileNames, header.Name)
+	}
+
+	return fileNames
 }

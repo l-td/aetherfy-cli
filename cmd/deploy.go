@@ -114,11 +114,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		output.PrintWarning("Failed to load .afyignore: %v", err)
 	}
 
-	// Create ZIP archive
+	// Create tarball archive (.tar.gz)
 	sp := output.NewSpinner("Creating archive...")
 	sp.Start()
 
-	zipData, err := archive.ZipDirectory(absPath, ignorePatterns)
+	tarballData, err := archive.CreateTarball(absPath, ignorePatterns)
 	sp.Stop()
 
 	if err != nil {
@@ -126,7 +126,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	sizeMB := float64(len(zipData)) / 1024 / 1024
+	sizeMB := float64(len(tarballData)) / 1024 / 1024
 	output.PrintSuccess("Archive created (%.2f MB)", sizeMB)
 
 	// Upload and deploy
@@ -134,7 +134,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	resp, err := client.Deploy(agentID, zipData, deployRegion)
+	resp, err := client.Deploy(agentID, tarballData, deployRegion)
 	sp.Stop()
 
 	if err != nil {
