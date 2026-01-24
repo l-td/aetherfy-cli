@@ -238,11 +238,89 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// --- RENAME ---
+var agentsRenameCmd = &cobra.Command{
+	Use:   "rename <current-name> <new-name>",
+	Short: "Rename an agent",
+	Long: `Rename an agent to a new name.
+
+The agent URL will remain unchanged to preserve existing integrations.
+Only the name will be updated.`,
+	Args: cobra.ExactArgs(2),
+	RunE: runAgentsRename,
+}
+
+var forceRename bool
+
 func init() {
+	agentsRenameCmd.Flags().BoolVarP(&forceRename, "force", "f", false, "Skip confirmation prompt")
 	agentsCmd.AddCommand(agentsListCmd)
 	agentsCmd.AddCommand(agentsCreateCmd)
 	agentsCmd.AddCommand(agentsDeleteCmd)
 	agentsCmd.AddCommand(agentsStatusCmd)
+	agentsCmd.AddCommand(agentsRenameCmd)
+}
+
+func runAgentsRename(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	currentName := args[0]
+	newName := args[1]
+
+	// Validate new name is different
+	if currentName == newName {
+		output.PrintError("New name must be different from current name")
+		return nil
+	}
+
+	// Get current agent to verify it exists
+	client := api.NewClient()
+	_, err := client.GetAgent(currentName)
+	if err != nil {
+		output.PrintError("Failed to find agent '%s': %v", currentName, err)
+		return nil
+	}
+
+	// Confirm rename
+	if !forceRename {
+		output.Warning.Printf("Renaming agent '%s' to '%s'\n", currentName, newName)
+		fmt.Print("Continue? (y/N): ")
+		var confirm string
+		_, _ = fmt.Scanln(&confirm)
+		if confirm != "y" && confirm != "Y" {
+			output.PrintInfo("Rename cancelled.")
+			return nil
+		}
+	}
+
+	sp := output.NewSpinner(fmt.Sprintf("Renaming agent '%s' to '%s'...", currentName, newName))
+	sp.Start()
+
+	// Update agent with new name
+	updatedAgent, err := client.UpdateAgent(currentName, &api.AgentUpdateRequest{
+		Name: &newName,
+	})
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to rename agent: %v", err)
+		return nil
+	}
+
+	output.PrintSuccess("Agent renamed successfully!")
+	output.Println("")
+	output.KeyValue("Old Name", currentName)
+	output.KeyValue("New Name", updatedAgent.Name)
+	output.KeyValue("ID", updatedAgent.ID)
+
+	// Show URL preservation message
+	output.Println("")
+	output.Info.Println("ℹ Note: The agent URL remains unchanged to preserve existing integrations.")
+	output.Dim.Printf("  You can access the agent using either the new name or ID.\n")
+
+	return nil
 }
 
 // formatStatus adds color to status strings

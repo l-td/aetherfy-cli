@@ -120,6 +120,20 @@ func (c *Client) PostFile(path string, fileName string, fileBytes []byte, result
 	return c.handleResponse(resp)
 }
 
+// Patch performs a PATCH request
+func (c *Client) Patch(path string, body interface{}, result interface{}) error {
+	resp, err := c.http.R().
+		SetBody(body).
+		SetResult(result).
+		Patch(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
 // Delete performs a DELETE request
 func (c *Client) Delete(path string) error {
 	resp, err := c.http.R().

@@ -32,6 +32,16 @@ func (c *Client) CreateAgent(req *AgentCreateRequest) (*Agent, error) {
 	return &agent, nil
 }
 
+// UpdateAgent updates an agent by ID or name
+func (c *Client) UpdateAgent(idOrName string, req *AgentUpdateRequest) (*Agent, error) {
+	var agent Agent
+	err := c.Patch("/agents/"+idOrName, req, &agent)
+	if err != nil {
+		return nil, err
+	}
+	return &agent, nil
+}
+
 // DeleteAgent deletes an agent by ID or name
 func (c *Client) DeleteAgent(idOrName string) error {
 	return c.Delete("/agents/" + idOrName)

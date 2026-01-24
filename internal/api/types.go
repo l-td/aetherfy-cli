@@ -26,6 +26,15 @@ type AgentCreateRequest struct {
 	SpawnEnabled bool   `json:"spawn_enabled,omitempty"`
 }
 
+// AgentUpdateRequest is the request body for updating an agent
+type AgentUpdateRequest struct {
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Tier        *string `json:"tier,omitempty"`
+	MemoryMB    *int    `json:"memory_mb,omitempty"`
+	KeepAlive   *bool   `json:"keep_alive,omitempty"`
+}
+
 // Deployment represents a deployment
 type Deployment struct {
 	ID          string    `json:"id"`
