@@ -14,26 +14,28 @@ import (
 )
 
 var spawnCmd = &cobra.Command{
-	Use:   "spawn <agent>",
-	Short: "Spawn a JOB agent",
-	Long: `Spawn a JOB agent from a SERVICE agent.
+	Use:   "spawn <parent-agent> <child-agent>",
+	Short: "Spawn a JOB agent from a parent agent",
+	Long: `Spawn a JOB agent from a parent SERVICE agent.
 
-This triggers an ephemeral agent execution. The JOB agent will run once
-and terminate when complete. Payload data is passed via AETHERFY_SPAWN_PAYLOAD.
+This triggers an ephemeral execution of the child JOB agent. The JOB agent
+will run once and terminate when complete. Payload data is passed via
+AETHERFY_SPAWN_PAYLOAD environment variable.
 
-The agent must have spawn_enabled=true and be of type JOB.`,
-	Example: `  # Spawn with JSON payload
-  afy spawn worker-agent --payload '{"task": "process", "id": 123}'
+The parent agent must have spawn_enabled=true.
+The child agent must be of type JOB.`,
+	Example: `  # Spawn a JOB agent with JSON payload
+  afy spawn my-service my-job --payload '{"task": "process", "id": 123}'
 
   # Spawn with payload from file
-  afy spawn worker-agent --payload-file payload.json
+  afy spawn my-service my-job --payload-file payload.json
 
   # Spawn with workspace
-  afy spawn worker-agent --workspace my-workspace --payload '{"task": "analyze"}'
+  afy spawn my-service my-job --workspace my-workspace --payload '{"task": "analyze"}'
 
   # Read payload from stdin
-  cat payload.json | afy spawn worker-agent --stdin`,
-	Args: cobra.ExactArgs(1),
+  cat payload.json | afy spawn my-service my-job --stdin`,
+	Args: cobra.ExactArgs(2),
 	RunE: runSpawn,
 }
 
@@ -56,7 +58,8 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	agentID := args[0]
+	parentAgentID := args[0]
+	childAgentID := args[1]
 
 	// Build payload
 	var payload map[string]interface{}
@@ -112,15 +115,16 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.SpawnRequest{
+		ChildAgentID:  childAgentID,
 		Payload:       payload,
 		WorkspaceName: spawnWorkspace,
 	}
 
-	sp := output.NewSpinner(fmt.Sprintf("Spawning agent '%s'...", agentID))
+	sp := output.NewSpinner(fmt.Sprintf("Spawning agent '%s' from '%s'...", childAgentID, parentAgentID))
 	sp.Start()
 
 	client := api.NewClient()
-	resp, err := client.SpawnAgent(agentID, req)
+	resp, err := client.SpawnAgent(parentAgentID, req)
 	sp.Stop()
 
 	if err != nil {
@@ -149,7 +153,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 
 	output.Println("")
 	output.Println("The spawned agent will run once and terminate when complete.")
-	output.Println("Use 'afy logs " + agentID + "' to view logs.")
+	output.Println("Use 'afy logs " + childAgentID + "' to view logs.")
 
 	return nil
 }

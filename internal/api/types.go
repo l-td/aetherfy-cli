@@ -68,6 +68,7 @@ type SecretSetRequest struct {
 
 // SpawnRequest is the request body for spawning a JOB agent
 type SpawnRequest struct {
+	ChildAgentID  string                 `json:"child_agent_id"`
 	Payload       map[string]interface{} `json:"payload,omitempty"`
 	WorkspaceName string                 `json:"workspace_name,omitempty"`
 }
