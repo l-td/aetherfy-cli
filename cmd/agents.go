@@ -39,7 +39,7 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to list agents: %v", err)
-		return nil
+		return err
 	}
 
 	// Check output format first
@@ -100,7 +100,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	agentType = strings.ToUpper(agentType)
 	if agentType != "SERVICE" && agentType != "JOB" {
 		output.PrintError("Invalid agent type. Must be SERVICE or JOB")
-		return nil
+		return fmt.Errorf("invalid agent type: must be SERVICE or JOB")
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", name))
@@ -118,7 +118,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to create agent: %v", err)
-		return nil
+		return err
 	}
 
 	output.PrintSuccess("Agent '%s' created successfully!", agent.Name)
@@ -179,7 +179,7 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to delete agent: %v", err)
-		return nil
+		return err
 	}
 
 	output.PrintSuccess("Agent '%s' deleted successfully.", idOrName)
@@ -211,7 +211,7 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to get agent: %v", err)
-		return nil
+		return err
 	}
 
 	// Check output format
@@ -272,7 +272,7 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 	// Validate new name is different
 	if currentName == newName {
 		output.PrintError("New name must be different from current name")
-		return nil
+		return fmt.Errorf("new name must be different from current name")
 	}
 
 	// Get current agent to verify it exists
@@ -280,7 +280,7 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 	_, err := client.GetAgent(currentName)
 	if err != nil {
 		output.PrintError("Failed to find agent '%s': %v", currentName, err)
-		return nil
+		return err
 	}
 
 	// Confirm rename
@@ -306,7 +306,7 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to rename agent: %v", err)
-		return nil
+		return err
 	}
 
 	output.PrintSuccess("Agent renamed successfully!")
