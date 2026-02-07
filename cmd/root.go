@@ -94,6 +94,7 @@ func init() {
 	rootCmd.AddCommand(deployCmd)
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(secretsCmd)
+	rootCmd.AddCommand(workspacesCmd)
 	rootCmd.AddCommand(spawnCmd)
 
 	// Custom version template
