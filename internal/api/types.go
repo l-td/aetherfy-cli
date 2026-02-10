@@ -4,17 +4,18 @@ import "time"
 
 // Agent represents an agent in the system
 type Agent struct {
-	ID           string    `json:"id"`
-	UserID       string    `json:"user_id"`
-	Name         string    `json:"name"`
-	Description  string    `json:"description,omitempty"`
-	Status       string    `json:"status"`
-	AgentType    string    `json:"agent_type"`
-	Runtime      string    `json:"runtime,omitempty"`
-	Region       string    `json:"region,omitempty"`
-	SpawnEnabled bool      `json:"spawn_enabled"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID            string    `json:"id"`
+	UserID        string    `json:"user_id"`
+	Name          string    `json:"name"`
+	Description   string    `json:"description,omitempty"`
+	Status        string    `json:"status"`
+	AgentType     string    `json:"agent_type"`
+	Runtime       string    `json:"runtime,omitempty"`
+	Region        string    `json:"region,omitempty"`
+	WorkspaceName string    `json:"workspace_name,omitempty"`
+	SpawnEnabled  bool      `json:"spawn_enabled"`
+	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 }
 
 // AgentCreateRequest is the request body for creating an agent
