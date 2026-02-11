@@ -47,6 +47,24 @@ func NewClient() *Client {
 	return c
 }
 
+// NewClientWithURL creates a client with an explicit base URL and API key.
+// Used in tests to point the client at a local httptest.Server.
+func NewClientWithURL(baseURL, apiKey string) *Client {
+	client := resty.New()
+	client.SetTimeout(30 * time.Second)
+	client.SetHeader("Content-Type", "application/json")
+	client.SetHeader("Accept", "application/json")
+	client.SetHeader("User-Agent", "afy-cli/1.0")
+	if apiKey != "" {
+		client.SetHeader("Authorization", "Bearer "+apiKey)
+	}
+	return &Client{
+		http:    client,
+		baseURL: baseURL,
+		apiKey:  apiKey,
+	}
+}
+
 // NewClientWithKey creates a client with a specific API key (for login validation)
 func NewClientWithKey(apiKey string) *Client {
 	cfg := config.Get()

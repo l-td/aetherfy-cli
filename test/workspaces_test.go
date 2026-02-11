@@ -1,7 +1,8 @@
 package test
 
 import (
-	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -89,44 +90,84 @@ func TestSpawnRequestWorkspaceOptional(t *testing.T) {
 	}
 }
 
-// --- URL path format verification ---
+// --- HTTP endpoint verification ---
 
-func TestWorkspaceAgentsURLPath(t *testing.T) {
-	tests := []struct {
-		workspace string
-		expected  string
-	}{
-		{"my-workspace", "/workspaces/my-workspace/agents"},
-		{"invoice-pipeline", "/workspaces/invoice-pipeline/agents"},
-		{"a", "/workspaces/a/agents"},
+func TestListWorkspaceAgentsCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	agents, err := client.ListWorkspaceAgents("invoice-pipeline")
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
 	}
-
-	for _, tt := range tests {
-		path := fmt.Sprintf("/workspaces/%s/agents", tt.workspace)
-		if path != tt.expected {
-			t.Errorf("Workspace '%s': expected path '%s', got '%s'", tt.workspace, tt.expected, path)
-		}
+	if capturedMethod != http.MethodGet {
+		t.Errorf("Expected method GET, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces/invoice-pipeline/agents" {
+		t.Errorf("Expected path '/workspaces/invoice-pipeline/agents', got '%s'", capturedPath)
+	}
+	if agents == nil {
+		t.Error("Expected non-nil agents slice")
 	}
 }
 
-func TestWorkspaceSecretsListURLPath(t *testing.T) {
-	workspace := "my-workspace"
-	expected := "/workspaces/my-workspace/secrets"
+func TestListWorkspaceSecretsCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
 
-	path := fmt.Sprintf("/workspaces/%s/secrets", workspace)
-	if path != expected {
-		t.Errorf("Expected path '%s', got '%s'", expected, path)
+	client := api.NewClientWithURL(server.URL, "test-key")
+	secrets, err := client.ListWorkspaceSecrets("my-workspace")
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodGet {
+		t.Errorf("Expected method GET, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces/my-workspace/secrets" {
+		t.Errorf("Expected path '/workspaces/my-workspace/secrets', got '%s'", capturedPath)
+	}
+	if secrets == nil {
+		t.Error("Expected non-nil secrets slice")
 	}
 }
 
-func TestWorkspaceSecretDeleteURLPath(t *testing.T) {
-	workspace := "my-workspace"
-	key := "API_KEY"
-	expected := "/workspaces/my-workspace/secrets/API_KEY"
+func TestDeleteWorkspaceSecretCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
 
-	path := fmt.Sprintf("/workspaces/%s/secrets/%s", workspace, key)
-	if path != expected {
-		t.Errorf("Expected path '%s', got '%s'", expected, path)
+	client := api.NewClientWithURL(server.URL, "test-key")
+	err := client.DeleteWorkspaceSecret("my-workspace", "API_KEY")
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodDelete {
+		t.Errorf("Expected method DELETE, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces/my-workspace/secrets/API_KEY" {
+		t.Errorf("Expected path '/workspaces/my-workspace/secrets/API_KEY', got '%s'", capturedPath)
 	}
 }
 
