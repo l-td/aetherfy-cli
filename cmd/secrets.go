@@ -76,6 +76,11 @@ func runSecretsList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// JSON mode: always emit valid JSON, even for empty results
+	if config.Get().OutputFormat == "json" {
+		return output.JSON(secrets)
+	}
+
 	if len(secrets) == 0 {
 		if workspaceFlag != "" {
 			output.PrintInfo("No secrets found for workspace '%s'", workspaceFlag)
@@ -87,11 +92,6 @@ func runSecretsList(cmd *cobra.Command, args []string) error {
 			output.Println("Set a secret with: afy secrets set " + target + " KEY=value")
 		}
 		return nil
-	}
-
-	// Check output format
-	if config.Get().OutputFormat == "json" {
-		return output.JSON(secrets)
 	}
 
 	// Table output
