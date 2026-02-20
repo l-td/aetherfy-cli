@@ -193,6 +193,9 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 				return
 			case "failed", "error":
 				output.PrintError("Deployment failed")
+				if deployment.ErrorMessage != "" {
+					output.Printf("Reason: %s\n", deployment.ErrorMessage)
+				}
 				// Try to get logs
 				logs, err := client.GetDeploymentLogs(agentID, 20)
 				if err == nil && len(logs) > 0 {
@@ -202,6 +205,8 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 						fmt.Printf("  %s\n", log.Message)
 					}
 				}
+				output.Println("")
+				output.Println("Run 'aetherfy deploy' to try again.")
 				return
 			}
 		}

@@ -38,14 +38,15 @@ type AgentUpdateRequest struct {
 
 // Deployment represents a deployment
 type Deployment struct {
-	ID          string    `json:"id"`
-	AgentID     string    `json:"agent_id"`
-	Version     int       `json:"version"`
-	Status      string    `json:"status"`
-	Region      string    `json:"region"`
-	ImageTag    string    `json:"image_tag,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	CompletedAt time.Time `json:"completed_at,omitempty"`
+	ID           string    `json:"id"`
+	AgentID      string    `json:"agent_id"`
+	Version      int       `json:"version"`
+	Status       string    `json:"status"`
+	Region       string    `json:"region"`
+	ImageTag     string    `json:"image_tag,omitempty"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+	CompletedAt  time.Time `json:"completed_at,omitempty"`
 }
 
 // DeployRequest is the request body for deploying
