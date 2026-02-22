@@ -19,7 +19,7 @@ type Config struct {
 // DefaultConfig returns the default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		APIURL:        "https://api.aetherfy.run/api/v1",
+		APIURL:        "https://agents.aetherfy.com/api/v1",
 		DefaultRegion: "iad",
 		OutputFormat:  "text",
 		NoColor:       false,
@@ -43,7 +43,7 @@ func Load() (*Config, error) {
 	v := viper.New()
 
 	// Set defaults
-	v.SetDefault("api_url", "https://api.aetherfy.run/api/v1")
+	v.SetDefault("api_url", "https://agents.aetherfy.com/api/v1")
 	v.SetDefault("default_region", "iad")
 	v.SetDefault("output_format", "text")
 	v.SetDefault("no_color", false)

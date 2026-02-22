@@ -12,7 +12,7 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := config.DefaultConfig()
 
-	assert.Equal(t, "https://api.aetherfy.run/api/v1", cfg.APIURL)
+	assert.Equal(t, "https://agents.aetherfy.com/api/v1", cfg.APIURL)
 	assert.Equal(t, "iad", cfg.DefaultRegion)
 	assert.Equal(t, "text", cfg.OutputFormat)
 	assert.False(t, cfg.NoColor)

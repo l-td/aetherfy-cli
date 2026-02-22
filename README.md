@@ -108,7 +108,7 @@ afy spawn worker-agent --payload '{"task": "process"}'
 The CLI stores configuration in `~/.aetherfy/config.yaml`:
 
 ```yaml
-api_url: https://api.aetherfy.run/api/v1
+api_url: https://agents.aetherfy.com/api/v1
 default_region: iad
 output_format: text
 ```
