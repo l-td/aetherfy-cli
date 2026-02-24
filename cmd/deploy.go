@@ -28,15 +28,18 @@ The deployment process:
   4. Builds a Docker image
   5. Deploys to Fly.io
 
+By default the command waits for the deployment to complete and streams
+status updates. Use --detach to return immediately after upload.
+
 Files matching patterns in .afyignore will be excluded.`,
-	Example: `  # Deploy current directory
+	Example: `  # Deploy current directory (waits for completion)
   afy deploy
 
   # Deploy specific directory
   afy deploy ./my-agent
 
-  # Deploy with watch mode
-  afy deploy --watch
+  # Deploy and return immediately (fire and forget)
+  afy deploy --detach
 
   # Deploy to specific region
   afy deploy --region fra`,
@@ -46,13 +49,13 @@ Files matching patterns in .afyignore will be excluded.`,
 
 var (
 	deployRegion string
-	deployWatch  bool
+	deployDetach bool
 	deployAgent  string
 )
 
 func init() {
 	deployCmd.Flags().StringVarP(&deployRegion, "region", "r", "", "Target region (iad, fra, sin)")
-	deployCmd.Flags().BoolVarP(&deployWatch, "watch", "w", false, "Watch logs after deployment")
+	deployCmd.Flags().BoolVarP(&deployDetach, "detach", "d", false, "Return immediately after upload without waiting for completion")
 	deployCmd.Flags().StringVarP(&deployAgent, "agent", "a", "", "Agent ID or name (reads from aetherfy.yaml if not specified)")
 }
 
@@ -142,20 +145,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	output.PrintSuccess("Deployment started!")
-	output.Println("")
 	output.KeyValue("Deployment ID", resp.DeploymentID)
 	output.KeyValue("Job ID", resp.JobID)
-	output.KeyValue("Status", resp.Status)
+	output.Println("")
 
-	// Watch mode - poll for status and show logs
-	if deployWatch {
-		output.Println("")
-		output.PrintInfo("Watching deployment...")
-		watchDeployment(client, agentID, resp.DeploymentID)
+	if deployDetach {
+		output.PrintSuccess("Deployment queued.")
+		output.Println("Run 'afy logs " + agentID + "' to follow progress.")
 	} else {
-		output.Println("")
-		output.Println("Run 'afy logs " + agentID + "' to view logs")
+		watchDeployment(client, agentID, resp.DeploymentID)
 	}
 
 	return nil
