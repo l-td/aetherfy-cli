@@ -164,6 +164,19 @@ func (c *Client) Delete(path string) error {
 	return c.handleResponse(resp)
 }
 
+// DeleteWithResult performs a DELETE request and parses the response body
+func (c *Client) DeleteWithResult(path string, result interface{}) error {
+	resp, err := c.http.R().
+		SetResult(result).
+		Delete(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
 // handleResponse checks for errors in the response
 func (c *Client) handleResponse(resp *resty.Response) error {
 	if resp.IsError() {

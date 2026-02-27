@@ -107,6 +107,30 @@ type LogEntry struct {
 	Level     string    `json:"level,omitempty"`
 }
 
+// Workspace represents a workspace namespace for multi-agent coordination
+type Workspace struct {
+	ID                  string    `json:"id"`
+	Name                string    `json:"name"`
+	Description         string    `json:"description,omitempty"`
+	AgentCount          int       `json:"agent_count"`
+	CreatedAt           time.Time `json:"created_at"`
+	UpdatedAt           time.Time `json:"updated_at"`
+}
+
+// WorkspaceCreateRequest is the request body for creating a workspace
+type WorkspaceCreateRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+}
+
+// WorkspaceDeleteResponse is the response from deleting a workspace
+type WorkspaceDeleteResponse struct {
+	Status               string `json:"status"`
+	SecretsDeleted       int    `json:"secrets_deleted"`
+	CollectionsRemaining int    `json:"collections_remaining"`
+	Note                 string `json:"note,omitempty"`
+}
+
 // HealthResponse is the response from health check
 type HealthResponse struct {
 	Status    string `json:"status"`

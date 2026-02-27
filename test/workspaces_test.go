@@ -1,6 +1,7 @@
 package test
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -194,6 +195,163 @@ func TestSecretDoesNotExposeValue(t *testing.T) {
 	// No Value field should exist on Secret
 	if s.Key == "" {
 		t.Error("Expected Key to be set")
+	}
+}
+
+// --- Workspace type ---
+
+func TestWorkspaceStructHasRequiredFields(t *testing.T) {
+	now := time.Now()
+	ws := api.Workspace{
+		ID:          "ws-id",
+		Name:        "invoice-pipeline",
+		Description: "Invoice agents",
+		AgentCount:  3,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+
+	if ws.Name != "invoice-pipeline" {
+		t.Errorf("Expected Name 'invoice-pipeline', got '%s'", ws.Name)
+	}
+	if ws.AgentCount != 3 {
+		t.Errorf("Expected AgentCount 3, got %d", ws.AgentCount)
+	}
+}
+
+func TestWorkspaceDescriptionOptional(t *testing.T) {
+	ws := api.Workspace{ID: "ws-id", Name: "minimal-ws"}
+	if ws.Description != "" {
+		t.Errorf("Expected empty Description, got '%s'", ws.Description)
+	}
+}
+
+// --- Workspace CRUD HTTP endpoints ---
+
+func TestCreateWorkspaceCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+	var capturedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"ws-1","name":"my-workspace","agent_count":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	ws, err := client.CreateWorkspace(&api.WorkspaceCreateRequest{
+		Name:        "my-workspace",
+		Description: "A workspace",
+	})
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodPost {
+		t.Errorf("Expected method POST, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces" {
+		t.Errorf("Expected path '/workspaces', got '%s'", capturedPath)
+	}
+	if capturedBody["name"] != "my-workspace" {
+		t.Errorf("Expected name 'my-workspace' in body, got %v", capturedBody["name"])
+	}
+	if ws == nil || ws.Name != "my-workspace" {
+		t.Errorf("Expected workspace with name 'my-workspace', got %v", ws)
+	}
+}
+
+func TestListWorkspacesCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	workspaces, err := client.ListWorkspaces()
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodGet {
+		t.Errorf("Expected method GET, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces" {
+		t.Errorf("Expected path '/workspaces', got '%s'", capturedPath)
+	}
+	if workspaces == nil {
+		t.Error("Expected non-nil workspaces slice")
+	}
+}
+
+func TestGetWorkspaceCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"ws-1","name":"invoice-pipeline","agent_count":2,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	ws, err := client.GetWorkspace("invoice-pipeline")
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodGet {
+		t.Errorf("Expected method GET, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces/invoice-pipeline" {
+		t.Errorf("Expected path '/workspaces/invoice-pipeline', got '%s'", capturedPath)
+	}
+	if ws == nil || ws.AgentCount != 2 {
+		t.Errorf("Expected workspace with AgentCount=2, got %v", ws)
+	}
+}
+
+func TestDeleteWorkspaceCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"deleted","secrets_deleted":2,"collections_remaining":0}`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	result, err := client.DeleteWorkspace("my-workspace")
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodDelete {
+		t.Errorf("Expected method DELETE, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces/my-workspace" {
+		t.Errorf("Expected path '/workspaces/my-workspace', got '%s'", capturedPath)
+	}
+	if result == nil || result.Status != "deleted" {
+		t.Errorf("Expected result.Status 'deleted', got %v", result)
+	}
+	if result.SecretsDeleted != 2 {
+		t.Errorf("Expected SecretsDeleted=2, got %d", result.SecretsDeleted)
 	}
 }
 
