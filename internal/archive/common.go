@@ -110,11 +110,24 @@ func LoadIgnorePatterns(dir string) ([]string, error) {
 	return patterns, nil
 }
 
-// ValidateAetherfyConfig checks if aetherfy.yaml exists in directory
+// ValidateAetherfyConfig checks that aetherfy.yaml exists and contains the
+// fields the backend requires: name and runtime. entrypoint is optional —
+// the backend falls back to a runtime-specific default (main.py, index.js,
+// main.ts) if not declared.
 func ValidateAetherfyConfig(dir string) error {
-	configPath := filepath.Join(dir, "aetherfy.yaml")
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		return fmt.Errorf("aetherfy.yaml not found in %s", dir)
+	cfg, err := ParseAetherfyConfig(dir)
+	if err != nil {
+		return err
+	}
+	var missing []string
+	if cfg.Name == "" {
+		missing = append(missing, "name")
+	}
+	if cfg.Runtime == "" {
+		missing = append(missing, "runtime")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("aetherfy.yaml is missing required field(s): %s", strings.Join(missing, ", "))
 	}
 	return nil
 }

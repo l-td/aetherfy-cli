@@ -35,19 +35,21 @@ All prompts can be skipped by providing flags directly (useful for scripting/CI)
 }
 
 var (
-	initName      string
-	initRuntime   string
-	initType      string
-	initRegion    string
-	initMemory    int
-	initKeepAlive bool
-	initWorkspace bool
-	initForce     bool
+	initName       string
+	initRuntime    string
+	initEntrypoint string
+	initType       string
+	initRegion     string
+	initMemory     int
+	initKeepAlive  bool
+	initWorkspace  bool
+	initForce      bool
 )
 
 func init() {
 	initCmd.Flags().StringVar(&initName, "name", "", "Agent name (skips prompt)")
-	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, node20, bun (skips prompt)")
+	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, bun (skips prompt)")
+	initCmd.Flags().StringVar(&initEntrypoint, "entrypoint", "", "Entrypoint file, e.g. main.py or index.js (skips prompt)")
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
 	initCmd.Flags().StringVar(&initRegion, "region", "", "Region: iad, fra, sin (skips prompt)")
 	initCmd.Flags().IntVar(&initMemory, "memory", 0, "Memory in MB: 256, 512, 1024 (skips prompt)")
@@ -128,7 +130,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if isInteractive() {
 			output.PrintWarning("Could not detect runtime — you will be asked to choose")
 		} else {
-			output.PrintWarning("Could not detect runtime — defaulting to python3.11")
+			output.PrintWarning("Could not detect runtime — use --runtime to specify one")
+		}
+	}
+	if hints.Entrypoint == "" && initEntrypoint == "" {
+		if isInteractive() {
+			output.PrintWarning("Could not detect entrypoint — you will be asked to specify one")
+		} else {
+			output.PrintWarning("Could not detect entrypoint — add 'entrypoint:' to aetherfy.yaml before deploying")
 		}
 	}
 	if hints.HasMastra {
@@ -166,18 +175,15 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// --- Runtime ---
 	runtime := initRuntime
 	if runtime == "" {
-		if hints.Runtime != "" {
-			runtime = hints.Runtime
-		} else {
-			runtime = "python3.11"
-		}
 		if interactive {
 			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "bun"}
 			runtimeDefault := 2 // python3.11
-			for i, r := range runtimeOptions {
-				if r == runtime {
-					runtimeDefault = i
-					break
+			if hints.Runtime != "" {
+				for i, r := range runtimeOptions {
+					if r == hints.Runtime {
+						runtimeDefault = i
+						break
+					}
 				}
 			}
 			runtimeSelect := promptui.Select{
@@ -189,6 +195,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return fmt.Errorf("prompt cancelled")
 			}
+		} else if hints.Runtime != "" {
+			runtime = hints.Runtime
+		} else {
+			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, bun)")
 		}
 	}
 
@@ -305,10 +315,26 @@ func runInit(cmd *cobra.Command, args []string) error {
 		// non-interactive default: false — zero value already set
 	}
 
+	// --- Entrypoint ---
+	entrypoint := initEntrypoint
+	if entrypoint == "" {
+		entrypoint = hints.Entrypoint
+	}
+	if entrypoint == "" && interactive {
+		epPrompt := promptui.Prompt{
+			Label:   "Entrypoint file (e.g. main.py, index.js) — leave blank to set later",
+			Default: "",
+		}
+		ep, epErr := epPrompt.Run()
+		if epErr == nil {
+			entrypoint = strings.TrimSpace(ep)
+		}
+	}
+
 	output.Println("")
 	output.PrintInfo("Writing aetherfy.yaml...")
 
-	content := buildAetherfyYAML(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, hints.Entrypoint)
+	content := buildAetherfyYAML(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, entrypoint)
 
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
@@ -339,6 +365,8 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 
 	if entrypoint != "" {
 		sb.WriteString(fmt.Sprintf("entrypoint: %q\n", entrypoint))
+	} else {
+		sb.WriteString("# entrypoint: main.py  # TODO: set your entrypoint file\n")
 	}
 
 	if vectorDB {

@@ -20,7 +20,7 @@ func TestCreateTarball(t *testing.T) {
 
 	// Create test files
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "main.py"), []byte("print('hello')"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte("runtime: python3.11"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte("name: test-agent\nruntime: python3.11\n"), 0644))
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "src"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "src", "utils.py"), []byte("# utils"), 0644))
 
@@ -42,7 +42,7 @@ func TestCreateTarball_ExcludesIgnored(t *testing.T) {
 
 	// Create files including ones that should be ignored
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "main.py"), []byte("print('hello')"), 0644))
-	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte("runtime: python3.11"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte("name: test-agent\nruntime: python3.11\n"), 0644))
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, ".git"), 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, ".git", "config"), []byte("git config"), 0644))
 	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "__pycache__"), 0755))
@@ -166,6 +166,49 @@ func TestParseAetherfyConfig_MultipleRegions(t *testing.T) {
 	cfg, err := archive.ParseAetherfyConfig(tmpDir)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"iad", "fra", "sin"}, cfg.Regions)
+}
+
+// ─── ValidateAetherfyConfig ───────────────────────────────────────────────────
+
+func TestValidateAetherfyConfig_Valid(t *testing.T) {
+	tmpDir := t.TempDir()
+	yaml := "name: my-agent\nruntime: python3.11\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+	assert.NoError(t, archive.ValidateAetherfyConfig(tmpDir))
+}
+
+func TestValidateAetherfyConfig_ValidWithEntrypoint(t *testing.T) {
+	// entrypoint is optional — backend falls back to runtime defaults
+	tmpDir := t.TempDir()
+	yaml := "name: my-agent\nruntime: python3.11\nentrypoint: \"main.py\"\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+	assert.NoError(t, archive.ValidateAetherfyConfig(tmpDir))
+}
+
+func TestValidateAetherfyConfig_MissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	err := archive.ValidateAetherfyConfig(tmpDir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "aetherfy.yaml not found")
+}
+
+func TestValidateAetherfyConfig_MissingRuntime(t *testing.T) {
+	tmpDir := t.TempDir()
+	yaml := "name: my-agent\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+	err := archive.ValidateAetherfyConfig(tmpDir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "runtime")
+}
+
+func TestValidateAetherfyConfig_MissingNameAndRuntime(t *testing.T) {
+	tmpDir := t.TempDir()
+	yaml := "type: service\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+	err := archive.ValidateAetherfyConfig(tmpDir)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "name")
+	assert.Contains(t, err.Error(), "runtime")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
