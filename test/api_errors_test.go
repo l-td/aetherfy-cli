@@ -94,6 +94,18 @@ func TestParseErrorResponse(t *testing.T) {
 			statusCode: 500,
 			wantMsg:    "Internal Server Error",
 		},
+		{
+			name:       "fastapi single validation error",
+			body:       `{"detail":[{"msg":"field required","type":"value_error.missing"}]}`,
+			statusCode: 422,
+			wantMsg:    "field required",
+		},
+		{
+			name:       "fastapi multiple validation errors joined",
+			body:       `{"detail":[{"msg":"name is required"},{"msg":"runtime is required"}]}`,
+			statusCode: 422,
+			wantMsg:    "name is required; runtime is required",
+		},
 	}
 
 	for _, tt := range tests {

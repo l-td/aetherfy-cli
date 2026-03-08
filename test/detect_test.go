@@ -1,0 +1,275 @@
+package test
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/aetherfy/cli/internal/detect"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// ─── ParsePythonVersion ───────────────────────────────────────────────────────
+
+func TestParsePythonVersion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"3.11", "python3.11"},
+		{"3.11.5", "python3.11"},
+		{"3.12", "python3.12"},
+		{"3.12.3", "python3.12"},
+		{"3.13", "python3.13"},
+		{"3.13.1", "python3.13"},
+		{"python3.12", "python3.12"},
+		// Future version → falls back to 3.13
+		{"3.15", "python3.13"},
+		{"3.14", "python3.13"},
+		// Unsupported (below 3.11)
+		{"3.10", ""},
+		{"3.9", ""},
+		{"2.7", ""},
+		{"invalid", ""},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.want, detect.ParsePythonVersion(tt.input))
+		})
+	}
+}
+
+// ─── PythonVersion (directory scan) ──────────────────────────────────────────
+
+func TestPythonVersion_PythonVersionFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".python-version"), []byte("3.12.3\n"), 0644))
+	assert.Equal(t, "python3.12", detect.PythonVersion(dir))
+}
+
+func TestPythonVersion_PythonVersionFilePriority(t *testing.T) {
+	// .python-version takes priority over pyproject.toml
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".python-version"), []byte("3.12\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
+requires-python = ">=3.13"
+`), 0644))
+	assert.Equal(t, "python3.12", detect.PythonVersion(dir))
+}
+
+func TestPythonVersion_PyprojectToml(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
+name = "my-app"
+requires-python = ">=3.12"
+`), 0644))
+	assert.Equal(t, "python3.12", detect.PythonVersion(dir))
+}
+
+func TestPythonVersion_PyprojectTomlUnsupportedVersion(t *testing.T) {
+	// requires-python = ">=3.10" — 3.10 not supported → falls back to default 3.11
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
+requires-python = ">=3.10"
+`), 0644))
+	assert.Equal(t, "python3.11", detect.PythonVersion(dir))
+}
+
+func TestPythonVersion_Default(t *testing.T) {
+	dir := t.TempDir()
+	assert.Equal(t, "python3.11", detect.PythonVersion(dir))
+}
+
+// ─── ParseNodeVersion ─────────────────────────────────────────────────────────
+
+func TestParseNodeVersion(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		// Plain integers
+		{"20", "node20"},
+		{"22", "node22"},
+		// v-prefixed
+		{"v20.11.0", "node20"},
+		{"v22.3.0", "node22"},
+		// Range constraints
+		{">=20.0.0", "node20"},
+		{">=22.0.0", "node22"},
+		{"^20", "node20"},
+		{"^22", "node22"},
+		// LTS names
+		{"lts/iron", "node20"},
+		{"lts/jod", "node22"},
+		{"LTS/Iron", "node20"}, // case-insensitive
+		{"LTS/Jod", "node22"},
+		// Future version → node22
+		{"24", "node22"},
+		// Unsupported: odd non-LTS versions, legacy, garbage
+		{"18", ""},
+		{"19", ""},
+		{"21", ""},
+		{"16", ""},
+		{"lts/hydrogen", ""}, // Node 18 — EOL, not supported
+		{"invalid", ""},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.want, detect.ParseNodeVersion(tt.input))
+		})
+	}
+}
+
+// ─── NodeVersion (directory scan) ────────────────────────────────────────────
+
+func TestNodeVersion_Nvmrc_Node20(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("20\n"), 0644))
+	assert.Equal(t, "node20", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_Nvmrc_Node22(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("22\n"), 0644))
+	assert.Equal(t, "node22", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_NvmrcVPrefixed(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("v22.3.0\n"), 0644))
+	assert.Equal(t, "node22", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_NvmrcLTSNameJod(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("lts/jod\n"), 0644))
+	assert.Equal(t, "node22", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_NvmrcUnsupportedFallsBackToDefault(t *testing.T) {
+	// Node 18 is EOL / not supported — falls back to node20 default
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("18\n"), 0644))
+	assert.Equal(t, "node20", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_NodeVersionFile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".node-version"), []byte("22\n"), 0644))
+	assert.Equal(t, "node22", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_NvmrcPriority(t *testing.T) {
+	// .nvmrc takes priority over .node-version
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("20\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".node-version"), []byte("22\n"), 0644))
+	assert.Equal(t, "node20", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_PackageJsonEngines(t *testing.T) {
+	dir := t.TempDir()
+	pkg := map[string]interface{}{
+		"name":    "my-app",
+		"engines": map[string]interface{}{"node": ">=22.0.0"},
+	}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	assert.Equal(t, "node22", detect.NodeVersion(dir))
+}
+
+func TestNodeVersion_Default(t *testing.T) {
+	dir := t.TempDir()
+	assert.Equal(t, "node20", detect.NodeVersion(dir))
+}
+
+// ─── Project (full scan) ──────────────────────────────────────────────────────
+
+func TestProject_PythonWithMainPy(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("requests\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte("print('hi')"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".python-version"), []byte("3.12\n"), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "python3.12", h.Runtime)
+	assert.Equal(t, "main.py", h.Entrypoint)
+	assert.False(t, h.VectorDB)
+	assert.False(t, h.HasMastra)
+}
+
+func TestProject_NodeWithIndexJs(t *testing.T) {
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("22\n"), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "node22", h.Runtime)
+	assert.Equal(t, "index.js", h.Entrypoint)
+}
+
+func TestProject_BunWithIndexTs(t *testing.T) {
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bun.lockb"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
+}
+
+func TestProject_VectorDB(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "qdrant_memory"), 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("qdrant-client\n"), 0644))
+
+	h := detect.Project(dir)
+	assert.True(t, h.VectorDB)
+}
+
+func TestProject_HasMastra(t *testing.T) {
+	dir := t.TempDir()
+	pkg := map[string]interface{}{
+		"name":         "test",
+		"dependencies": map[string]interface{}{"mastra": "^0.1.0"},
+	}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+
+	h := detect.Project(dir)
+	assert.True(t, h.HasMastra)
+}
+
+func TestProject_Empty(t *testing.T) {
+	dir := t.TempDir()
+	h := detect.Project(dir)
+	assert.Equal(t, "", h.Runtime)
+	assert.Equal(t, "", h.Entrypoint)
+	assert.False(t, h.VectorDB)
+	assert.False(t, h.HasMastra)
+}
+
+func TestProject_EntrypointPriority(t *testing.T) {
+	// index.ts should be preferred over index.js when both exist
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "index.ts", h.Entrypoint)
+}

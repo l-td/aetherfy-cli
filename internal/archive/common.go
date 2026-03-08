@@ -5,7 +5,38 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
+
+// AetherfyConfig represents the parsed aetherfy.yaml file
+type AetherfyConfig struct {
+	Name       string   `yaml:"name"`
+	Runtime    string   `yaml:"runtime"`
+	Type       string   `yaml:"type"`
+	Regions    []string `yaml:"regions"`
+	MemoryMB   int      `yaml:"memory_mb"`
+	KeepAlive  bool     `yaml:"keep_alive"`
+	Entrypoint string   `yaml:"entrypoint,omitempty"`
+	Workspace  string   `yaml:"workspace,omitempty"`
+}
+
+// ParseAetherfyConfig reads and parses aetherfy.yaml from the given directory
+func ParseAetherfyConfig(dir string) (*AetherfyConfig, error) {
+	configPath := filepath.Join(dir, "aetherfy.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("aetherfy.yaml not found in %s", dir)
+		}
+		return nil, fmt.Errorf("failed to read aetherfy.yaml: %w", err)
+	}
+	var cfg AetherfyConfig
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse aetherfy.yaml: %w", err)
+	}
+	return &cfg, nil
+}
 
 // DefaultIgnorePatterns are patterns to ignore by default
 var DefaultIgnorePatterns = []string{

@@ -104,11 +104,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
-	// TODO: Parse aetherfy.yaml to get agent name if not specified
+	// Use --agent flag or fall back to 'name' in aetherfy.yaml
 	agentID := deployAgent
 	if agentID == "" {
-		output.PrintError("Agent ID required. Use --agent flag or specify 'name' in aetherfy.yaml")
-		os.Exit(1)
+		cfg, err := archive.ParseAetherfyConfig(absPath)
+		if err != nil || cfg.Name == "" {
+			output.PrintError("Agent name not found. Use --agent flag or set 'name' in aetherfy.yaml")
+			os.Exit(1)
+		}
+		agentID = cfg.Name
 	}
 
 	// Load ignore patterns

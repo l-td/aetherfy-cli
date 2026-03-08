@@ -27,7 +27,7 @@ Deploy, manage, and monitor your AI agents with ease.
 
 Quick start:
   afy login              # Authenticate with your API key
-  afy agents list        # List your agents
+  afy init               # Generate aetherfy.yaml for your project
   afy deploy             # Deploy current directory
   afy logs <agent>       # View agent logs
 
@@ -86,6 +86,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 
 	// Add subcommands
+	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)

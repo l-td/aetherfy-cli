@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -60,13 +61,17 @@ func parseAPIError(resp *resty.Response) error {
 			case string:
 				apiErr.Message = v
 			case []interface{}:
-				// Validation errors (FastAPI format)
-				if len(v) > 0 {
-					if first, ok := v[0].(map[string]interface{}); ok {
-						if msg, ok := first["msg"].(string); ok {
-							apiErr.Message = msg
+				// Validation errors (FastAPI format) — collect all messages
+				var msgs []string
+				for _, item := range v {
+					if entry, ok := item.(map[string]interface{}); ok {
+						if msg, ok := entry["msg"].(string); ok {
+							msgs = append(msgs, msg)
 						}
 					}
+				}
+				if len(msgs) > 0 {
+					apiErr.Message = strings.Join(msgs, "; ")
 				}
 			}
 			apiErr.Code = errBody.Code
@@ -145,12 +150,28 @@ func ParseErrorResponse(statusCode int, body []byte) *APIError {
 	}
 
 	// Try various JSON fields
-	if detail, ok := errBody["detail"].(string); ok {
-		apiErr.Message = detail
-	} else if message, ok := errBody["message"].(string); ok {
-		apiErr.Message = message
-	} else if errMsg, ok := errBody["error"].(string); ok {
-		apiErr.Message = errMsg
+	switch v := errBody["detail"].(type) {
+	case string:
+		apiErr.Message = v
+	case []interface{}:
+		// FastAPI validation error list — join all messages
+		var msgs []string
+		for _, item := range v {
+			if entry, ok := item.(map[string]interface{}); ok {
+				if msg, ok := entry["msg"].(string); ok {
+					msgs = append(msgs, msg)
+				}
+			}
+		}
+		if len(msgs) > 0 {
+			apiErr.Message = strings.Join(msgs, "; ")
+		}
+	default:
+		if message, ok := errBody["message"].(string); ok {
+			apiErr.Message = message
+		} else if errMsg, ok := errBody["error"].(string); ok {
+			apiErr.Message = errMsg
+		}
 	}
 
 	return apiErr

@@ -82,6 +82,94 @@ func TestCreateTarball_MissingAetherfyYaml(t *testing.T) {
 	assert.Contains(t, err.Error(), "aetherfy.yaml")
 }
 
+// ─── ParseAetherfyConfig ──────────────────────────────────────────────────────
+
+func TestParseAetherfyConfig_FullConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	yaml := `name: my-agent
+runtime: python3.11
+type: service
+regions:
+  - iad
+memory_mb: 512
+keep_alive: true
+entrypoint: main.py
+workspace: my-agent-workspace
+`
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+
+	cfg, err := archive.ParseAetherfyConfig(tmpDir)
+	require.NoError(t, err)
+
+	assert.Equal(t, "my-agent", cfg.Name)
+	assert.Equal(t, "python3.11", cfg.Runtime)
+	assert.Equal(t, "service", cfg.Type)
+	assert.Equal(t, []string{"iad"}, cfg.Regions)
+	assert.Equal(t, 512, cfg.MemoryMB)
+	assert.True(t, cfg.KeepAlive)
+	assert.Equal(t, "main.py", cfg.Entrypoint)
+	assert.Equal(t, "my-agent-workspace", cfg.Workspace)
+}
+
+func TestParseAetherfyConfig_MinimalConfig(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	yaml := "name: minimal-agent\nruntime: node20\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+
+	cfg, err := archive.ParseAetherfyConfig(tmpDir)
+	require.NoError(t, err)
+
+	assert.Equal(t, "minimal-agent", cfg.Name)
+	assert.Equal(t, "node20", cfg.Runtime)
+	assert.Equal(t, "", cfg.Type)
+	assert.Empty(t, cfg.Regions)
+	assert.Equal(t, 0, cfg.MemoryMB)
+	assert.False(t, cfg.KeepAlive)
+}
+
+func TestParseAetherfyConfig_MissingFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	_, err := archive.ParseAetherfyConfig(tmpDir)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "aetherfy.yaml")
+}
+
+func TestParseAetherfyConfig_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte("name: [bad: yaml: {"), 0644))
+
+	_, err := archive.ParseAetherfyConfig(tmpDir)
+	require.Error(t, err)
+}
+
+func TestParseAetherfyConfig_EmptyName(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	yaml := "runtime: python3.11\ntype: service\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+
+	cfg, err := archive.ParseAetherfyConfig(tmpDir)
+	require.NoError(t, err) // parse succeeds; caller checks cfg.Name
+	assert.Equal(t, "", cfg.Name)
+}
+
+func TestParseAetherfyConfig_MultipleRegions(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	yaml := "name: multi\nruntime: python3.11\nregions:\n  - iad\n  - fra\n  - sin\n"
+	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
+
+	cfg, err := archive.ParseAetherfyConfig(tmpDir)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"iad", "fra", "sin"}, cfg.Regions)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 func TestAfyIgnore_Parse(t *testing.T) {
 	tmpDir := t.TempDir()
 
