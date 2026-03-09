@@ -115,17 +115,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		agentID = cfg.Name
 	}
 
-	// Resolve name to UUID — the deploy endpoint requires the agent's UUID,
-	// not its slug name. GetAgent accepts either, so this works whether the
-	// user passed a name or an ID.
-	resolveClient := api.NewClient()
-	agent, err := resolveClient.GetAgent(agentID)
-	if err != nil {
-		output.PrintError("Agent '%s' not found: %v", agentID, err)
-		os.Exit(1)
-	}
-	agentID = agent.ID
-
 	// Load ignore patterns
 	ignorePatterns, err := archive.LoadIgnorePatterns(absPath)
 	if err != nil {
