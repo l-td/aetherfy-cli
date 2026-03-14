@@ -29,7 +29,7 @@ All prompts can be skipped by providing flags directly (useful for scripting/CI)
   afy init ./my-agent
 
   # Non-interactive (all flags provided)
-  afy init --name my-bot --runtime python3.11 --type service --region iad --memory 512`,
+  afy init --name my-bot --runtime python3.11 --type service --region iad --memory 256`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInit,
 }
@@ -256,7 +256,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if memoryMB == 0 {
 		if interactive {
 			memoryItems := []string{
-				"256 MB   (Starter)",
+				"256 MB   (Default)",
 				"512 MB   (Recommended for AI)",
 				"1024 MB  (Heavy workloads)",
 			}
@@ -264,7 +264,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 			memorySelect := promptui.Select{
 				Label:     "Memory",
 				Items:     memoryItems,
-				CursorPos: 1, // default 512
+				CursorPos: 0, // default 256
 			}
 			memIdx, _, err := memorySelect.Run()
 			if err != nil {
@@ -272,7 +272,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 			memoryMB = memoryValues[memIdx]
 		} else {
-			memoryMB = 512
+			memoryMB = 256
 		}
 	}
 
