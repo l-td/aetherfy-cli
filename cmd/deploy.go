@@ -41,20 +41,18 @@ Files matching patterns in .afyignore will be excluded.`,
   # Deploy and return immediately (fire and forget)
   afy deploy --detach
 
-  # Deploy to specific region
-  afy deploy --region fra`,
+  # Deploy and specify agent by name
+  afy deploy --agent my-bot`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeploy,
 }
 
 var (
-	deployRegion string
 	deployDetach bool
 	deployAgent  string
 )
 
 func init() {
-	deployCmd.Flags().StringVarP(&deployRegion, "region", "r", "", "Target region (iad, fra, sin)")
 	deployCmd.Flags().BoolVarP(&deployDetach, "detach", "d", false, "Return immediately after upload without waiting for completion")
 	deployCmd.Flags().StringVarP(&deployAgent, "agent", "a", "", "Agent ID or name (reads from aetherfy.yaml if not specified)")
 }
@@ -141,7 +139,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	resp, err := client.Deploy(agentID, tarballData, deployRegion)
+	resp, err := client.Deploy(agentID, tarballData)
 	sp.Stop()
 
 	if err != nil {

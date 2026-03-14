@@ -7,7 +7,7 @@ import (
 )
 
 // Deploy uploads code and triggers a deployment
-func (c *Client) Deploy(agentID string, zipData []byte, region string) (*DeployResponse, error) {
+func (c *Client) Deploy(agentID string, zipData []byte) (*DeployResponse, error) {
 	// Create multipart form
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -19,13 +19,6 @@ func (c *Client) Deploy(agentID string, zipData []byte, region string) (*DeployR
 	}
 	if _, err := part.Write(zipData); err != nil {
 		return nil, fmt.Errorf("failed to write file data: %w", err)
-	}
-
-	// Add region if specified
-	if region != "" {
-		if err := writer.WriteField("region", region); err != nil {
-			return nil, fmt.Errorf("failed to write region field: %w", err)
-		}
 	}
 
 	if err := writer.Close(); err != nil {
