@@ -48,7 +48,7 @@ var (
 
 func init() {
 	initCmd.Flags().StringVar(&initName, "name", "", "Agent name (skips prompt)")
-	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, bun (skips prompt)")
+	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, bun, dockerfile (skips prompt)")
 	initCmd.Flags().StringVar(&initEntrypoint, "entrypoint", "", "Entrypoint file, e.g. main.py or index.js (skips prompt)")
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
 	initCmd.Flags().StringVar(&initRegion, "region", "", "Region: iad, fra, sin (skips prompt)")
@@ -133,7 +133,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 			output.PrintWarning("Could not detect runtime — use --runtime to specify one")
 		}
 	}
-	if hints.Entrypoint == "" && initEntrypoint == "" {
+	selectedRuntime := initRuntime
+	if selectedRuntime == "" {
+		selectedRuntime = hints.Runtime
+	}
+	if hints.Entrypoint == "" && initEntrypoint == "" && selectedRuntime != "dockerfile" {
 		if isInteractive() {
 			output.PrintWarning("Could not detect entrypoint — you will be asked to specify one")
 		} else {
@@ -176,7 +180,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	runtime := initRuntime
 	if runtime == "" {
 		if interactive {
-			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "bun"}
+			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "bun", "dockerfile"}
 			runtimeDefault := 2 // python3.11
 			if hints.Runtime != "" {
 				for i, r := range runtimeOptions {
@@ -198,7 +202,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		} else if hints.Runtime != "" {
 			runtime = hints.Runtime
 		} else {
-			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, bun)")
+			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, bun, dockerfile)")
 		}
 	}
 
@@ -316,18 +320,22 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// --- Entrypoint ---
-	entrypoint := initEntrypoint
-	if entrypoint == "" {
-		entrypoint = hints.Entrypoint
-	}
-	if entrypoint == "" && interactive {
-		epPrompt := promptui.Prompt{
-			Label:   "Entrypoint file (e.g. main.py, index.js) — leave blank to set later",
-			Default: "",
+	// dockerfile runtime: user owns the container, entrypoint is irrelevant
+	entrypoint := ""
+	if runtime != "dockerfile" {
+		entrypoint = initEntrypoint
+		if entrypoint == "" {
+			entrypoint = hints.Entrypoint
 		}
-		ep, epErr := epPrompt.Run()
-		if epErr == nil {
-			entrypoint = strings.TrimSpace(ep)
+		if entrypoint == "" && interactive {
+			epPrompt := promptui.Prompt{
+				Label:   "Entrypoint file (e.g. main.py, index.js) — leave blank to set later",
+				Default: "",
+			}
+			ep, epErr := epPrompt.Run()
+			if epErr == nil {
+				entrypoint = strings.TrimSpace(ep)
+			}
 		}
 	}
 
@@ -363,10 +371,12 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 		sb.WriteString("keep_alive: false\n")
 	}
 
-	if entrypoint != "" {
-		sb.WriteString(fmt.Sprintf("entrypoint: %q\n", entrypoint))
-	} else {
-		sb.WriteString("# entrypoint: main.py  # TODO: set your entrypoint file\n")
+	if runtime != "dockerfile" {
+		if entrypoint != "" {
+			sb.WriteString(fmt.Sprintf("entrypoint: %q\n", entrypoint))
+		} else {
+			sb.WriteString("# entrypoint: main.py  # TODO: set your entrypoint file\n")
+		}
 	}
 
 	if vectorDB {

@@ -252,6 +252,50 @@ func TestProject_HasMastra(t *testing.T) {
 	assert.True(t, h.HasMastra)
 }
 
+func TestProject_Dockerfile(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM alpine\n"), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.Equal(t, "", h.Entrypoint) // entrypoint is irrelevant for dockerfile runtime
+	assert.False(t, h.VectorDB)
+}
+
+func TestProject_DockerfileTakesPriorityOverPython(t *testing.T) {
+	// If a Dockerfile is present alongside Python files, dockerfile wins
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM python:3.12\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("requests\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.Equal(t, "", h.Entrypoint)
+}
+
+func TestProject_DockerfileTakesPriorityOverNode(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM node:22\n"), 0644))
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.Equal(t, "", h.Entrypoint)
+}
+
+func TestProject_DockerfileWithVectorDB(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM alpine\n"), 0644))
+	require.NoError(t, os.MkdirAll(filepath.Join(dir, "qdrant_memory"), 0755))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.True(t, h.VectorDB)
+}
+
 func TestProject_Empty(t *testing.T) {
 	dir := t.TempDir()
 	h := detect.Project(dir)

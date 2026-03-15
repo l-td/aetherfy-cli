@@ -11,8 +11,8 @@ import (
 
 // ProjectHints holds what was auto-detected in a project directory.
 type ProjectHints struct {
-	Runtime    string // e.g. "python3.11", "node20", "bun"
-	Entrypoint string // e.g. "main.py", "index.js"
+	Runtime    string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "bun", "dockerfile"
+	Entrypoint string // e.g. "main.py", "index.js" — empty for dockerfile runtime
 	VectorDB   bool   // qdrant_memory folder found
 	HasMastra  bool   // mastra in package.json dependencies
 }
@@ -20,6 +20,16 @@ type ProjectHints struct {
 // Project scans dir and returns detected hints.
 func Project(dir string) ProjectHints {
 	hints := ProjectHints{}
+
+	// Dockerfile detection — takes highest priority. If a Dockerfile is present
+	// the user owns the entire container; entrypoint is irrelevant.
+	if fileExists(filepath.Join(dir, "Dockerfile")) {
+		hints.Runtime = "dockerfile"
+		if dirExists(filepath.Join(dir, "qdrant_memory")) {
+			hints.VectorDB = true
+		}
+		return hints
+	}
 
 	// Python detection
 	if fileExists(filepath.Join(dir, "requirements.txt")) || fileExists(filepath.Join(dir, "pyproject.toml")) {
