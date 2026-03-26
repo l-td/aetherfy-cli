@@ -137,3 +137,23 @@ type HealthResponse struct {
 	Version   string `json:"version,omitempty"`
 	Timestamp string `json:"timestamp,omitempty"`
 }
+
+// GitHubStatus represents the GitHub connection status for the authenticated user
+type GitHubStatus struct {
+	Connected   bool       `json:"connected"`
+	Scope       string     `json:"scope,omitempty"`
+	ConnectedAt *time.Time `json:"connected_at,omitempty"`
+}
+
+// GitHubLinkRequest is the request body for linking an agent to a GitHub repo
+type GitHubLinkRequest struct {
+	Repo   string `json:"repo"`
+	Branch string `json:"branch,omitempty"`
+}
+
+// GitHubLinkResponse is the response from linking an agent to a GitHub repo
+type GitHubLinkResponse struct {
+	Repo      string `json:"repo"`
+	Branch    string `json:"branch"`
+	WebhookID string `json:"webhook_id"`
+}

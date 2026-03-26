@@ -4,7 +4,10 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/aetherfy/cli/internal/api"
@@ -12,6 +15,9 @@ import (
 	"github.com/aetherfy/cli/internal/output"
 	"github.com/spf13/cobra"
 )
+
+// githubRepoRefPattern validates owner/repo or owner/repo@ref
+var githubRepoRefPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(@\S+)?$`)
 
 var deployCmd = &cobra.Command{
 	Use:   "deploy [path]",
@@ -31,7 +37,11 @@ The deployment process:
 By default the command waits for the deployment to complete and streams
 status updates. Use --detach to return immediately after upload.
 
-Files matching patterns in .afyignore will be excluded.`,
+Files matching patterns in .afyignore will be excluded.
+
+Use --from-github to deploy directly from a public GitHub repository
+without a local clone. The agent name is read from the repo's aetherfy.yaml
+unless --agent is specified.`,
 	Example: `  # Deploy current directory (waits for completion)
   afy deploy
 
@@ -42,24 +52,35 @@ Files matching patterns in .afyignore will be excluded.`,
   afy deploy --detach
 
   # Deploy and specify agent by name
-  afy deploy --agent my-bot`,
+  afy deploy --agent my-bot
+
+  # Deploy from a public GitHub repo (Level 1)
+  afy deploy --from-github owner/repo
+  afy deploy --from-github owner/repo@v1.2.3 --agent my-bot`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeploy,
 }
 
 var (
-	deployDetach bool
-	deployAgent  string
+	deployDetach     bool
+	deployAgent      string
+	deployFromGitHub string
 )
 
 func init() {
 	deployCmd.Flags().BoolVarP(&deployDetach, "detach", "d", false, "Return immediately after upload without waiting for completion")
 	deployCmd.Flags().StringVarP(&deployAgent, "agent", "a", "", "Agent ID or name (reads from aetherfy.yaml if not specified)")
+	deployCmd.Flags().StringVar(&deployFromGitHub, "from-github", "", "Deploy from a public GitHub repo: owner/repo[@ref]")
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
 		return err
+	}
+
+	// Handle --from-github flag (Level 1: public repo deploy)
+	if deployFromGitHub != "" {
+		return runDeployFromGitHub(deployFromGitHub)
 	}
 
 	// Determine path
@@ -159,6 +180,161 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// runDeployFromGitHub clones a public GitHub repo and feeds it into the standard deploy pipeline.
+// repoRef has the form "owner/repo" or "owner/repo@ref".
+func runDeployFromGitHub(repoRef string) error {
+	// Validate format
+	if !githubRepoRefPattern.MatchString(repoRef) {
+		output.PrintError("Invalid --from-github format. Expected: owner/repo or owner/repo@ref")
+		output.Println("Examples:")
+		output.Println("  afy deploy --from-github psf/requests@v2.31.0")
+		output.Println("  afy deploy --from-github myorg/my-agent")
+		os.Exit(1)
+	}
+
+	// Split repo and ref
+	repo := repoRef
+	ref := "main"
+	if idx := strings.Index(repoRef, "@"); idx != -1 {
+		repo = repoRef[:idx]
+		ref = repoRef[idx+1:]
+	}
+
+	cloneURL := "https://github.com/" + repo + ".git"
+
+	// Create a temp dir for the clone
+	tmpDir, err := os.MkdirTemp("", "afy-github-*")
+	if err != nil {
+		output.PrintError("Failed to create temp directory: %v", err)
+		os.Exit(1)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Clone the repo
+	sp := output.NewSpinner(fmt.Sprintf("Cloning %s@%s...", repo, ref))
+	sp.Start()
+
+	// Determine whether ref looks like a full SHA (40 hex chars)
+	isSHA := len(ref) == 40 && isHexString(ref)
+
+	var cloneErr error
+	if isSHA {
+		// Full clone then checkout for exact SHA
+		cloneErr = runGitCommand("clone", cloneURL, tmpDir)
+		if cloneErr == nil {
+			cloneErr = runGitCommandIn(tmpDir, "checkout", ref)
+		}
+	} else {
+		// Shallow clone for branch/tag
+		cloneErr = runGitCommand("clone", "--depth=1", "--branch="+ref, cloneURL, tmpDir)
+	}
+
+	sp.Stop()
+
+	if cloneErr != nil {
+		output.PrintError("Failed to clone repository: %v", cloneErr)
+		output.Println("")
+		output.Println("Make sure the repository is public and the ref exists.")
+		os.Exit(1)
+	}
+
+	output.PrintSuccess("Repository cloned")
+
+	// Validate aetherfy.yaml exists in the clone
+	if err := archive.ValidateAetherfyConfig(tmpDir); err != nil {
+		output.PrintError("%v", err)
+		output.Println("")
+		output.Println("The repository must contain an aetherfy.yaml file.")
+		os.Exit(1)
+	}
+
+	// Determine agent ID
+	agentID := deployAgent
+	if agentID == "" {
+		cfg, err := archive.ParseAetherfyConfig(tmpDir)
+		if err != nil || cfg.Name == "" {
+			output.PrintError("Agent name not found. Use --agent flag or set 'name' in aetherfy.yaml")
+			os.Exit(1)
+		}
+		agentID = cfg.Name
+	}
+
+	// Load ignore patterns and create tarball
+	ignorePatterns, _ := archive.LoadIgnorePatterns(tmpDir)
+
+	sp = output.NewSpinner("Creating archive...")
+	sp.Start()
+	tarballData, err := archive.CreateTarball(tmpDir, ignorePatterns)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to create archive: %v", err)
+		os.Exit(1)
+	}
+
+	sizeMB := float64(len(tarballData)) / 1024 / 1024
+	output.PrintSuccess("Archive created (%.2f MB)", sizeMB)
+
+	// Upload and deploy
+	sp = output.NewSpinner("Uploading and deploying...")
+	sp.Start()
+
+	client := api.NewClient()
+	resp, err := client.Deploy(agentID, tarballData)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Deployment failed: %v", err)
+		os.Exit(1)
+	}
+
+	output.KeyValue("Deployment ID", resp.DeploymentID)
+	output.KeyValue("Job ID", resp.JobID)
+	output.Println("")
+
+	if deployDetach {
+		output.PrintSuccess("Deployment queued.")
+		output.Println("Run 'afy logs " + agentID + "' to follow progress.")
+	} else {
+		watchDeployment(client, agentID, resp.DeploymentID)
+	}
+
+	return nil
+}
+
+// runGitCommand runs a git subcommand with the given args.
+func runGitCommand(args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// runGitCommandIn runs a git subcommand inside the given directory.
+func runGitCommandIn(dir string, args ...string) error {
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// isHexString returns true if every character in s is a hex digit.
+func isHexString(s string) bool {
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func watchDeployment(client *api.Client, agentID, deploymentID string) {

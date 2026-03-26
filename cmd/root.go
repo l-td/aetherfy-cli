@@ -97,6 +97,7 @@ func init() {
 	rootCmd.AddCommand(secretsCmd)
 	rootCmd.AddCommand(workspacesCmd)
 	rootCmd.AddCommand(spawnCmd)
+	rootCmd.AddCommand(githubCmd)
 
 	// Custom version template
 	rootCmd.SetVersionTemplate(version.Full() + "\n")
