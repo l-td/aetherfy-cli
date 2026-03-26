@@ -140,9 +140,9 @@ type HealthResponse struct {
 
 // GitHubStatus represents the GitHub connection status for the authenticated user
 type GitHubStatus struct {
-	Connected   bool       `json:"connected"`
-	Scope       string     `json:"scope,omitempty"`
-	ConnectedAt *time.Time `json:"connected_at,omitempty"`
+	Connected      bool       `json:"connected"`
+	InstallationID *int64     `json:"installation_id,omitempty"`
+	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
 }
 
 // GitHubLinkRequest is the request body for linking an agent to a GitHub repo

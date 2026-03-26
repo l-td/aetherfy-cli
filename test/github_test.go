@@ -17,16 +17,17 @@ import (
 
 func TestGitHubStatusType(t *testing.T) {
 	now := time.Now()
+	installationID := int64(12345678)
 	s := &api.GitHubStatus{
-		Connected:   true,
-		Scope:       "repo,read:user",
-		ConnectedAt: &now,
+		Connected:      true,
+		InstallationID: &installationID,
+		ConnectedAt:    &now,
 	}
 	if !s.Connected {
 		t.Error("expected Connected to be true")
 	}
-	if s.Scope != "repo,read:user" {
-		t.Errorf("unexpected scope: %s", s.Scope)
+	if s.InstallationID == nil || *s.InstallationID != 12345678 {
+		t.Errorf("unexpected installation_id: %v", s.InstallationID)
 	}
 	if s.ConnectedAt == nil {
 		t.Error("expected ConnectedAt to be set")
@@ -94,8 +95,8 @@ func TestGitHubStatus_Connected(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"connected": true,
-			"scope":     "repo,read:user",
+			"connected":       true,
+			"installation_id": 12345678,
 		})
 	}))
 	defer srv.Close()
@@ -108,8 +109,8 @@ func TestGitHubStatus_Connected(t *testing.T) {
 	if !status.Connected {
 		t.Error("expected Connected to be true")
 	}
-	if status.Scope != "repo,read:user" {
-		t.Errorf("unexpected scope: %s", status.Scope)
+	if status.InstallationID == nil || *status.InstallationID != 12345678 {
+		t.Errorf("unexpected installation_id: %v", status.InstallationID)
 	}
 }
 

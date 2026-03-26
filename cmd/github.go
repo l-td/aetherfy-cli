@@ -26,8 +26,8 @@ Once connected, you can link agents to GitHub repos so that every push
 to the configured branch automatically triggers a new deployment.
 
 Subcommands:
-  connect              Open the GitHub OAuth URL in your browser
-  disconnect           Revoke the stored GitHub token
+  connect              Install the Aetherfy GitHub App in your browser
+  disconnect           Remove the GitHub App installation
   status               Show GitHub connection status
   link <agent> <repo>  Link an agent to a GitHub repo for auto-deploy
   unlink <agent>       Remove the GitHub link from an agent`,
@@ -45,14 +45,14 @@ Subcommands:
 
 var githubConnectCmd = &cobra.Command{
 	Use:   "connect",
-	Short: "Connect your GitHub account via OAuth",
-	Long: `Open the GitHub OAuth authorization page to connect your account.
+	Short: "Connect your GitHub account via the Aetherfy GitHub App",
+	Long: `Install the Aetherfy GitHub App to connect your account.
 
-The CLI will attempt to open the URL in your default browser.
+The CLI will attempt to open the installation URL in your default browser.
 If that fails, copy and paste the URL manually.
 
-After authorizing, GitHub redirects back to Aetherfy and stores
-an encrypted token — one token per account, covering all repos.`,
+After installing the App on GitHub, you are redirected back to Aetherfy.
+One App installation covers all repos you grant access to.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
 			return err
@@ -83,12 +83,13 @@ an encrypted token — one token per account, covering all repos.`,
 
 var githubDisconnectCmd = &cobra.Command{
 	Use:   "disconnect",
-	Short: "Revoke stored GitHub token",
-	Long: `Remove the stored GitHub OAuth token from your account.
+	Short: "Disconnect the Aetherfy GitHub App",
+	Long: `Remove the stored GitHub App installation from your account.
 
 This does not delete existing webhook links on agents — use
 'afy github unlink <agent>' first if you want to clean those up.
 
+To fully revoke access, also uninstall the App from your GitHub settings.
 This operation is idempotent: it succeeds even if you are not connected.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
@@ -133,8 +134,8 @@ var githubStatusCmd = &cobra.Command{
 		}
 
 		output.PrintSuccess("GitHub connected")
-		if status.Scope != "" {
-			output.KeyValue("Scopes", status.Scope)
+		if status.InstallationID != nil {
+			output.KeyValue("Installation ID", fmt.Sprintf("%d", *status.InstallationID))
 		}
 		if status.ConnectedAt != nil {
 			output.KeyValue("Connected at", status.ConnectedAt.Local().Format(time.RFC1123))
