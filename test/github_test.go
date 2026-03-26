@@ -93,7 +93,7 @@ func TestGitHubStatus_Connected(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"connected": true,
 			"scope":     "repo,read:user",
 		})
@@ -116,7 +116,7 @@ func TestGitHubStatus_Connected(t *testing.T) {
 func TestGitHubStatus_NotConnected(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{"connected": false})
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"connected": false})
 	}))
 	defer srv.Close()
 
@@ -153,7 +153,7 @@ func TestGitHubLinkAgent_Success(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"repo":       "myorg/myrepo",
 			"branch":     "main",
 			"webhook_id": "987654321",
@@ -181,7 +181,7 @@ func TestGitHubLinkAgent_NotConnected_Returns422(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"detail": "GitHub account not connected",
 		})
 	}))
