@@ -303,6 +303,78 @@ func TestProject_Empty(t *testing.T) {
 	assert.Equal(t, "", h.Entrypoint)
 	assert.False(t, h.VectorDB)
 	assert.False(t, h.HasMastra)
+	assert.False(t, h.HasUvLock)
+}
+
+// ─── HasUvLock detection ──────────────────────────────────────────────────────
+
+func TestProject_PythonWithUvLock(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
+name = "my-app"
+requires-python = ">=3.12"
+dependencies = []
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "uv.lock"), []byte("version = 1\nrequires-python = \">=3.12\"\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "python3.12", h.Runtime)
+	assert.Equal(t, "main.py", h.Entrypoint)
+	assert.True(t, h.HasPyprojectToml)
+	assert.True(t, h.HasUvLock)
+}
+
+func TestProject_PythonWithPyprojectButNoUvLock(t *testing.T) {
+	// pyproject.toml without uv.lock → HasPyprojectToml=true, HasUvLock=false
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
+name = "my-app"
+requires-python = ">=3.11"
+`), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "python3.11", h.Runtime)
+	assert.True(t, h.HasPyprojectToml)
+	assert.False(t, h.HasUvLock)
+}
+
+func TestProject_PythonRequirementsTxtNoUvLock(t *testing.T) {
+	// requirements.txt only → HasPyprojectToml=false, HasUvLock=false
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("requests\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "python3.11", h.Runtime)
+	assert.False(t, h.HasPyprojectToml)
+	assert.False(t, h.HasUvLock)
+}
+
+func TestProject_UvLockWithoutPyprojectToml(t *testing.T) {
+	// uv.lock present but no pyproject.toml → HasUvLock must be false
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("requests\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "uv.lock"), []byte("version = 1\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.False(t, h.HasPyprojectToml)
+	assert.False(t, h.HasUvLock)
+}
+
+func TestProject_NodeProjectHasNoPythonFlags(t *testing.T) {
+	// Node / Bun projects never have Python-specific flags set
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.False(t, h.HasPyprojectToml)
+	assert.False(t, h.HasUvLock)
 }
 
 func TestProject_EntrypointPriority(t *testing.T) {

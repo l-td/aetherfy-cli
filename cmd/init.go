@@ -147,6 +147,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if hints.HasMastra {
 		output.PrintSuccess("Detected 'mastra' in dependencies")
 	}
+	if hints.HasUvLock {
+		output.PrintSuccess("Detected uv.lock — will use 'uv sync --frozen' for reproducible installs")
+	} else if hints.HasPyprojectToml {
+		output.PrintWarning("pyproject.toml found but uv.lock is missing — run 'uv lock' and commit uv.lock before deploying")
+	}
 	output.Println("")
 
 	interactive := isInteractive()

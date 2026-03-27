@@ -11,10 +11,12 @@ import (
 
 // ProjectHints holds what was auto-detected in a project directory.
 type ProjectHints struct {
-	Runtime    string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "bun", "dockerfile"
-	Entrypoint string // e.g. "main.py", "index.js" — empty for dockerfile runtime
-	VectorDB   bool   // qdrant_memory folder found
-	HasMastra  bool   // mastra in package.json dependencies
+	Runtime          string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "bun", "dockerfile"
+	Entrypoint       string // e.g. "main.py", "index.js" — empty for dockerfile runtime
+	VectorDB         bool   // qdrant_memory folder found
+	HasMastra        bool   // mastra in package.json dependencies
+	HasPyprojectToml bool   // pyproject.toml found (uv or PEP 517 project)
+	HasUvLock        bool   // uv.lock found alongside pyproject.toml (uv project mode)
 }
 
 // Project scans dir and returns detected hints.
@@ -32,10 +34,17 @@ func Project(dir string) ProjectHints {
 	}
 
 	// Python detection
-	if fileExists(filepath.Join(dir, "requirements.txt")) || fileExists(filepath.Join(dir, "pyproject.toml")) {
+	hasPyproject := fileExists(filepath.Join(dir, "pyproject.toml"))
+	if fileExists(filepath.Join(dir, "requirements.txt")) || hasPyproject {
 		hints.Runtime = PythonVersion(dir)
 		if fileExists(filepath.Join(dir, "main.py")) {
 			hints.Entrypoint = "main.py"
+		}
+		if hasPyproject {
+			hints.HasPyprojectToml = true
+			if fileExists(filepath.Join(dir, "uv.lock")) {
+				hints.HasUvLock = true
+			}
 		}
 	}
 
