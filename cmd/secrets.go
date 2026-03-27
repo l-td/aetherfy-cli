@@ -180,6 +180,11 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 			key = key[:idx]
 		}
 
+		if isReservedSecretKey(key) {
+			output.PrintError("Key '%s' is reserved for platform use. Names starting with AETHERFY_ are not allowed.", key)
+			return nil
+		}
+
 		// Read value from stdin
 		reader := bufio.NewReader(os.Stdin)
 		value, err := reader.ReadString('\n')
@@ -223,6 +228,11 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 
 		if key == "" {
 			output.PrintError("Key cannot be empty in '%s'", pair)
+			continue
+		}
+
+		if isReservedSecretKey(key) {
+			output.PrintError("Key '%s' is reserved for platform use. Names starting with AETHERFY_ are not allowed.", key)
 			continue
 		}
 
@@ -332,4 +342,11 @@ func init() {
 	secretsCmd.AddCommand(secretsListCmd)
 	secretsCmd.AddCommand(secretsSetCmd)
 	secretsCmd.AddCommand(secretsDeleteCmd)
+}
+
+// isReservedSecretKey returns true if the key name is reserved for platform use.
+// The AETHERFY_ prefix is reserved; using it would risk shadowing platform-injected
+// environment variables inside the agent container.
+func isReservedSecretKey(key string) bool {
+	return strings.HasPrefix(strings.ToUpper(key), "AETHERFY_")
 }
