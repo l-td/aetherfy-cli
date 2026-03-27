@@ -26,10 +26,12 @@ var rootCmd = &cobra.Command{
 Deploy, manage, and monitor your AI agents with ease.
 
 Quick start:
-  afy login              # Authenticate with your API key
-  afy init               # Generate aetherfy.yaml for your project
-  afy deploy             # Deploy current directory
-  afy logs <agent>       # View agent logs
+  afy login                    # Authenticate with your API key
+  afy init                     # Generate aetherfy.yaml for your project
+  afy deploy                   # Deploy current directory
+  afy logs <agent>             # View agent logs
+  afy deployments <agent>      # View deployment history
+  afy rollback <agent> <ver>   # Roll back to a previous version
 
 For more information, visit: https://docs.aetherfy.run`,
 	Version: version.Short(),
@@ -98,6 +100,8 @@ func init() {
 	rootCmd.AddCommand(workspacesCmd)
 	rootCmd.AddCommand(spawnCmd)
 	rootCmd.AddCommand(githubCmd)
+	rootCmd.AddCommand(rollbackCmd)
+	rootCmd.AddCommand(deploymentsCmd)
 
 	// Custom version template
 	rootCmd.SetVersionTemplate(version.Full() + "\n")

@@ -64,6 +64,23 @@ func (c *Client) ListDeployments(agentID string) ([]Deployment, error) {
 	return deployments, nil
 }
 
+// Rollback rolls an agent back to a specific deployment version.
+// Returns the new deployment created for the rollback.
+func (c *Client) Rollback(agentID string, version int) (*RollbackResponse, error) {
+	var resp RollbackResponse
+	path := fmt.Sprintf("/agents/%s/deployments/%d/rollback", agentID, version)
+	httpResp, err := c.http.R().
+		SetResult(&resp).
+		Post(c.url(path))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if httpResp.IsError() {
+		return nil, parseAPIError(httpResp)
+	}
+	return &resp, nil
+}
+
 // GetDeploymentLogs returns logs for a deployment
 func (c *Client) GetDeploymentLogs(agentID string, tail int) ([]LogEntry, error) {
 	path := fmt.Sprintf("/agents/%s/logs", agentID)

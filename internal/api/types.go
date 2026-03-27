@@ -41,12 +41,11 @@ type Deployment struct {
 	ID           string    `json:"id"`
 	AgentID      string    `json:"agent_id"`
 	Version      int       `json:"version"`
-	Status       string    `json:"status"`
-	Region       string    `json:"region"`
-	ImageTag     string    `json:"image_tag,omitempty"`
+	Status       string    `json:"state"`
+	Regions      []string  `json:"regions,omitempty"`
 	ErrorMessage string    `json:"error_message,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
-	CompletedAt  time.Time `json:"completed_at,omitempty"`
+	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
 }
 
 // DeployRequest is the request body for deploying
@@ -55,12 +54,23 @@ type DeployRequest struct {
 	Region  string `json:"region,omitempty"`
 }
 
-// DeployResponse is the response from a deploy request
+// DeployResponse is the response from a deploy request (maps to DeploymentResponse on the server).
 type DeployResponse struct {
-	DeploymentID string `json:"deployment_id"`
-	JobID        string `json:"job_id"`
-	Status       string `json:"status"`
-	Message      string `json:"message"`
+	DeploymentID string `json:"id"`
+	AgentID      string `json:"agent_id"`
+	Version      int    `json:"version"`
+	Status       string `json:"state"`
+	QueuePosition *int  `json:"queue_position,omitempty"`
+}
+
+// RollbackResponse is the response from a rollback request (same shape as DeploymentResponse).
+type RollbackResponse struct {
+	ID           string    `json:"id"`
+	AgentID      string    `json:"agent_id"`
+	Version      int       `json:"version"`
+	State        string    `json:"state"`
+	ErrorMessage string    `json:"error_message,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // Secret represents a secret (without the value)

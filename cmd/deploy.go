@@ -169,7 +169,6 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	output.KeyValue("Deployment ID", resp.DeploymentID)
-	output.KeyValue("Job ID", resp.JobID)
 	output.Println("")
 
 	if deployDetach {
@@ -291,7 +290,6 @@ func runDeployFromGitHub(repoRef string) error {
 	}
 
 	output.KeyValue("Deployment ID", resp.DeploymentID)
-	output.KeyValue("Job ID", resp.JobID)
 	output.Println("")
 
 	if deployDetach {
