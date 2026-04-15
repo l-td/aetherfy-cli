@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"mime/multipart"
+	"net/url"
 )
 
 // Deploy uploads code and triggers a deployment
@@ -81,16 +82,43 @@ func (c *Client) Rollback(agentID string, version int) (*RollbackResponse, error
 	return &resp, nil
 }
 
-// GetDeploymentLogs returns logs for a deployment
+// GetDeploymentLogs returns logs for a deployment. Results are DESC by id
+// (newest first). Pass tail=0 to omit the tail parameter.
 func (c *Client) GetDeploymentLogs(agentID string, tail int) ([]LogEntry, error) {
+	return c.GetAgentLogs(agentID, LogQuery{Tail: tail})
+}
+
+// LogQuery bundles the query parameters the server understands.
+type LogQuery struct {
+	Tail    int    // default 50, max 1000 when > 0
+	Since   string // e.g. "1h", "30m", "45s"
+	Search  string // ILIKE match on message
+	AfterID int64  // forward pagination: return logs with id > AfterID, ASC order
+}
+
+// GetAgentLogs is the filter-aware variant. When AfterID is set, the server
+// returns logs in ASC order so a follower can page forward without gaps.
+func (c *Client) GetAgentLogs(agentID string, q LogQuery) ([]LogEntry, error) {
 	path := fmt.Sprintf("/agents/%s/logs", agentID)
-	if tail > 0 {
-		path = fmt.Sprintf("%s?tail=%d", path, tail)
+	params := url.Values{}
+	if q.Tail > 0 {
+		params.Set("tail", fmt.Sprintf("%d", q.Tail))
+	}
+	if q.Since != "" {
+		params.Set("since", q.Since)
+	}
+	if q.Search != "" {
+		params.Set("search", q.Search)
+	}
+	if q.AfterID > 0 {
+		params.Set("after_id", fmt.Sprintf("%d", q.AfterID))
+	}
+	if encoded := params.Encode(); encoded != "" {
+		path = path + "?" + encoded
 	}
 
 	var logs []LogEntry
-	err := c.Get(path, &logs)
-	if err != nil {
+	if err := c.Get(path, &logs); err != nil {
 		return nil, err
 	}
 	return logs, nil

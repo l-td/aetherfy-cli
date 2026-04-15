@@ -92,27 +92,32 @@ func streamLogs(client *api.Client, agentID string) error {
 	output.PrintInfo("Streaming logs for '%s' (Ctrl+C to stop)...", agentID)
 	output.Println("")
 
+	// Seed the cursor from the most recent batch so we don't replay history.
+	var afterID int64
+	seed, err := client.GetAgentLogs(agentID, api.LogQuery{Tail: 1})
+	if err == nil && len(seed) > 0 {
+		afterID = seed[0].ID
+	}
+
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	lastTimestamp := time.Time{}
-
 	for range ticker.C {
-		logs, err := client.GetDeploymentLogs(agentID, 100)
+		// When AfterID > 0, the server returns ASC — iterating in order prints
+		// lines as they were emitted and lets us advance the cursor exactly.
+		logs, err := client.GetAgentLogs(agentID, api.LogQuery{AfterID: afterID, Tail: 500})
 		if err != nil {
 			output.PrintWarning("Failed to fetch logs: %v", err)
 			continue
 		}
-
-		// Print only new logs
 		for _, log := range logs {
-			if log.Timestamp.After(lastTimestamp) {
-				timestamp := log.Timestamp.Format("15:04:05")
-				levelColor := getLevelColor(log.Level)
-				output.Dim.Printf("%s ", timestamp)
-				levelColor.Printf("[%s] ", log.Level)
-				fmt.Println(log.Message)
-				lastTimestamp = log.Timestamp
+			timestamp := log.Timestamp.Format("15:04:05")
+			levelColor := getLevelColor(log.Level)
+			output.Dim.Printf("%s ", timestamp)
+			levelColor.Printf("[%s] ", log.Level)
+			fmt.Println(log.Message)
+			if log.ID > afterID {
+				afterID = log.ID
 			}
 		}
 	}

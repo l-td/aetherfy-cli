@@ -112,9 +112,11 @@ type UserInfo struct {
 
 // LogEntry represents a log line
 type LogEntry struct {
+	ID        int64     `json:"id,omitempty"`
 	Timestamp time.Time `json:"timestamp"`
-	Message   string    `json:"message"`
+	Stream    string    `json:"stream,omitempty"`
 	Level     string    `json:"level,omitempty"`
+	Message   string    `json:"message"`
 }
 
 // Workspace represents a workspace namespace for multi-agent coordination
