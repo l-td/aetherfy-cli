@@ -49,19 +49,28 @@ func Project(dir string) ProjectHints {
 	}
 
 	// Node / Bun detection — overrides python if both present (unusual but safe)
+	jsCandidates := []string{"index.ts", "index.js", "main.ts", "main.js", "src/index.ts", "src/index.js"}
 	if fileExists(filepath.Join(dir, "package.json")) {
 		if fileExists(filepath.Join(dir, "bun.lockb")) {
 			hints.Runtime = "bun"
 		} else {
 			hints.Runtime = NodeVersion(dir)
 		}
-		for _, candidate := range []string{"index.ts", "index.js", "src/index.ts", "src/index.js"} {
+		for _, candidate := range jsCandidates {
 			if fileExists(filepath.Join(dir, candidate)) {
 				hints.Entrypoint = candidate
 				break
 			}
 		}
 		hints.HasMastra = hasMastraDep(filepath.Join(dir, "package.json"))
+	} else if fileExists(filepath.Join(dir, "bunfig.toml")) {
+		hints.Runtime = "bun"
+		for _, candidate := range jsCandidates {
+			if fileExists(filepath.Join(dir, candidate)) {
+				hints.Entrypoint = candidate
+				break
+			}
+		}
 	}
 
 	if dirExists(filepath.Join(dir, "qdrant_memory")) {

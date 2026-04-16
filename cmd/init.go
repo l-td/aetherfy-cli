@@ -380,7 +380,14 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 		if entrypoint != "" {
 			sb.WriteString(fmt.Sprintf("entrypoint: %q\n", entrypoint))
 		} else {
-			sb.WriteString("# entrypoint: main.py  # TODO: set your entrypoint file\n")
+			hint := "main.py"
+			switch {
+			case runtime == "bun":
+				hint = "index.ts"
+			case strings.HasPrefix(runtime, "node"):
+				hint = "index.js"
+			}
+			sb.WriteString(fmt.Sprintf("# entrypoint: %s  # TODO: set your entrypoint file\n", hint))
 		}
 	}
 

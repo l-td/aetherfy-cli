@@ -230,6 +230,71 @@ func TestProject_BunWithIndexTs(t *testing.T) {
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
+func TestProject_BunViaBunfigToml(t *testing.T) {
+	// bunfig.toml without package.json — zero-dep Bun project
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bunfig.toml"), []byte("[install]\nproduction = true\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
+}
+
+func TestProject_BunBunfigWithMainTs(t *testing.T) {
+	// bunfig.toml + main.ts (no index.ts) → detects main.ts as entrypoint
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bunfig.toml"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, "main.ts", h.Entrypoint)
+}
+
+func TestProject_NodeWithMainTs(t *testing.T) {
+	// package.json + main.ts (no index.ts/index.js) → detects main.ts
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "node20", h.Runtime)
+	assert.Equal(t, "main.ts", h.Entrypoint)
+}
+
+func TestProject_IndexTsTakesPriorityOverMainTs(t *testing.T) {
+	// When both index.ts and main.ts exist, index.ts wins
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bun.lockb"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
+}
+
+func TestProject_PackageJsonTakesPriorityOverBunfig(t *testing.T) {
+	// package.json (no bun.lockb) + bunfig.toml → Node, not Bun
+	// (package.json path checks for bun.lockb; without it, it's Node)
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bunfig.toml"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "node20", h.Runtime)
+	assert.Equal(t, "index.js", h.Entrypoint)
+}
+
 func TestProject_VectorDB(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.MkdirAll(filepath.Join(dir, "qdrant_memory"), 0755))
