@@ -47,6 +47,17 @@ func (c *Client) DeleteAgent(idOrName string) error {
 	return c.Delete("/agents/" + idOrName)
 }
 
+// StopAgent pauses an agent (user-invoked). The server flips Fly's auto-start
+// off and stops every machine. Reversible via StartAgent.
+func (c *Client) StopAgent(idOrName string) error {
+	return c.Post(fmt.Sprintf("/agents/%s/stop", idOrName), nil, nil)
+}
+
+// StartAgent resumes a paused agent.
+func (c *Client) StartAgent(idOrName string) error {
+	return c.Post(fmt.Sprintf("/agents/%s/start", idOrName), nil, nil)
+}
+
 // GetAgentStatus returns detailed status for an agent
 func (c *Client) GetAgentStatus(idOrName string) (*Agent, error) {
 	return c.GetAgent(idOrName)

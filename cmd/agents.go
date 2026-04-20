@@ -186,6 +186,72 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// --- STOP / START (user-invoked pause) ---
+var agentsStopCmd = &cobra.Command{
+	Use:   "stop <name>",
+	Short: "Pause an agent",
+	Long: `Pause an agent: stop every machine and prevent the Fly.io proxy from
+re-waking it on incoming traffic. Reversible via 'afy agents start <name>'.
+
+Distinct from billing-driven STOPPED or uptime-cap SUSPENDED states.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsStop,
+}
+
+var agentsStartCmd = &cobra.Command{
+	Use:   "start <name>",
+	Short: "Resume a paused agent",
+	Long:  "Resume an agent that was paused with 'afy agents stop'.",
+	Args:  cobra.ExactArgs(1),
+	RunE:  runAgentsStart,
+}
+
+func runAgentsStop(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	idOrName := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Pausing agent '%s'...", idOrName))
+	sp.Start()
+
+	client := api.NewClient()
+	err := client.StopAgent(idOrName)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to pause agent: %v", err)
+		return err
+	}
+
+	output.PrintSuccess("Agent '%s' paused. Resume with 'afy agents start %s'.", idOrName, idOrName)
+	return nil
+}
+
+func runAgentsStart(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	idOrName := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Starting agent '%s'...", idOrName))
+	sp.Start()
+
+	client := api.NewClient()
+	err := client.StartAgent(idOrName)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to start agent: %v", err)
+		return err
+	}
+
+	output.PrintSuccess("Agent '%s' is starting. Use 'afy agents status %s' to monitor.", idOrName, idOrName)
+	return nil
+}
+
 // --- STATUS ---
 var agentsStatusCmd = &cobra.Command{
 	Use:   "status <name>",
@@ -257,6 +323,8 @@ func init() {
 	agentsCmd.AddCommand(agentsListCmd)
 	agentsCmd.AddCommand(agentsCreateCmd)
 	agentsCmd.AddCommand(agentsDeleteCmd)
+	agentsCmd.AddCommand(agentsStopCmd)
+	agentsCmd.AddCommand(agentsStartCmd)
 	agentsCmd.AddCommand(agentsStatusCmd)
 	agentsCmd.AddCommand(agentsRenameCmd)
 }
