@@ -253,7 +253,8 @@ func TestProject_BunBunfigWithMainTs(t *testing.T) {
 }
 
 func TestProject_NodeWithMainTs(t *testing.T) {
-	// package.json + main.ts (no index.ts/index.js) → detects main.ts
+	// package.json + main.ts (no index.ts/index.js) → detects main.ts and
+	// promotes node20 → node20-ts because the entrypoint is TypeScript.
 	dir := t.TempDir()
 	pkg := map[string]interface{}{"name": "test"}
 	data, _ := json.Marshal(pkg)
@@ -261,8 +262,65 @@ func TestProject_NodeWithMainTs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node20", h.Runtime)
+	assert.Equal(t, "node20-ts", h.Runtime)
 	assert.Equal(t, "main.ts", h.Entrypoint)
+}
+
+func TestProject_NodeTsViaIndexTs(t *testing.T) {
+	// package.json + index.ts → node20-ts (default node major + TS promotion)
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "node20-ts", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
+}
+
+func TestProject_Node22TsViaNvmrc(t *testing.T) {
+	// .nvmrc pins node22, index.ts present → node22-ts
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("22\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "node22-ts", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
+}
+
+func TestProject_NodeTsViaTsconfigWithJsEntrypoint(t *testing.T) {
+	// tsconfig.json present but user wrote plain index.js — still promote to
+	// node20-ts because the project is declared TypeScript.
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte("{}"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "node20-ts", h.Runtime)
+	assert.Equal(t, "index.js", h.Entrypoint)
+}
+
+func TestProject_BunNotPromotedByTsconfig(t *testing.T) {
+	// Bun runs TypeScript natively — don't promote to any "-ts" variant.
+	dir := t.TempDir()
+	pkg := map[string]interface{}{"name": "test"}
+	data, _ := json.Marshal(pkg)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bun.lockb"), []byte(""), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte("{}"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
 func TestProject_IndexTsTakesPriorityOverMainTs(t *testing.T) {

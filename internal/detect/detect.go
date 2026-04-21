@@ -11,8 +11,8 @@ import (
 
 // ProjectHints holds what was auto-detected in a project directory.
 type ProjectHints struct {
-	Runtime          string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "bun", "dockerfile"
-	Entrypoint       string // e.g. "main.py", "index.js" — empty for dockerfile runtime
+	Runtime          string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "node20-ts", "node22-ts", "bun", "dockerfile"
+	Entrypoint       string // e.g. "main.py", "index.js", "index.ts" — empty for dockerfile runtime
 	VectorDB         bool   // qdrant_memory folder found
 	HasMastra        bool   // mastra in package.json dependencies
 	HasPyprojectToml bool   // pyproject.toml found (uv or PEP 517 project)
@@ -63,6 +63,15 @@ func Project(dir string) ProjectHints {
 			}
 		}
 		hints.HasMastra = hasMastraDep(filepath.Join(dir, "package.json"))
+		// TypeScript promotion for Node: if the project is TypeScript (tsconfig.json
+		// present, or the resolved entrypoint is a .ts file), switch node20→node20-ts
+		// and node22→node22-ts so the backend runs it through `tsx`. Bun is left alone
+		// because Bun runs TypeScript natively.
+		if hints.Runtime == "node20" || hints.Runtime == "node22" {
+			if fileExists(filepath.Join(dir, "tsconfig.json")) || strings.HasSuffix(hints.Entrypoint, ".ts") {
+				hints.Runtime = hints.Runtime + "-ts"
+			}
+		}
 	} else if fileExists(filepath.Join(dir, "bunfig.toml")) {
 		hints.Runtime = "bun"
 		for _, candidate := range jsCandidates {

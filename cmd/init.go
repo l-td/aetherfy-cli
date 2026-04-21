@@ -48,7 +48,7 @@ var (
 
 func init() {
 	initCmd.Flags().StringVar(&initName, "name", "", "Agent name (skips prompt)")
-	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, bun, dockerfile (skips prompt)")
+	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile (skips prompt)")
 	initCmd.Flags().StringVar(&initEntrypoint, "entrypoint", "", "Entrypoint file, e.g. main.py or index.js (skips prompt)")
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
 	initCmd.Flags().StringVar(&initRegion, "region", "", "Region: iad, fra, sin (skips prompt)")
@@ -185,7 +185,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	runtime := initRuntime
 	if runtime == "" {
 		if interactive {
-			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "bun", "dockerfile"}
+			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "node22-ts", "node20-ts", "bun", "dockerfile"}
 			runtimeDefault := 2 // python3.11
 			if hints.Runtime != "" {
 				for i, r := range runtimeOptions {
@@ -207,7 +207,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		} else if hints.Runtime != "" {
 			runtime = hints.Runtime
 		} else {
-			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, bun, dockerfile)")
+			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile)")
 		}
 	}
 
@@ -383,6 +383,8 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 			hint := "main.py"
 			switch {
 			case runtime == "bun":
+				hint = "index.ts"
+			case strings.HasSuffix(runtime, "-ts"):
 				hint = "index.ts"
 			case strings.HasPrefix(runtime, "node"):
 				hint = "index.js"

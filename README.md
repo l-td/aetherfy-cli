@@ -199,7 +199,7 @@ Your agent project must include an `aetherfy.yaml` at the root:
 
 ```yaml
 name: my-agent
-runtime: python3.11         # python3.11, python3.12, python3.13, node20, node22, bun, dockerfile
+runtime: python3.11         # python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile
 type: service               # service or job
 entrypoint: main.py         # optional — auto-detected by `afy init`
 regions:                    # optional — list of iad, fra, sin
