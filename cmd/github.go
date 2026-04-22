@@ -163,7 +163,18 @@ configured branch (default: main) triggers a new deployment.
 Requires your GitHub account to be connected ('afy github connect').
 
 <repo> format: owner/repo  (branch defaults to main)
-Use --branch or append @branch to override the branch.`,
+Use --branch or append @branch to override the branch.
+
+Re-running 'afy github link' on an already-linked agent is supported
+and is the recovery path for two situations:
+  * You need a fresh webhook secret (the response prints it once and
+    there is no separate fetch endpoint — re-link to rotate it).
+  * A previous link landed in an inconsistent state and you want to
+    re-register the webhook from scratch.
+
+Re-linking creates the new webhook on GitHub first, commits, then
+removes the old one — your existing auto-deploy keeps working until
+the new link is live.`,
 	Example: `  afy github link my-bot myorg/my-agent
   afy github link my-bot myorg/my-agent --branch develop
   afy github link my-bot myorg/my-agent@develop`,
