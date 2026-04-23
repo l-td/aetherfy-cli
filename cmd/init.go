@@ -23,10 +23,14 @@ The command detects your project type and asks a few questions to build a
 configuration that is ready to deploy. Run 'afy deploy' when you are satisfied
 with the generated file.
 
-All prompts can be skipped by providing flags directly (useful for scripting/CI).`,
+All prompts can be skipped by providing flags directly, or pass -y/--yes to
+accept every prompt's default without asking (useful for scripting/CI).`,
 	Example: `  # Interactive
   afy init
   afy init ./my-agent
+
+  # Accept all defaults (non-interactive)
+  afy init -y
 
   # Non-interactive (all flags provided)
   afy init --name my-bot --runtime python3.11 --type service --region iad --memory 256`,
@@ -44,6 +48,7 @@ var (
 	initKeepAlive  bool
 	initWorkspace  bool
 	initForce      bool
+	initYes        bool
 )
 
 func init() {
@@ -56,6 +61,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initKeepAlive, "keep-alive", false, "Enable always-on billing (skips billing prompt)")
 	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing aetherfy.yaml without asking")
+	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
 }
 
 func fileExists(path string) bool {
@@ -154,7 +160,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	output.Println("")
 
-	interactive := isInteractive()
+	// -y / --yes disables the interactive path entirely, reusing the existing
+	// non-interactive default fallbacks for every prompt. Does NOT imply --force:
+	// overwriting an existing aetherfy.yaml still requires an explicit opt-in.
+	interactive := isInteractive() && !initYes
 
 	// --- Agent name ---
 	agentName := initName
@@ -355,8 +364,47 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	output.PrintSuccess("aetherfy.yaml created.")
 	output.Println("")
+	printConfigSummary(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB)
+	output.Println("")
 	output.Println("Run 'afy deploy' when you are ready to go live.")
 	return nil
+}
+
+// printConfigSummary prints the chosen config values as an aligned table.
+// Column widths are computed from the actual label set so adding or renaming
+// a row never requires re-padding by hand.
+func printConfigSummary(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool) {
+	billing := "auto-sleep"
+	if keepAlive {
+		billing = "always-on"
+	}
+	workspace := "none"
+	if vectorDB {
+		workspace = name + "-workspace"
+	}
+
+	rows := [][2]string{
+		{"Name", name},
+		{"Runtime", runtime},
+		{"Type", agentType},
+		{"Region", region},
+		{"Memory", fmt.Sprintf("%d MB", memoryMB)},
+		{"Billing", billing},
+		{"Workspace", workspace},
+	}
+
+	maxLabel := 0
+	for _, r := range rows {
+		if len(r[0]) > maxLabel {
+			maxLabel = len(r[0])
+		}
+	}
+
+	output.Println("Configuration:")
+	for _, r := range rows {
+		// "%-*s" right-pads the label+colon to a fixed column width.
+		output.Println(fmt.Sprintf("  %-*s %s", maxLabel+1, r[0]+":", r[1]))
+	}
 }
 
 func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool, entrypoint string) string {
