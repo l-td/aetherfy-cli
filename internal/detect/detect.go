@@ -33,11 +33,23 @@ func Project(dir string) ProjectHints {
 		return hints
 	}
 
-	// Python detection
+	// Python detection — fire on a dependency manifest OR a main.py at
+	// the project root. main.py is the conventional aetherfy entrypoint
+	// (already special-cased by the entrypoint detection below) and is
+	// the same signal real users follow for "small bot / single-script"
+	// Python projects that don't need a requirements.txt. Symmetric with
+	// existing entrypoint detection — both fire on the same file — so the
+	// non-interactive `afy init -y` path doesn't fail on the common bare-
+	// main.py project shape. Dependency *resolution* still needs a
+	// manifest, surfaced separately by the uv.lock warnings. Node has no
+	// symmetric case here because package.json is universal in real Node
+	// projects.
 	hasPyproject := fileExists(filepath.Join(dir, "pyproject.toml"))
-	if fileExists(filepath.Join(dir, "requirements.txt")) || hasPyproject {
+	hasRequirements := fileExists(filepath.Join(dir, "requirements.txt"))
+	hasMainPy := fileExists(filepath.Join(dir, "main.py"))
+	if hasRequirements || hasPyproject || hasMainPy {
 		hints.Runtime = PythonVersion(dir)
-		if fileExists(filepath.Join(dir, "main.py")) {
+		if hasMainPy {
 			hints.Entrypoint = "main.py"
 		}
 		if hasPyproject {

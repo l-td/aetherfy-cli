@@ -204,6 +204,35 @@ func TestProject_PythonWithMainPy(t *testing.T) {
 	assert.False(t, h.HasMastra)
 }
 
+// Bare-script Python: just main.py, no dependency manifest. Common
+// project shape for small bots / single-file agents — `afy init -y`
+// must detect this so it doesn't fail with "could not detect runtime"
+// on the non-interactive path.
+func TestProject_PythonBareMainPyNoManifest(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte("print('hi')"), 0644))
+
+	h := detect.Project(dir)
+	assert.Equal(t, "python3.11", h.Runtime, "main.py alone should signal Python (default version)")
+	assert.Equal(t, "main.py", h.Entrypoint)
+	assert.False(t, h.HasPyprojectToml)
+	assert.False(t, h.HasUvLock)
+}
+
+// A stray .py file with a non-conventional name should NOT trigger
+// Python detection — only main.py counts as a project signal. This
+// keeps the runtime detector symmetric with the entrypoint detector
+// (which also only recognizes main.py) and avoids false-positives on
+// directories that happen to contain a one-off Python utility script.
+func TestProject_PythonNonMainPyAlone(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.py"), []byte("print('hi')"), 0644))
+
+	h := detect.Project(dir)
+	assert.Empty(t, h.Runtime, "a non-main.py file should not signal Python without a manifest")
+	assert.Empty(t, h.Entrypoint)
+}
+
 func TestProject_NodeWithIndexJs(t *testing.T) {
 	dir := t.TempDir()
 	pkg := map[string]interface{}{"name": "test"}
