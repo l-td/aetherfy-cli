@@ -46,6 +46,18 @@ type Deployment struct {
 	ErrorMessage string    `json:"error_message,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
 	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
+	// True for spawn invocations (one Deployment row per spawn() call).
+	// CLI cancel filters these out — only user-initiated deploys
+	// (is_ephemeral=false) are user-cancellable.
+	IsEphemeral bool `json:"is_ephemeral,omitempty"`
+	// Set by the cancel route. For QUEUED the route returns state="failed"
+	// and CancellationRequested=true (synchronous path). For
+	// BUILDING/DEPLOYING the route returns the current in-flight state
+	// with CancellationRequested=true — the worker will transition state
+	// to failed at its next checkpoint. The CLI uses this to disambiguate
+	// "cancelled" from "cancellation requested, worker cleaning up".
+	CancellationRequested bool   `json:"cancellation_requested,omitempty"`
+	CancellationReason    string `json:"cancellation_reason,omitempty"`
 }
 
 // DeployRequest is the request body for deploying

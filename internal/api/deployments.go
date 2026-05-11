@@ -65,6 +65,27 @@ func (c *Client) ListDeployments(agentID string) ([]Deployment, error) {
 	return deployments, nil
 }
 
+// CancelDeployment cancels an in-flight deployment by version.
+// Phase 1: only QUEUED deployments are cancellable; BUILDING/DEPLOYING
+// return 409 ("not yet cancellable") until cooperative-cancel
+// checkpoints land in BuildWorker / DeployWorker. Terminal states
+// (active, failed, rolled_back, superseded) return 409 ("nothing to
+// cancel"). Returns the FAILED deployment row on success.
+func (c *Client) CancelDeployment(agentID string, version int) (*Deployment, error) {
+	var resp Deployment
+	path := fmt.Sprintf("/agents/%s/deployments/%d/cancel", agentID, version)
+	httpResp, err := c.http.R().
+		SetResult(&resp).
+		Post(c.url(path))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if httpResp.IsError() {
+		return nil, parseAPIError(httpResp)
+	}
+	return &resp, nil
+}
+
 // Rollback rolls an agent back to a specific deployment version.
 // Returns the new deployment created for the rollback.
 func (c *Client) Rollback(agentID string, version int) (*RollbackResponse, error) {

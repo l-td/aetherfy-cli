@@ -252,6 +252,94 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// --- CANCEL (abandon an in-flight deployment) ---
+var agentsCancelCmd = &cobra.Command{
+	Use:   "cancel <name>",
+	Short: "Cancel a pending deployment",
+	Long: `Cancel an agent's pending deployment.
+
+Useful when you notice a build will fail (bad Dockerfile, wrong deps) and
+want to abandon it without deleting the agent itself — fix the issue and
+redeploy.
+
+Phase 1: only QUEUED deployments are cancellable. In-flight builds
+(BUILDING / DEPLOYING) return a clear 409 until cooperative-cancellation
+support lands in the backend workers.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsCancel,
+}
+
+func runAgentsCancel(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	idOrName := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Finding pending deployment for '%s'...", idOrName))
+	sp.Start()
+
+	client := api.NewClient()
+
+	// list_deployments returns DESC by created_at. We scan for a pending
+	// user-initiated deploy — explicitly skipping ephemeral spawn rows
+	// (one Deployment per spawn() call from a parent SERVICE), which are
+	// system-managed and not user-cancellable. The backend cancel route
+	// would 404 on those anyway; filtering here gives a cleaner UX.
+	deployments, err := client.ListDeployments(idOrName)
+	if err != nil {
+		sp.Stop()
+		output.PrintError("Failed to list deployments: %v", err)
+		return err
+	}
+
+	var pending *api.Deployment
+	for i := range deployments {
+		if deployments[i].IsEphemeral {
+			continue
+		}
+		s := deployments[i].Status
+		if s == "queued" || s == "building" || s == "deploying" {
+			pending = &deployments[i]
+			break
+		}
+	}
+	if pending == nil {
+		sp.Stop()
+		output.PrintInfo("No pending deployment to cancel for '%s'.", idOrName)
+		return nil
+	}
+
+	sp.UpdateMessage(fmt.Sprintf("Cancelling deployment v%d (state: %s)...", pending.Version, pending.Status))
+
+	result, err := client.CancelDeployment(idOrName, pending.Version)
+	sp.Stop()
+	if err != nil {
+		output.PrintError("Failed to cancel deployment: %v", err)
+		return err
+	}
+
+	// Two response shapes from the route:
+	//   - QUEUED path: state="failed" already (route handled synchronously).
+	//   - In-flight path (BUILDING/DEPLOYING): state unchanged, but
+	//     CancellationRequested=true; the worker will transition to FAILED
+	//     at its next checkpoint (within seconds for build start, up to
+	//     a few minutes if mid-Docker-build subprocess).
+	// Distinguish in the user-facing message so the user knows whether
+	// to expect immediate vs eventual completion.
+	if result.Status == "failed" {
+		output.PrintSuccess("Deployment v%d cancelled.", result.Version)
+	} else {
+		output.PrintInfo(
+			"Cancellation requested for deployment v%d (state: %s). "+
+				"Worker will clean up at its next checkpoint. "+
+				"Run 'afy agents status %s' to confirm completion.",
+			result.Version, result.Status, idOrName,
+		)
+	}
+	return nil
+}
+
 // --- STATUS ---
 var agentsStatusCmd = &cobra.Command{
 	Use:   "status <name>",
@@ -325,6 +413,7 @@ func init() {
 	agentsCmd.AddCommand(agentsDeleteCmd)
 	agentsCmd.AddCommand(agentsStopCmd)
 	agentsCmd.AddCommand(agentsStartCmd)
+	agentsCmd.AddCommand(agentsCancelCmd)
 	agentsCmd.AddCommand(agentsStatusCmd)
 	agentsCmd.AddCommand(agentsRenameCmd)
 }
