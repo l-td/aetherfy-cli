@@ -331,7 +331,11 @@ func TestDeleteWorkspaceCallsCorrectEndpoint(t *testing.T) {
 		capturedPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"deleted","secrets_deleted":2,"collections_remaining":0}`))
+		// Response shape matches WorkspaceDeleteResponse on the control plane —
+		// only `status` and `secrets_deleted`. The previous `collections_remaining`
+		// / `note` fields were removed once the FK pre-check started 409'ing
+		// before delete (they were structurally always 0/null).
+		_, _ = w.Write([]byte(`{"status":"deleted","secrets_deleted":2}`))
 	}))
 	defer server.Close()
 
@@ -352,6 +356,75 @@ func TestDeleteWorkspaceCallsCorrectEndpoint(t *testing.T) {
 	}
 	if result.SecretsDeleted != 2 {
 		t.Errorf("Expected SecretsDeleted=2, got %d", result.SecretsDeleted)
+	}
+}
+
+func TestUpdateWorkspaceCallsCorrectEndpoint(t *testing.T) {
+	var capturedMethod, capturedPath string
+	var capturedBody map[string]interface{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedMethod = r.Method
+		capturedPath = r.URL.Path
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"ws-1","name":"my-workspace","description":"refined","agent_count":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-02T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	ws, err := client.UpdateWorkspace("my-workspace", &api.WorkspaceUpdateRequest{
+		Description: "refined",
+	})
+
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	if capturedMethod != http.MethodPatch {
+		t.Errorf("Expected method PATCH, got %s", capturedMethod)
+	}
+	if capturedPath != "/workspaces/my-workspace" {
+		t.Errorf("Expected path '/workspaces/my-workspace', got '%s'", capturedPath)
+	}
+	if capturedBody["description"] != "refined" {
+		t.Errorf("Expected description 'refined' in body, got %v", capturedBody["description"])
+	}
+	// WorkspaceUpdateRequest deliberately has no `name` field — the API
+	// rejects rename attempts (400 WORKSPACE_NAME_IMMUTABLE), and the
+	// struct shape is what guarantees we never accidentally send one.
+	if _, present := capturedBody["name"]; present {
+		t.Errorf("Body must not include `name` (would trigger 400 WORKSPACE_NAME_IMMUTABLE), got %v", capturedBody)
+	}
+	if ws == nil || ws.Description != "refined" {
+		t.Errorf("Expected workspace with Description 'refined', got %v", ws)
+	}
+}
+
+func TestUpdateWorkspaceClearDescription(t *testing.T) {
+	// Empty-string clears the description (matches the `afy workspaces
+	// update <name> --description ""` CLI example). Empty string must
+	// reach the wire, not be elided — otherwise the user can't clear.
+	var capturedBody map[string]interface{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&capturedBody)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"id":"ws-1","name":"my-workspace","description":null,"agent_count":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-02T00:00:00Z"}`))
+	}))
+	defer server.Close()
+
+	client := api.NewClientWithURL(server.URL, "test-key")
+	_, err := client.UpdateWorkspace("my-workspace", &api.WorkspaceUpdateRequest{Description: ""})
+	if err != nil {
+		t.Fatalf("Unexpected error: %v", err)
+	}
+	desc, present := capturedBody["description"]
+	if !present {
+		t.Fatal("Empty description must be sent on the wire — otherwise users can't clear")
+	}
+	if desc != "" {
+		t.Errorf("Expected description '' on the wire, got %v", desc)
 	}
 }
 

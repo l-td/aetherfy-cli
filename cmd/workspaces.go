@@ -264,9 +264,70 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 	if result.SecretsDeleted > 0 {
 		output.Dim.Printf("  %d secret(s) deleted.\n", result.SecretsDeleted)
 	}
-	if result.CollectionsRemaining > 0 {
-		output.Println("")
-		output.Warning.Printf("  %d vector collection(s) remain. Clean them up via the vectordb API.\n", result.CollectionsRemaining)
+
+	return nil
+}
+
+// --- UPDATE ---
+
+var workspacesUpdateCmd = &cobra.Command{
+	Use:   "update <name>",
+	Short: "Update a workspace's description",
+	Long: `Update mutable fields on an existing workspace. Currently only the
+description is mutable — workspace names are immutable post-creation
+because three String columns reference them without FK cascade (see
+docs/REVIEW_FAQ.md §53 in the control-plane repo). To "rename" a
+workspace, delete and recreate it.`,
+	Example: `  # Update the description
+  afy workspaces update invoice-pipeline --description "Updated invoice processing agents"
+
+  # Clear the description (set to empty string)
+  afy workspaces update invoice-pipeline --description ""`,
+	Args: cobra.ExactArgs(1),
+	RunE: runWorkspacesUpdate,
+}
+
+// Separate variable from create's flag so the two commands don't share
+// state across invocations. cobra binds these per-flag-definition.
+var workspaceUpdateDescription string
+
+func init() {
+	workspacesUpdateCmd.Flags().StringVarP(&workspaceUpdateDescription, "description", "d", "", "New workspace description")
+	// Cobra has no built-in way to detect "user explicitly passed empty
+	// string" vs "user didn't pass flag"; we use Changed() at runtime
+	// below. Make the flag required to enforce that the user passed
+	// SOMETHING to mutate.
+	_ = workspacesUpdateCmd.MarkFlagRequired("description")
+}
+
+func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	name := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Updating workspace '%s'...", name))
+	sp.Start()
+
+	client := api.NewClient()
+	workspace, err := client.UpdateWorkspace(name, &api.WorkspaceUpdateRequest{
+		Description: workspaceUpdateDescription,
+	})
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to update workspace: %v", err)
+		return err
+	}
+
+	output.PrintSuccess("Workspace '%s' updated.", workspace.Name)
+	output.Println("")
+	output.KeyValue("Name", workspace.Name)
+	if workspace.Description != "" {
+		output.KeyValue("Description", workspace.Description)
+	} else {
+		output.KeyValue("Description", "(none)")
 	}
 
 	return nil
@@ -355,6 +416,7 @@ func init() {
 	workspacesCmd.AddCommand(workspacesCreateCmd)
 	workspacesCmd.AddCommand(workspacesListCmd)
 	workspacesCmd.AddCommand(workspacesInfoCmd)
+	workspacesCmd.AddCommand(workspacesUpdateCmd)
 	workspacesCmd.AddCommand(workspacesDeleteCmd)
 	workspacesCmd.AddCommand(workspacesAgentsCmd)
 }

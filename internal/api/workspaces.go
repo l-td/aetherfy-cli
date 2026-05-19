@@ -51,3 +51,14 @@ func (c *Client) DeleteWorkspace(name string) (*WorkspaceDeleteResponse, error) 
 	}
 	return &result, nil
 }
+
+// UpdateWorkspace updates a workspace's mutable fields. Only description
+// is supported by the control plane; name is structurally immutable.
+func (c *Client) UpdateWorkspace(name string, req *WorkspaceUpdateRequest) (*Workspace, error) {
+	var workspace Workspace
+	err := c.Patch(fmt.Sprintf("/workspaces/%s", name), req, &workspace)
+	if err != nil {
+		return nil, err
+	}
+	return &workspace, nil
+}
