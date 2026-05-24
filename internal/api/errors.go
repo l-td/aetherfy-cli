@@ -1,9 +1,27 @@
 package api
 
+// Canonical control-plane error envelope:
+//
+//	{"detail": {"code": "STABLE_CODE", "message": "...", **extras}}
+//
+// All API error responses from the control-plane — including FastAPI's
+// pydantic 422 validation errors (wrapped by a RequestValidationError
+// exception_handler in main.py that emits
+// `{"detail": {"code": "VALIDATION_ERROR", "message": "...", "violations": [...]}}`)
+// — use this nested dict shape. `code` is one of the stable strings
+// defined in aetherfy-control-plane/shared/error_codes.py (e.g.
+// AGENT_NOT_FOUND, WORKSPACE_NAME_TAKEN, AUTH_INVALID_API_KEY) and is
+// append-only — clients pin literal strings and switch on them.
+//
+// The CLI therefore ASSUMES `detail` is a JSON object. The only path
+// that does not produce a JSON object body is a transport-level failure
+// (e.g. Cloudflare returning a 502 HTML page, an empty body, or a
+// non-JSON gateway response) — for those we fall back to a default
+// status-code message via statusCodeMessage.
+
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -54,31 +72,37 @@ func parseAPIError(resp *resty.Response) error {
 	if len(resp.Body()) > 0 {
 		var errBody struct {
 			Detail interface{} `json:"detail"`
-			Code   string      `json:"code"`
 		}
 		if err := json.Unmarshal(resp.Body(), &errBody); err == nil {
 			switch v := errBody.Detail.(type) {
-			case string:
-				apiErr.Message = v
-			case []interface{}:
-				// Validation errors (FastAPI format) — collect all messages
-				var msgs []string
-				for _, item := range v {
-					if entry, ok := item.(map[string]interface{}); ok {
-						if msg, ok := entry["msg"].(string); ok {
-							msgs = append(msgs, msg)
-						}
+			case map[string]interface{}:
+				// Canonical control-plane envelope:
+				// {"detail": {"code": "...", "message": "...", **extras}}
+				if msg, ok := v["message"].(string); ok && msg != "" {
+					apiErr.Message = msg
+				} else if raw, err := json.Marshal(v); err == nil {
+					// Fall back to serialized dict so display still shows something useful
+					apiErr.Message = string(raw)
+				}
+				if code, ok := v["code"].(string); ok && code != "" {
+					apiErr.Code = code
+				}
+			default:
+				// Unexpected shape — serialize whatever we got so it isn't
+				// dropped silently. The control-plane should never emit
+				// this; if we see it, something is misconfigured upstream.
+				if v != nil {
+					if raw, err := json.Marshal(v); err == nil {
+						apiErr.Message = string(raw)
 					}
 				}
-				if len(msgs) > 0 {
-					apiErr.Message = strings.Join(msgs, "; ")
-				}
 			}
-			apiErr.Code = errBody.Code
 		}
 	}
 
-	// Default messages for common status codes
+	// Default messages for common status codes — used when the body is
+	// empty or non-JSON (transport-level errors: Cloudflare 502 HTML,
+	// gateway timeouts, network failures, etc.)
 	if apiErr.Message == "Unknown error" {
 		switch resp.StatusCode() {
 		case 400:
@@ -141,36 +165,33 @@ func ParseErrorResponse(statusCode int, body []byte) *APIError {
 		return apiErr
 	}
 
-	// Try to parse JSON
+	// Try to parse JSON. Non-JSON bodies are transport-level (Cloudflare
+	// HTML error pages, plain-text proxy errors, etc.) — pass them through.
 	var errBody map[string]interface{}
 	if err := json.Unmarshal(body, &errBody); err != nil {
-		// Plain text error
 		apiErr.Message = string(body)
 		return apiErr
 	}
 
-	// Try various JSON fields
+	// Canonical control-plane envelope:
+	// {"detail": {"code": "...", "message": "...", **extras}}
 	switch v := errBody["detail"].(type) {
-	case string:
-		apiErr.Message = v
-	case []interface{}:
-		// FastAPI validation error list — join all messages
-		var msgs []string
-		for _, item := range v {
-			if entry, ok := item.(map[string]interface{}); ok {
-				if msg, ok := entry["msg"].(string); ok {
-					msgs = append(msgs, msg)
-				}
-			}
+	case map[string]interface{}:
+		if msg, ok := v["message"].(string); ok && msg != "" {
+			apiErr.Message = msg
+		} else if raw, err := json.Marshal(v); err == nil {
+			apiErr.Message = string(raw)
 		}
-		if len(msgs) > 0 {
-			apiErr.Message = strings.Join(msgs, "; ")
+		if code, ok := v["code"].(string); ok && code != "" {
+			apiErr.Code = code
 		}
 	default:
-		if message, ok := errBody["message"].(string); ok {
-			apiErr.Message = message
-		} else if errMsg, ok := errBody["error"].(string); ok {
-			apiErr.Message = errMsg
+		// Unexpected shape — serialize whatever we got so it isn't
+		// dropped silently. The control-plane should never emit this.
+		if v != nil {
+			if raw, err := json.Marshal(v); err == nil {
+				apiErr.Message = string(raw)
+			}
 		}
 	}
 

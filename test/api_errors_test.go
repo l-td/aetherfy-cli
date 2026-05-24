@@ -63,48 +63,40 @@ func TestParseErrorResponse(t *testing.T) {
 		body       string
 		statusCode int
 		wantMsg    string
+		wantCode   string
 	}{
 		{
-			name:       "json error with detail",
-			body:       `{"detail": "Invalid API key"}`,
+			name:       "canonical envelope with code and message",
+			body:       `{"detail":{"code":"AUTH_INVALID_API_KEY","message":"Invalid API key"}}`,
 			statusCode: 401,
 			wantMsg:    "Invalid API key",
+			wantCode:   "AUTH_INVALID_API_KEY",
 		},
 		{
-			name:       "json error with message",
-			body:       `{"message": "Not found"}`,
+			name:       "canonical envelope with extras",
+			body:       `{"detail":{"code":"AGENT_NOT_FOUND","message":"No agent with id 'a1'","agent_id":"a1"}}`,
 			statusCode: 404,
-			wantMsg:    "Not found",
+			wantMsg:    "No agent with id 'a1'",
+			wantCode:   "AGENT_NOT_FOUND",
 		},
 		{
-			name:       "json error with error field",
-			body:       `{"error": "Something went wrong"}`,
-			statusCode: 500,
-			wantMsg:    "Something went wrong",
+			name:       "canonical validation envelope (422 wrapped by exception_handler)",
+			body:       `{"detail":{"code":"VALIDATION_ERROR","message":"name is required","violations":[{"loc":["body","name"],"msg":"name is required"}]}}`,
+			statusCode: 422,
+			wantMsg:    "name is required",
+			wantCode:   "VALIDATION_ERROR",
 		},
 		{
-			name:       "plain text error",
+			name:       "plain text body (transport-level, e.g. proxy error)",
 			body:       "Bad Request",
 			statusCode: 400,
 			wantMsg:    "Bad Request",
 		},
 		{
-			name:       "empty body",
+			name:       "empty body falls back to status-code message",
 			body:       "",
 			statusCode: 500,
 			wantMsg:    "Internal Server Error",
-		},
-		{
-			name:       "fastapi single validation error",
-			body:       `{"detail":[{"msg":"field required","type":"value_error.missing"}]}`,
-			statusCode: 422,
-			wantMsg:    "field required",
-		},
-		{
-			name:       "fastapi multiple validation errors joined",
-			body:       `{"detail":[{"msg":"name is required"},{"msg":"runtime is required"}]}`,
-			statusCode: 422,
-			wantMsg:    "name is required; runtime is required",
 		},
 	}
 
@@ -113,6 +105,9 @@ func TestParseErrorResponse(t *testing.T) {
 			err := api.ParseErrorResponse(tt.statusCode, []byte(tt.body))
 			assert.Equal(t, tt.statusCode, err.StatusCode)
 			assert.Contains(t, err.Message, tt.wantMsg)
+			if tt.wantCode != "" {
+				assert.Equal(t, tt.wantCode, err.Code)
+			}
 		})
 	}
 }
