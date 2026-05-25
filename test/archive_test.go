@@ -91,7 +91,7 @@ func TestParseAetherfyConfig_FullConfig(t *testing.T) {
 runtime: python3.11
 type: service
 regions:
-  - iad
+  - us-east-1
 memory_mb: 512
 keep_alive: true
 entrypoint: main.py
@@ -105,7 +105,7 @@ workspace: my-agent-workspace
 	assert.Equal(t, "my-agent", cfg.Name)
 	assert.Equal(t, "python3.11", cfg.Runtime)
 	assert.Equal(t, "service", cfg.Type)
-	assert.Equal(t, []string{"iad"}, cfg.Regions)
+	assert.Equal(t, []string{"us-east-1"}, cfg.Regions)
 	assert.Equal(t, 512, cfg.MemoryMB)
 	assert.True(t, cfg.KeepAlive)
 	assert.Equal(t, "main.py", cfg.Entrypoint)
@@ -160,12 +160,12 @@ func TestParseAetherfyConfig_EmptyName(t *testing.T) {
 func TestParseAetherfyConfig_MultipleRegions(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	yaml := "name: multi\nruntime: python3.11\nregions:\n  - iad\n  - fra\n  - sin\n"
+	yaml := "name: multi\nruntime: python3.11\nregions:\n  - us-east-1\n  - eu-central-1\n  - ap-southeast-1\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
 
 	cfg, err := archive.ParseAetherfyConfig(tmpDir)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"iad", "fra", "sin"}, cfg.Regions)
+	assert.Equal(t, []string{"us-east-1", "eu-central-1", "ap-southeast-1"}, cfg.Regions)
 }
 
 // ─── ValidateAetherfyConfig ───────────────────────────────────────────────────

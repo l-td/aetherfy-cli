@@ -40,8 +40,8 @@ func TestRenderTable(t *testing.T) {
 
 	headers := []string{"NAME", "STATUS", "REGION"}
 	rows := [][]string{
-		{"agent-1", "running", "iad"},
-		{"agent-2", "stopped", "fra"},
+		{"agent-1", "running", "us-east-1"},
+		{"agent-2", "stopped", "eu-central-1"},
 	}
 
 	output.RenderTable(&buf, headers, rows)

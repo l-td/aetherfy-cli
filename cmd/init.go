@@ -33,7 +33,7 @@ accept every prompt's default without asking (useful for scripting/CI).`,
   afy init -y
 
   # Non-interactive (all flags provided)
-  afy init --name my-bot --runtime python3.11 --type service --region iad --memory 256`,
+  afy init --name my-bot --runtime python3.11 --type service --region us-east-1 --memory 256`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInit,
 }
@@ -56,7 +56,7 @@ func init() {
 	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile (skips prompt)")
 	initCmd.Flags().StringVar(&initEntrypoint, "entrypoint", "", "Entrypoint file, e.g. main.py or index.js (skips prompt)")
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
-	initCmd.Flags().StringVar(&initRegion, "region", "", "Region: iad, fra, sin (skips prompt)")
+	initCmd.Flags().StringVar(&initRegion, "region", "", "Region: us-east-1, eu-central-1, ap-southeast-1 (skips prompt)")
 	initCmd.Flags().IntVar(&initMemory, "memory", 0, "Memory in MB: 256, 512, 1024 (skips prompt)")
 	initCmd.Flags().BoolVar(&initKeepAlive, "keep-alive", false, "Enable always-on billing (skips billing prompt)")
 	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
@@ -249,11 +249,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if region == "" {
 		if interactive {
 			regionItems := []string{
-				"iad  (US East — Virginia)",
-				"fra  (EU Central — Frankfurt)",
-				"sin  (AP Southeast — Singapore)",
+				"us-east-1       (US East — Virginia)",
+				"eu-central-1    (EU Central — Frankfurt)",
+				"ap-southeast-1  (AP Southeast — Singapore)",
 			}
-			regionKeys := []string{"iad", "fra", "sin"}
+			regionKeys := []string{"us-east-1", "eu-central-1", "ap-southeast-1"}
 			regionSelect := promptui.Select{
 				Label:     "Region",
 				Items:     regionItems,
@@ -265,7 +265,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 			}
 			region = regionKeys[regionIdx]
 		} else {
-			region = "iad"
+			region = "us-east-1"
 		}
 	}
 

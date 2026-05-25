@@ -13,11 +13,13 @@ package api
 // AGENT_NOT_FOUND, WORKSPACE_NAME_TAKEN, AUTH_INVALID_API_KEY) and is
 // append-only — clients pin literal strings and switch on them.
 //
-// The CLI therefore ASSUMES `detail` is a JSON object. The only path
-// that does not produce a JSON object body is a transport-level failure
-// (e.g. Cloudflare returning a 502 HTML page, an empty body, or a
-// non-JSON gateway response) — for those we fall back to a default
-// status-code message via statusCodeMessage.
+// The CLI talks ONLY to control-plane, so it parses `detail` exclusively.
+// Per docs/REVIEW_FAQ.md section 56, each consumer reads only from the
+// surface(s) it talks to so its parser stays simple and asserts the
+// contract. The only path that does not produce a JSON object body is
+// a transport-level failure (e.g. Cloudflare returning a 502 HTML page,
+// an empty body, or a non-JSON gateway response) — for those we fall
+// back to a default status-code message via statusCodeMessage.
 
 import (
 	"encoding/json"

@@ -20,7 +20,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		APIURL:        "https://agents.aetherfy.com/api/v1",
-		DefaultRegion: "iad",
+		DefaultRegion: "us-east-1",
 		OutputFormat:  "text",
 		NoColor:       false,
 		Verbose:       false,
@@ -44,7 +44,7 @@ func Load() (*Config, error) {
 
 	// Set defaults
 	v.SetDefault("api_url", "https://agents.aetherfy.com/api/v1")
-	v.SetDefault("default_region", "iad")
+	v.SetDefault("default_region", "us-east-1")
 	v.SetDefault("output_format", "text")
 	v.SetDefault("no_color", false)
 	v.SetDefault("verbose", false)
