@@ -17,6 +17,31 @@ type Client struct {
 	verbose bool
 }
 
+// testDBHeaderValue returns "1" if the key is a test key (afy_test_…),
+// "0" otherwise. The control-plane's auth path looks at this header to
+// pick the prod or test database for the key lookup — it no longer
+// tries one then the other. Deriving the flag from the key's prefix
+// keeps the contract local to the CLI and out of user config: the key
+// itself already encodes which env it belongs to.
+func testDBHeaderValue(apiKey string) string {
+	if config.IsTestKey(apiKey) {
+		return "1"
+	}
+	return "0"
+}
+
+// applyAuthHeaders sets Authorization + X-Test-DB on a resty client.
+// Centralized so every constructor sends the same surface — adding a
+// new constructor without these headers would silently route to the
+// wrong DB.
+func applyAuthHeaders(client *resty.Client, apiKey string) {
+	if apiKey == "" {
+		return
+	}
+	client.SetHeader("Authorization", "Bearer "+apiKey)
+	client.SetHeader("X-Test-DB", testDBHeaderValue(apiKey))
+}
+
 // NewClient creates a new API client
 func NewClient() *Client {
 	cfg := config.Get()
@@ -39,10 +64,7 @@ func NewClient() *Client {
 	client.SetHeader("Accept", "application/json")
 	client.SetHeader("User-Agent", "afy-cli/1.0")
 
-	// Set auth header if API key is available
-	if c.apiKey != "" {
-		client.SetHeader("Authorization", "Bearer "+c.apiKey)
-	}
+	applyAuthHeaders(client, c.apiKey)
 
 	return c
 }
@@ -55,9 +77,7 @@ func NewClientWithURL(baseURL, apiKey string) *Client {
 	client.SetHeader("Content-Type", "application/json")
 	client.SetHeader("Accept", "application/json")
 	client.SetHeader("User-Agent", "afy-cli/1.0")
-	if apiKey != "" {
-		client.SetHeader("Authorization", "Bearer "+apiKey)
-	}
+	applyAuthHeaders(client, apiKey)
 	return &Client{
 		http:    client,
 		baseURL: baseURL,
@@ -74,7 +94,7 @@ func NewClientWithKey(apiKey string) *Client {
 	client.SetHeader("Content-Type", "application/json")
 	client.SetHeader("Accept", "application/json")
 	client.SetHeader("User-Agent", "afy-cli/1.0")
-	client.SetHeader("Authorization", "Bearer "+apiKey)
+	applyAuthHeaders(client, apiKey)
 
 	return &Client{
 		http:    client,
