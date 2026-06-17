@@ -1,6 +1,41 @@
 package api
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
+
+// SpawnableBy returns the names of SERVICE agents whose allowed_workers
+// list includes jobName — i.e. the services that could spawn this JOB.
+// Computed client-side from a previously-fetched agent list (no extra API
+// call, no new endpoint).
+func SpawnableBy(jobName string, agents []Agent) []string {
+	var out []string
+	for i := range agents {
+		a := &agents[i]
+		if !strings.EqualFold(a.AgentType, "service") {
+			continue
+		}
+		for _, w := range a.AllowedWorkers {
+			if w == jobName {
+				out = append(out, a.Name)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// AgentNameByID resolves an agent ID to its name using a previously-fetched
+// agent list. Returns "" if no agent in the list has that ID.
+func AgentNameByID(id string, agents []Agent) string {
+	for i := range agents {
+		if agents[i].ID == id {
+			return agents[i].Name
+		}
+	}
+	return ""
+}
 
 // ListAgents returns all agents for the authenticated user
 func (c *Client) ListAgents() ([]Agent, error) {

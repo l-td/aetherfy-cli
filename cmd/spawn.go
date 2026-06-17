@@ -30,9 +30,6 @@ The child agent must be of type JOB.`,
   # Spawn with payload from file
   afy spawn my-service my-job --payload-file payload.json
 
-  # Spawn with workspace
-  afy spawn my-service my-job --workspace my-workspace --payload '{"task": "analyze"}'
-
   # Read payload from stdin
   cat payload.json | afy spawn my-service my-job --stdin`,
 	Args: cobra.ExactArgs(2),
@@ -42,14 +39,12 @@ The child agent must be of type JOB.`,
 var (
 	spawnPayload     string
 	spawnPayloadFile string
-	spawnWorkspace   string
 	spawnStdin       bool
 )
 
 func init() {
 	spawnCmd.Flags().StringVarP(&spawnPayload, "payload", "p", "", "JSON payload to pass to the spawned agent")
 	spawnCmd.Flags().StringVarP(&spawnPayloadFile, "payload-file", "f", "", "Read payload from JSON file")
-	spawnCmd.Flags().StringVarP(&spawnWorkspace, "workspace", "w", "", "Workspace name for shared Qdrant collections")
 	spawnCmd.Flags().BoolVar(&spawnStdin, "stdin", false, "Read payload from stdin")
 }
 
@@ -115,9 +110,8 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 
 	// Build request
 	req := &api.SpawnRequest{
-		ChildAgentID:  childAgentID,
-		Payload:       payload,
-		WorkspaceName: spawnWorkspace,
+		ChildAgentID: childAgentID,
+		Payload:      payload,
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Spawning agent '%s' from '%s'...", childAgentID, parentAgentID))

@@ -64,33 +64,6 @@ func TestAgentsInDifferentWorkspaces(t *testing.T) {
 	}
 }
 
-// --- SpawnRequest workspace field ---
-
-func TestSpawnRequestWithWorkspace(t *testing.T) {
-	req := &api.SpawnRequest{
-		ChildAgentID:  "child-agent-id",
-		WorkspaceName: "my-workspace",
-		Payload:       map[string]interface{}{"task": "process"},
-	}
-
-	if req.WorkspaceName != "my-workspace" {
-		t.Errorf("Expected WorkspaceName 'my-workspace', got '%s'", req.WorkspaceName)
-	}
-	if req.ChildAgentID != "child-agent-id" {
-		t.Errorf("Expected ChildAgentID 'child-agent-id', got '%s'", req.ChildAgentID)
-	}
-}
-
-func TestSpawnRequestWorkspaceOptional(t *testing.T) {
-	req := &api.SpawnRequest{
-		ChildAgentID: "child-agent-id",
-	}
-
-	if req.WorkspaceName != "" {
-		t.Errorf("Expected empty WorkspaceName, got '%s'", req.WorkspaceName)
-	}
-}
-
 // --- HTTP endpoint verification ---
 
 func TestListWorkspaceAgentsCallsCorrectEndpoint(t *testing.T) {

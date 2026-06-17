@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -381,6 +382,9 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	output.KeyValue("Status", formatStatus(agent.Status))
 	output.KeyValue("Region", agent.Region)
 	output.KeyValue("Spawn Enabled", fmt.Sprintf("%v", agent.SpawnEnabled))
+	if agent.WorkspaceName != "" {
+		output.KeyValue("Workspace", agent.WorkspaceName)
+	}
 	output.KeyValue("Created", agent.CreatedAt.Format("2006-01-02 15:04:05"))
 	output.KeyValue("Updated", agent.UpdatedAt.Format("2006-01-02 15:04:05"))
 
@@ -389,7 +393,48 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 		output.KeyValue("Description", agent.Description)
 	}
 
+	// Spawn relationships. SERVICE: which JOBs it may spawn. JOB: which
+	// SERVICEs could spawn it (reverse view, computed client-side) and,
+	// if this instance was spawned, the SERVICE that spawned it.
+	printSpawnRelationships(client, agent)
+
 	return nil
+}
+
+// printSpawnRelationships renders the field-level spawn relationships for an
+// agent. For JOBs it fetches the full agent list ONCE to compute the reverse
+// "spawnable by" view and resolve the parent's name — no new endpoint.
+func printSpawnRelationships(client *api.Client, agent *api.Agent) {
+	output.Println("")
+	switch strings.ToLower(agent.AgentType) {
+	case "service":
+		if len(agent.AllowedWorkers) > 0 {
+			output.KeyValue("Allowed workers", "["+strings.Join(agent.AllowedWorkers, ", ")+"]")
+		} else {
+			output.KeyValue("Allowed workers", "(none)")
+		}
+	case "job":
+		all, err := client.ListAgents()
+		if err != nil {
+			// Non-fatal: the core status output already rendered. Surface
+			// the relationships as unknown rather than failing the command.
+			output.KeyValue("Spawnable by", "(unavailable)")
+			return
+		}
+		spawnableBy := api.SpawnableBy(agent.Name, all)
+		if len(spawnableBy) > 0 {
+			output.KeyValue("Spawnable by", "["+strings.Join(spawnableBy, ", ")+"]")
+		} else {
+			output.KeyValue("Spawnable by", "(none)")
+		}
+		if agent.ParentAgentID != nil {
+			name := api.AgentNameByID(*agent.ParentAgentID, all)
+			if name == "" {
+				name = *agent.ParentAgentID
+			}
+			output.KeyValue("Spawned by", name)
+		}
+	}
 }
 
 // --- RENAME ---
@@ -416,6 +461,7 @@ func init() {
 	agentsCmd.AddCommand(agentsCancelCmd)
 	agentsCmd.AddCommand(agentsStatusCmd)
 	agentsCmd.AddCommand(agentsRenameCmd)
+	agentsCmd.AddCommand(agentsUpdateCmd)
 }
 
 func runAgentsRename(cmd *cobra.Command, args []string) error {
@@ -476,6 +522,96 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	output.Info.Println("ℹ Note: The agent URL remains unchanged to preserve existing integrations.")
 	output.Dim.Printf("  You can access the agent using either the new name or ID.\n")
+
+	return nil
+}
+
+// --- UPDATE ---
+var agentsUpdateCmd = &cobra.Command{
+	Use:   "update <name>",
+	Short: "Update an agent's workspace assignment",
+	Long: `Update mutable fields on an existing agent.
+
+Currently exposes the agent's workspace assignment. Use --workspace to
+move the agent into a workspace, or --no-workspace to make it
+workspaceless. The two flags are mutually exclusive.`,
+	Example: `  # Assign the agent to a workspace
+  afy agents update my-agent --workspace invoice-pipeline
+
+  # Make the agent workspaceless (clear its workspace)
+  afy agents update my-agent --no-workspace`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsUpdate,
+}
+
+var (
+	agentUpdateWorkspace   string
+	agentUpdateNoWorkspace bool
+)
+
+func init() {
+	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Assign the agent to this workspace")
+	agentsUpdateCmd.Flags().BoolVar(&agentUpdateNoWorkspace, "no-workspace", false, "Clear the agent's workspace (make it workspaceless)")
+}
+
+func runAgentsUpdate(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	name := args[0]
+
+	wsChanged := cmd.Flags().Changed("workspace")
+
+	// Exactly one of --workspace / --no-workspace must be supplied — they
+	// are distinct intents (set vs clear) and must not be combined.
+	if wsChanged && agentUpdateNoWorkspace {
+		output.PrintError("--workspace and --no-workspace are mutually exclusive")
+		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
+	}
+	if !wsChanged && !agentUpdateNoWorkspace {
+		output.PrintError("Specify --workspace <name> or --no-workspace")
+		return fmt.Errorf("no update specified")
+	}
+
+	req := &api.AgentUpdateRequest{}
+	if wsChanged {
+		// Reject the empty string: clearing is --no-workspace's job, so we
+		// don't want two ways to express "workspaceless".
+		if agentUpdateWorkspace == "" {
+			output.PrintError("--workspace requires a non-empty name; use --no-workspace to clear")
+			return fmt.Errorf("empty workspace name")
+		}
+		encoded, err := json.Marshal(agentUpdateWorkspace)
+		if err != nil {
+			return err
+		}
+		req.WorkspaceName = json.RawMessage(encoded)
+	} else {
+		// --no-workspace → explicit JSON null clears the assignment.
+		req.WorkspaceName = json.RawMessage("null")
+	}
+
+	sp := output.NewSpinner(fmt.Sprintf("Updating agent '%s'...", name))
+	sp.Start()
+
+	client := api.NewClient()
+	agent, err := client.UpdateAgent(name, req)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to update agent: %v", err)
+		return err
+	}
+
+	output.PrintSuccess("Agent '%s' updated.", agent.Name)
+	output.Println("")
+	output.KeyValue("Name", agent.Name)
+	if agent.WorkspaceName != "" {
+		output.KeyValue("Workspace", agent.WorkspaceName)
+	} else {
+		output.KeyValue("Workspace", "(none)")
+	}
 
 	return nil
 }

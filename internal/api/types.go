@@ -1,6 +1,9 @@
 package api
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Agent represents an agent in the system
 type Agent struct {
@@ -14,6 +17,12 @@ type Agent struct {
 	Region        string    `json:"region,omitempty"`
 	WorkspaceName string    `json:"workspace_name,omitempty"`
 	SpawnEnabled  bool      `json:"spawn_enabled"`
+	// AllowedWorkers / ParentAgentID pull through from the server's
+	// AgentResponse (no new server work). AllowedWorkers lists the JOB
+	// names a SERVICE may spawn; ParentAgentID is the SERVICE that spawned
+	// this JOB instance (nil for non-spawned / standalone agents).
+	AllowedWorkers []string `json:"allowed_workers,omitempty"`
+	ParentAgentID  *string  `json:"parent_agent_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
 }
@@ -34,6 +43,16 @@ type AgentUpdateRequest struct {
 	Tier        *string `json:"tier,omitempty"`
 	MemoryMB    *int    `json:"memory_mb,omitempty"`
 	KeepAlive   *bool   `json:"keep_alive,omitempty"`
+	// WorkspaceName is tri-state to match the backend PATCH /agents
+	// three-way semantic (omitted / null / string):
+	//   - nil (unset)                  → field omitted → no change
+	//   - json.RawMessage("null")      → "workspace_name": null → clear
+	//   - json.RawMessage(`"my-ws"`)   → "workspace_name": "my-ws" → set
+	// json.RawMessage (not *string) is required: *string+omitempty cannot
+	// emit an explicit JSON null while still omitting when unset, and a
+	// non-omitempty *string would make every other update (e.g. rename)
+	// send "workspace_name": null and silently clear the workspace.
+	WorkspaceName json.RawMessage `json:"workspace_name,omitempty"`
 }
 
 // Deployment represents a deployment
@@ -101,9 +120,8 @@ type SecretSetRequest struct {
 
 // SpawnRequest is the request body for spawning a JOB agent
 type SpawnRequest struct {
-	ChildAgentID  string                 `json:"child_agent_id"`
-	Payload       map[string]interface{} `json:"payload,omitempty"`
-	WorkspaceName string                 `json:"workspace_name,omitempty"`
+	ChildAgentID string                 `json:"child_agent_id"`
+	Payload      map[string]interface{} `json:"payload,omitempty"`
 }
 
 // SpawnResponse is the response from a spawn request
