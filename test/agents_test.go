@@ -194,6 +194,67 @@ func TestUpdateAgentOmitsWorkspaceWhenUnset(t *testing.T) {
 	}
 }
 
+// --- description on PATCH /agents ---
+//
+// AgentUpdateRequest.Description is *string: a non-nil pointer (including a
+// pointer to "") reaches the wire; nil omits the field (no-change). The CLI
+// `--description` flag sets it; `--description ""` sends "" which the server
+// sanitizes to a cleared description.
+
+func TestUpdateAgentDescriptionSerializesString(t *testing.T) {
+	desc := "Parses inbound invoices"
+	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Description: &desc})
+
+	v, present := body["description"]
+	if !present {
+		t.Fatal("Expected description present in body")
+	}
+	if v != "Parses inbound invoices" {
+		t.Errorf("Expected description 'Parses inbound invoices', got %v", v)
+	}
+}
+
+func TestUpdateAgentDescriptionEmptyStringSerializes(t *testing.T) {
+	// `afy agents update <name> --description ""` → the empty string must
+	// reach the wire (the server sanitizes "" to a cleared description).
+	empty := ""
+	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Description: &empty})
+
+	v, present := body["description"]
+	if !present {
+		t.Fatal("Empty-string description must reach the wire, not be omitted")
+	}
+	if v != "" {
+		t.Errorf("Expected empty description, got %v", v)
+	}
+}
+
+func TestUpdateAgentOmitsDescriptionWhenUnset(t *testing.T) {
+	// A workspace-only / rename-style update (description unset) MUST omit
+	// the field so it isn't touched.
+	newName := "renamed-agent"
+	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Name: &newName})
+
+	if _, present := body["description"]; present {
+		t.Errorf("Unset description must be omitted (no-change semantic), got body %v", body)
+	}
+}
+
+func TestUpdateAgentDescriptionOnlyOmitsWorkspace(t *testing.T) {
+	// A description-only update MUST NOT carry workspace_name — otherwise it
+	// would clobber the agent's existing workspace. The cmd layer only sets
+	// WorkspaceName when a workspace flag is given; this pins the wire result.
+	desc := "only the description"
+	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Description: &desc})
+
+	if _, present := body["description"]; !present {
+		t.Fatal("Expected description present")
+	}
+	if _, present := body["workspace_name"]; present {
+		t.Errorf("description-only update must omit workspace_name, got body %v", body)
+	}
+}
+
 // --- spawn relationship visibility (PR 4) ---
 
 // Agent struct pulls allowed_workers / parent_agent_id through from the

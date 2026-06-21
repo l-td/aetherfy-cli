@@ -529,17 +529,21 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 // --- UPDATE ---
 var agentsUpdateCmd = &cobra.Command{
 	Use:   "update <name>",
-	Short: "Update an agent's workspace assignment",
+	Short: "Update an agent's workspace assignment or description",
 	Long: `Update mutable fields on an existing agent.
 
-Currently exposes the agent's workspace assignment. Use --workspace to
-move the agent into a workspace, or --no-workspace to make it
-workspaceless. The two flags are mutually exclusive.`,
+Use --workspace to move the agent into a workspace, or --no-workspace to
+make it workspaceless (the two are mutually exclusive). Use --description
+to set the agent's description. At least one flag is required; flags that
+aren't given are left unchanged.`,
 	Example: `  # Assign the agent to a workspace
   afy agents update my-agent --workspace invoice-pipeline
 
   # Make the agent workspaceless (clear its workspace)
-  afy agents update my-agent --no-workspace`,
+  afy agents update my-agent --no-workspace
+
+  # Set the description (leaves the workspace untouched)
+  afy agents update my-agent --description "Parses inbound invoices"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsUpdate,
 }
@@ -547,11 +551,13 @@ workspaceless. The two flags are mutually exclusive.`,
 var (
 	agentUpdateWorkspace   string
 	agentUpdateNoWorkspace bool
+	agentUpdateDescription string
 )
 
 func init() {
 	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Assign the agent to this workspace")
 	agentsUpdateCmd.Flags().BoolVar(&agentUpdateNoWorkspace, "no-workspace", false, "Clear the agent's workspace (make it workspaceless)")
+	agentsUpdateCmd.Flags().StringVarP(&agentUpdateDescription, "description", "d", "", "Set the agent's description")
 }
 
 func runAgentsUpdate(cmd *cobra.Command, args []string) error {
@@ -562,6 +568,7 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	wsChanged := cmd.Flags().Changed("workspace")
+	descChanged := cmd.Flags().Changed("description")
 
 	// Exactly one of --workspace / --no-workspace must be supplied — they
 	// are distinct intents (set vs clear) and must not be combined.
@@ -569,12 +576,16 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		output.PrintError("--workspace and --no-workspace are mutually exclusive")
 		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
 	}
-	if !wsChanged && !agentUpdateNoWorkspace {
-		output.PrintError("Specify --workspace <name> or --no-workspace")
+	if !wsChanged && !agentUpdateNoWorkspace && !descChanged {
+		output.PrintError("Specify at least one of --workspace <name>, --no-workspace, or --description <text>")
 		return fmt.Errorf("no update specified")
 	}
 
 	req := &api.AgentUpdateRequest{}
+
+	// Only touch workspace_name when a workspace flag was actually given —
+	// otherwise a description-only update would send a workspace_name and
+	// clobber the existing assignment.
 	if wsChanged {
 		// Reject the empty string: clearing is --no-workspace's job, so we
 		// don't want two ways to express "workspaceless".
@@ -587,9 +598,13 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 			return err
 		}
 		req.WorkspaceName = json.RawMessage(encoded)
-	} else {
+	} else if agentUpdateNoWorkspace {
 		// --no-workspace → explicit JSON null clears the assignment.
 		req.WorkspaceName = json.RawMessage("null")
+	}
+
+	if descChanged {
+		req.Description = &agentUpdateDescription
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Updating agent '%s'...", name))
@@ -611,6 +626,9 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		output.KeyValue("Workspace", agent.WorkspaceName)
 	} else {
 		output.KeyValue("Workspace", "(none)")
+	}
+	if agent.Description != "" {
+		output.KeyValue("Description", agent.Description)
 	}
 
 	return nil
