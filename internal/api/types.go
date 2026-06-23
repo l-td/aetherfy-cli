@@ -25,6 +25,18 @@ type Agent struct {
 	ParentAgentID  *string  `json:"parent_agent_id,omitempty"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+	// Derived resource health from the server's AgentResponse (control-plane
+	// REVIEW_FAQ §63) — computed from the agent's CURRENT deployment, not a
+	// stored status. IsDegraded = a partial multi-region deploy still
+	// converging; DegradedReason is a human summary. Surfaced on
+	// `afy agents list` / `afy agents status`. No omitempty on IsDegraded:
+	// health must serialize explicitly so `-o json` health-check scripts can
+	// read it. (No is_serving — agent.Status answers "is it up"; the server
+	// keeps is_serving on the deployment, where it's well-defined.)
+	IsDegraded     bool   `json:"is_degraded"`
+	RegionsTotal   int    `json:"regions_total"`
+	RegionsReady   int    `json:"regions_ready"`
+	DegradedReason string `json:"degraded_reason,omitempty"`
 }
 
 // AgentCreateRequest is the request body for creating an agent
@@ -77,6 +89,16 @@ type Deployment struct {
 	// "cancelled" from "cancellation requested, worker cleaning up".
 	CancellationRequested bool   `json:"cancellation_requested,omitempty"`
 	CancellationReason    string `json:"cancellation_reason,omitempty"`
+	// Partial-deploy contract (server DeploymentResponse; REVIEW_FAQ §63). A
+	// degraded deployment stays state=ACTIVE and converges in the background;
+	// RegionsReady/RegionsTotal is the N/M progress. No omitempty on IsDegraded:
+	// it must serialize explicitly for `-o json` scripting. (is_serving exists
+	// on the API but isn't modeled here — the State field already conveys
+	// active; we only surface the degraded delta.)
+	IsDegraded              bool   `json:"is_degraded"`
+	RegionsTotal            int    `json:"regions_total"`
+	RegionsReady            int    `json:"regions_ready"`
+	PendingRegionAlertStage string `json:"pending_region_alert_stage,omitempty"`
 }
 
 // DeployRequest is the request body for deploying

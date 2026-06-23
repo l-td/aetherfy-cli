@@ -57,6 +57,13 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 	table := output.Table([]string{"Name", "Type", "Status", "Region", "ID"})
 	for _, a := range agents {
 		status := formatStatus(a.Status)
+		// Surface a degraded (partial multi-region) deploy inline on the list
+		// view — health belongs on the primary surface, not a detail click
+		// (control-plane REVIEW_FAQ §63). Separate trailing marker, not a
+		// status value. Same DEGRADED term as the dashboard.
+		if tag := formatDegradedTag(a.IsDegraded, a.RegionsReady, a.RegionsTotal); tag != "" {
+			status += " " + tag
+		}
 		table.Append([]string{a.Name, a.AgentType, status, a.Region, a.ID})
 	}
 	table.Render()
@@ -380,6 +387,16 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
+	// Degraded = a partial multi-region deploy still converging (derived from
+	// the current deployment, control-plane REVIEW_FAQ §63). Shown only when
+	// degraded — a status command that hides this is a contract violation by
+	// name. Same DEGRADED term as the dashboard + `afy agents list`.
+	if agent.IsDegraded {
+		output.KeyValue("Health", output.Warning.Sprintf("DEGRADED (%d/%d regions ready)", agent.RegionsReady, agent.RegionsTotal))
+		if agent.DegradedReason != "" {
+			output.KeyValue("Degraded reason", agent.DegradedReason)
+		}
+	}
 	output.KeyValue("Region", agent.Region)
 	output.KeyValue("Spawn Enabled", fmt.Sprintf("%v", agent.SpawnEnabled))
 	if agent.WorkspaceName != "" {
@@ -632,6 +649,18 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// formatDegradedTag renders the inline DEGRADED health marker shared by the
+// agents-list and deployments tables (REVIEW_FAQ §63). Empty string when not
+// degraded. Health is a SEPARATE trailing marker — it never replaces the
+// status/state value, which keeps its enum (running/active); DEGRADED is not a
+// status. Single source so the dashboard and both CLI tables stay identical.
+func formatDegradedTag(isDegraded bool, regionsReady, regionsTotal int) string {
+	if !isDegraded {
+		return ""
+	}
+	return output.Warning.Sprintf("⚠ DEGRADED %d/%d", regionsReady, regionsTotal)
 }
 
 // formatStatus adds color to status strings

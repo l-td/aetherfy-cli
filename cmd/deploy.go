@@ -363,7 +363,16 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 
 			switch deployment.Status {
 			case "completed", "running", "active":
-				output.PrintSuccess("Deployment completed!")
+				// A partial multi-region deploy is ACTIVE + serving but not yet
+				// in every region (control-plane REVIEW_FAQ §63). End the watch
+				// honestly rather than claiming a clean success.
+				if deployment.IsDegraded {
+					output.PrintWarning("Deployment is serving but DEGRADED — %d/%d regions ready.",
+						deployment.RegionsReady, deployment.RegionsTotal)
+					output.Println("Remaining regions converge in the background; check 'afy agents status'.")
+				} else {
+					output.PrintSuccess("Deployment completed!")
+				}
 				return
 			case "failed", "error":
 				output.PrintError("Deployment failed")

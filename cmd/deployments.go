@@ -65,9 +65,17 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 				errMsg = errMsg[:57] + "..."
 			}
 		}
+		// A degraded deploy stays state=active and converges in the background
+		// (control-plane REVIEW_FAQ §63); flag it inline with the N/M region
+		// readiness as a separate trailing marker (state value is unchanged).
+		// Same DEGRADED term as the dashboard + `afy agents`.
+		stateCell := formatDeployState(d.Status)
+		if tag := formatDegradedTag(d.IsDegraded, d.RegionsReady, d.RegionsTotal); tag != "" {
+			stateCell += " " + tag
+		}
 		table.Append([]string{
 			fmt.Sprintf("v%d", d.Version),
-			formatDeployState(d.Status),
+			stateCell,
 			d.CreatedAt.Format("2006-01-02 15:04"),
 			errMsg,
 		})
@@ -89,6 +97,15 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 					break
 				}
 			}
+		}
+	} else if len(deployments) > 0 && deployments[0].IsDegraded {
+		// Latest is serving but partially deployed — converging in the
+		// background. Surface it so the user knows not every region is live.
+		output.Println("")
+		output.PrintWarning("Latest deployment is partially deployed — %d/%d regions ready (converging in the background).",
+			deployments[0].RegionsReady, deployments[0].RegionsTotal)
+		if deployments[0].PendingRegionAlertStage != "" {
+			output.Printf("Convergence alert stage: %s\n", deployments[0].PendingRegionAlertStage)
 		}
 	}
 
