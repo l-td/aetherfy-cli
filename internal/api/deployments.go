@@ -114,6 +114,8 @@ type LogQuery struct {
 	Tail    int    // default 50, max 1000 when > 0
 	Since   string // e.g. "1h", "30m", "45s"
 	Search  string // ILIKE match on message
+	Level   string // comma-separated bucket(s): INFO,WARN,ERROR,DEBUG,SYSTEM
+	Stream  string // comma-separated stream(s): stdout,stderr,system
 	AfterID int64  // forward pagination: return logs with id > AfterID, ASC order
 }
 
@@ -130,6 +132,12 @@ func (c *Client) GetAgentLogs(agentID string, q LogQuery) ([]LogEntry, error) {
 	}
 	if q.Search != "" {
 		params.Set("search", q.Search)
+	}
+	if q.Level != "" {
+		params.Set("level", q.Level)
+	}
+	if q.Stream != "" {
+		params.Set("stream", q.Stream)
 	}
 	if q.AfterID > 0 {
 		params.Set("after_id", fmt.Sprintf("%d", q.AfterID))
