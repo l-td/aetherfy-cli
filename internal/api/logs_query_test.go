@@ -51,7 +51,7 @@ func TestGetAgentLogs_BuildsQueryString(t *testing.T) {
 					gotQuery[k] = v[0]
 				}
 				w.Header().Set("Content-Type", "application/json")
-				w.Write([]byte("[]"))
+				_, _ = w.Write([]byte("[]"))
 			}))
 			defer srv.Close()
 
