@@ -57,6 +57,15 @@ func (c *Client) GetAgent(idOrName string) (*Agent, error) {
 	return &agent, nil
 }
 
+// GetAgentYAML returns the agent's current configuration serialized as
+// aetherfy.yaml (the control-plane GET /agents/{name}/yaml endpoint). The
+// serialization is owned server-side and shared with the dashboard "Download
+// YAML" button — the CLI never re-implements it (§64 PR 3). Returns the raw
+// YAML bytes.
+func (c *Client) GetAgentYAML(idOrName string) ([]byte, error) {
+	return c.GetRaw("/agents/" + idOrName + "/yaml")
+}
+
 // CreateAgent creates a new agent
 func (c *Client) CreateAgent(req *AgentCreateRequest) (*Agent, error) {
 	var agent Agent

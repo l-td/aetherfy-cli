@@ -3,12 +3,16 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/aetherfy/cli/internal/api"
 	"github.com/aetherfy/cli/internal/config"
 	"github.com/aetherfy/cli/internal/output"
+	"github.com/aetherfy/cli/internal/yamldiff"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var agentsCmd = &cobra.Command{
@@ -479,6 +483,8 @@ func init() {
 	agentsCmd.AddCommand(agentsStatusCmd)
 	agentsCmd.AddCommand(agentsRenameCmd)
 	agentsCmd.AddCommand(agentsUpdateCmd)
+	agentsCmd.AddCommand(agentsPullCmd)
+	agentsCmd.AddCommand(agentsDiffCmd)
 }
 
 func runAgentsRename(cmd *cobra.Command, args []string) error {
@@ -649,6 +655,163 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// --- PULL (export current state as aetherfy.yaml) ---
+var agentsPullCmd = &cobra.Command{
+	Use:   "pull <agent-name>",
+	Short: "Export an agent's current configuration as aetherfy.yaml",
+	Long: `Export an agent's current configuration as aetherfy.yaml.
+
+Use this to re-sync a local aetherfy.yaml after editing the agent via the
+dashboard or API. Prints to stdout by default (so you can redirect it):
+
+  afy agents pull my-agent > aetherfy.yaml
+
+Or write to a file directly with -o. The YAML is the declarative subset only
+(server-derived fields like id/status are excluded) and re-deploying it is a
+no-op — it's the inverse of 'afy deploy' under merge-patch semantics.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsPull,
+}
+
+var pullOutputFile string
+
+func init() {
+	agentsPullCmd.Flags().StringVarP(&pullOutputFile, "output", "o", "", "Write YAML to this file instead of stdout")
+}
+
+func runAgentsPull(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	name := args[0]
+	client := api.NewClient()
+	data, err := client.GetAgentYAML(name)
+	if err != nil {
+		output.PrintError("Failed to pull agent '%s': %v", name, err)
+		return err
+	}
+
+	if pullOutputFile != "" {
+		if err := os.WriteFile(pullOutputFile, data, 0o644); err != nil {
+			output.PrintError("Failed to write %s: %v", pullOutputFile, err)
+			return err
+		}
+		output.PrintSuccess("Wrote %s", pullOutputFile)
+		return nil
+	}
+
+	// Raw to stdout — no spinner/color/decoration, so `afy agents pull foo >
+	// foo.yaml` produces a clean file.
+	fmt.Print(string(data))
+	return nil
+}
+
+// --- DIFF (preview what `afy deploy` would change vs preserve) ---
+var agentsDiffCmd = &cobra.Command{
+	Use:   "diff",
+	Short: "Preview what `afy deploy` would change vs preserve",
+	Long: `Compare the local aetherfy.yaml against the agent's current state and
+print what 'afy deploy' would do, under merge-patch semantics:
+
+  ~ field: old → new   would change
+  + field: value       would set (currently unset)
+  - field              would clear (declared null)
+  = field: value       no-op (declared, already matches)
+    field: value       preserved (omitted locally — deploy keeps it)
+
+Auto-detects aetherfy.yaml in the current directory (like 'afy deploy').
+Exits non-zero when there are changes, so it's usable as a CI gate.`,
+	Args: cobra.NoArgs,
+	RunE: runAgentsDiff,
+}
+
+var diffPath string
+
+func init() {
+	agentsDiffCmd.Flags().StringVarP(&diffPath, "path", "p", ".", "Project directory containing aetherfy.yaml")
+}
+
+func runAgentsDiff(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	// Parse the local aetherfy.yaml into a map (NOT the typed struct) so we
+	// preserve the declared / omitted / explicit-null distinction merge-patch
+	// depends on.
+	localPath := filepath.Join(diffPath, "aetherfy.yaml")
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		output.PrintError("Could not read %s: %v", localPath, err)
+		return err
+	}
+	var local map[string]interface{}
+	if err := yaml.Unmarshal(data, &local); err != nil {
+		output.PrintError("Invalid aetherfy.yaml: %v", err)
+		return err
+	}
+	name, _ := local["name"].(string)
+	if name == "" {
+		output.PrintError("aetherfy.yaml has no 'name' — cannot resolve the agent to diff against")
+		return fmt.Errorf("missing name in aetherfy.yaml")
+	}
+
+	client := api.NewClient()
+	serverYAML, err := client.GetAgentYAML(name)
+	if err != nil {
+		output.PrintError("Failed to fetch current state for '%s': %v", name, err)
+		return err
+	}
+	var server map[string]interface{}
+	if err := yaml.Unmarshal(serverYAML, &server); err != nil {
+		output.PrintError("Control plane returned invalid YAML: %v", err)
+		return err
+	}
+
+	diffs := yamldiff.Diff(local, server)
+	printAgentDiff(name, diffs)
+
+	// CI-friendly: non-zero exit when a deploy would change something.
+	if yamldiff.HasChanges(diffs) {
+		os.Exit(1)
+	}
+	return nil
+}
+
+// printAgentDiff renders the merge-patch diff with the project's color scheme.
+func printAgentDiff(name string, diffs []yamldiff.FieldDiff) {
+	output.Header(fmt.Sprintf("Diff for agent: %s", name))
+	output.Println("")
+	for _, d := range diffs {
+		switch d.Kind {
+		case yamldiff.Change:
+			line := fmt.Sprintf("~ %s: %s → %s", d.Key, d.Current, d.Declared)
+			// runtime is immutable post-create (the deploy rejects a change
+			// with RUNTIME_IMMUTABLE) — flag it so the preview isn't misleading.
+			if d.Key == "runtime" {
+				output.Red.Printf("%s  (immutable — deploy will reject)\n", line)
+			} else {
+				output.Yellow.Println(line)
+			}
+		case yamldiff.Add:
+			output.Green.Printf("+ %s: %s\n", d.Key, d.Declared)
+		case yamldiff.Clear:
+			output.Red.Printf("- %s  (clear; currently %s)\n", d.Key, d.Current)
+		case yamldiff.NoOp:
+			output.Dim.Printf("= %s: %s\n", d.Key, d.Declared)
+		case yamldiff.Preserve:
+			output.Dim.Printf("  %s: %s (preserved by deploy)\n", d.Key, d.Current)
+		}
+	}
+	output.Println("")
+	if yamldiff.HasChanges(diffs) {
+		output.PrintInfo("Run 'afy deploy' to apply these changes.")
+	} else {
+		output.PrintSuccess("No changes — local aetherfy.yaml matches the agent's current state.")
+	}
 }
 
 // formatDegradedTag renders the inline DEGRADED health marker shared by the

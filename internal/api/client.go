@@ -113,6 +113,20 @@ func (c *Client) Get(path string, result interface{}) error {
 	return c.handleResponse(resp)
 }
 
+// GetRaw performs a GET and returns the raw response body, without JSON
+// decoding. Used for endpoints that return non-JSON payloads (e.g. the
+// aetherfy.yaml export at /agents/{name}/yaml).
+func (c *Client) GetRaw(path string) ([]byte, error) {
+	resp, err := c.http.R().Get(c.url(path))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if err := c.handleResponse(resp); err != nil {
+		return nil, err
+	}
+	return resp.Body(), nil
+}
+
 // Post performs a POST request
 func (c *Client) Post(path string, body interface{}, result interface{}) error {
 	resp, err := c.http.R().
