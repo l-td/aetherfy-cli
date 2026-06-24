@@ -16,7 +16,7 @@ var deploymentsCmd = &cobra.Command{
 	Long: `List all deployments for an agent, ordered newest first.
 
 Shows version, state, creation time, and error message for failed deployments.
-Use --json for machine-readable output.`,
+Use --output json for machine-readable output.`,
 	Example: `  # List deployments for an agent
   afy deployments my-agent
 

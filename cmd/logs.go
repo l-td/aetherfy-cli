@@ -16,7 +16,8 @@ var logsCmd = &cobra.Command{
 	Long: `View logs from an agent.
 
 By default, shows the most recent logs. Use --tail to specify the number of lines.
-Use --follow to stream logs in real-time.`,
+Use --follow to stream logs in real-time. Narrow the output with --level and/or
+--stream (comma-separated, applied server-side).`,
 	Example: `  # View recent logs
   afy logs my-agent
 
@@ -24,7 +25,13 @@ Use --follow to stream logs in real-time.`,
   afy logs my-agent --tail 100
 
   # Stream logs in real-time
-  afy logs my-agent --follow`,
+  afy logs my-agent --follow
+
+  # Only errors and warnings
+  afy logs my-agent --level ERROR,WARN
+
+  # Only stderr output, since the last hour
+  afy logs my-agent --stream stderr --since 1h`,
 	Args: cobra.ExactArgs(1),
 	RunE: runLogs,
 }
