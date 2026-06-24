@@ -63,7 +63,7 @@ func runRollback(cmd *cobra.Command, args []string) error {
 		for _, d := range deployments {
 			table.Append([]string{
 				strconv.Itoa(d.Version),
-				d.Status,
+				formatDeploymentState(d.Status),
 				d.CreatedAt.Format("2006-01-02 15:04"),
 			})
 		}

@@ -826,6 +826,18 @@ func formatDegradedTag(isDegraded bool, regionsReady, regionsTotal int) string {
 	return output.Warning.Sprintf("⚠ DEGRADED %d/%d", regionsReady, regionsTotal)
 }
 
+// formatDeploymentState renders the State column value for the rollback
+// deployment-history table. It appends "(current)" to the live-serving
+// deployment (state == "active") so the user can see which version they'd be
+// rolling back FROM — surface parity with the dashboard's "→ CURRENT" marker
+// (lowercase to match CLI tone). Non-active states pass through unchanged.
+func formatDeploymentState(state string) string {
+	if state == "active" {
+		return state + " (current)"
+	}
+	return state
+}
+
 // formatStatus adds color to status strings
 func formatStatus(status string) string {
 	switch strings.ToLower(status) {
