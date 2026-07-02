@@ -218,6 +218,37 @@ var agentsStartCmd = &cobra.Command{
 	RunE:  runAgentsStart,
 }
 
+// --- ARCHIVE / RESTORE (destroy Fly app, preserve config; re-provision) ---
+var agentsArchiveCmd = &cobra.Command{
+	Use:   "archive <name>",
+	Short: "Archive an agent, freeing its plan slot",
+	Long: `Archive an agent: destroy its Fly.io app to free the plan quota slot,
+while preserving all of its configuration and the stored code bundle.
+
+Distinct from 'afy agents stop' (pause/resume), which keeps the Fly app
+provisioned. Archiving releases the slot so you can create or restore
+another agent; the agent shows up as 'archived' in 'afy agents list'.
+
+Reversible via 'afy agents restore <name>', which re-provisions it from the
+preserved bundle (subject to a plan-quota re-check).`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsArchive,
+}
+
+var agentsRestoreCmd = &cobra.Command{
+	Use:   "restore <name>",
+	Short: "Restore an archived agent",
+	Long: `Restore an agent that was archived with 'afy agents archive': re-provision
+its Fly.io app from the preserved code bundle and redeploy it.
+
+Restoring consumes a plan quota slot, so it is re-checked at restore time —
+if you are at your plan limit the restore is rejected until you free a slot
+(delete or archive another agent) or upgrade your plan. The deploy then runs
+asynchronously; track progress with 'afy agents list'.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsRestore,
+}
+
 func runAgentsStop(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
 		return err
@@ -261,6 +292,62 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 	}
 
 	output.PrintSuccess("Agent '%s' is starting. Use 'afy agents status %s' to monitor.", idOrName, idOrName)
+	return nil
+}
+
+func runAgentsArchive(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	idOrName := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Archiving agent '%s'...", idOrName))
+	sp.Start()
+
+	client := api.NewClient()
+	err := client.ArchiveAgent(idOrName)
+	sp.Stop()
+
+	if err != nil {
+		// AGENT_ALREADY_ARCHIVED (and the other archive 409s) carry a clear
+		// server message — pass it straight through.
+		output.PrintError("Failed to archive agent: %v", err)
+		return err
+	}
+
+	output.PrintSuccess("Agent '%s' archived. Its config is preserved; run 'afy agents restore %s' to redeploy it.", idOrName, idOrName)
+	return nil
+}
+
+func runAgentsRestore(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	idOrName := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Restoring agent '%s'...", idOrName))
+	sp.Start()
+
+	client := api.NewClient()
+	err := client.RestoreAgent(idOrName)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to restore agent: %v", err)
+		// Quota is re-checked on restore. When the plan is full the server
+		// returns PLAN_LIMIT_EXCEEDED — add an actionable hint on top of the
+		// server message. AGENT_NOT_ARCHIVED and other 409s pass through
+		// unchanged (their server message is already self-explanatory).
+		if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "PLAN_LIMIT_EXCEEDED" {
+			output.Println("")
+			output.PrintInfo("Delete or archive another agent to free a slot before restoring, or upgrade your plan.")
+		}
+		return err
+	}
+
+	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Track status via 'afy agents list'.", idOrName)
 	return nil
 }
 
@@ -479,6 +566,8 @@ func init() {
 	agentsCmd.AddCommand(agentsDeleteCmd)
 	agentsCmd.AddCommand(agentsStopCmd)
 	agentsCmd.AddCommand(agentsStartCmd)
+	agentsCmd.AddCommand(agentsArchiveCmd)
+	agentsCmd.AddCommand(agentsRestoreCmd)
 	agentsCmd.AddCommand(agentsCancelCmd)
 	agentsCmd.AddCommand(agentsStatusCmd)
 	agentsCmd.AddCommand(agentsRenameCmd)
@@ -845,7 +934,10 @@ func formatStatus(status string) string {
 		return output.Green.Sprint(status)
 	case "pending", "deploying", "building":
 		return output.Yellow.Sprint(status)
-	case "stopped", "inactive":
+	case "stopped", "inactive", "archived":
+		// Archived agents have no Fly app provisioned (slot freed) — render in
+		// the same neutral/dim tone as other non-running lifecycle states so
+		// the list clearly signals "not live" without an alarming color.
 		return output.Gray.Sprint(status)
 	case "error", "failed", "unhealthy":
 		return output.Red.Sprint(status)

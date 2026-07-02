@@ -102,6 +102,20 @@ func (c *Client) StartAgent(idOrName string) error {
 	return c.Post(fmt.Sprintf("/agents/%s/start", idOrName), nil, nil)
 }
 
+// ArchiveAgent archives an agent: the server destroys its Fly app (freeing the
+// plan quota slot) while preserving all config and the S3 code bundle.
+// Reversible via RestoreAgent. Returns 202 on success.
+func (c *Client) ArchiveAgent(idOrName string) error {
+	return c.Post(fmt.Sprintf("/agents/%s/archive", idOrName), nil, nil)
+}
+
+// RestoreAgent re-provisions an archived agent from its preserved code bundle.
+// Quota is re-checked server-side (may 403 PLAN_LIMIT_EXCEEDED). Returns 202 on
+// success; the deploy then runs asynchronously.
+func (c *Client) RestoreAgent(idOrName string) error {
+	return c.Post(fmt.Sprintf("/agents/%s/restore", idOrName), nil, nil)
+}
+
 // GetAgentStatus returns detailed status for an agent
 func (c *Client) GetAgentStatus(idOrName string) (*Agent, error) {
 	return c.GetAgent(idOrName)
