@@ -205,7 +205,7 @@ var agentsStopCmd = &cobra.Command{
 	Long: `Pause an agent: stop every machine and prevent the Fly.io proxy from
 re-waking it on incoming traffic. Reversible via 'afy agents start <name>'.
 
-Distinct from billing-driven STOPPED or uptime-cap SUSPENDED states.`,
+Distinct from a billing-driven STOPPED state.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsStop,
 }
