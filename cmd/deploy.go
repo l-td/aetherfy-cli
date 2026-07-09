@@ -94,16 +94,19 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 
 	switch apiErr.Code {
 	case "OVERAGE_CONFIRM_REQUIRED":
-		amount := "more"
+		// The additional monthly $ is usually present; when the control-plane
+		// omits it, fall back to a grammatical phrase rather than "adds more of
+		// usage".
+		impact := "would add usage beyond your plan's included allowance"
 		if apiErr.AdditionalMonthlyUSD != nil {
-			amount = fmt.Sprintf("~$%.2f/mo", *apiErr.AdditionalMonthlyUSD)
+			impact = fmt.Sprintf("adds ~$%.2f/mo of usage", *apiErr.AdditionalMonthlyUSD)
 		}
 		if !deployYes {
 			if !isInteractive() {
-				output.PrintError("This deployment adds %s of usage. Re-run with --yes to proceed.", amount)
+				output.PrintError("This deployment %s. Re-run with --yes to proceed.", impact)
 				os.Exit(1)
 			}
-			output.Warning.Printf("This deployment adds %s of usage — continue? [y/N] ", amount)
+			output.Warning.Printf("This deployment %s — continue? [y/N] ", impact)
 			var confirm string
 			_, _ = fmt.Scanln(&confirm)
 			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
