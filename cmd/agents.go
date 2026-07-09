@@ -269,6 +269,7 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 	}
 
 	output.PrintSuccess("Agent '%s' paused. Resume with 'afy agents start %s'.", idOrName, idOrName)
+	output.PrintInfo("Stopped agents keep billing at the base rate; archive to stop billing.")
 	return nil
 }
 
