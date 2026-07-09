@@ -7,8 +7,10 @@ import (
 	"net/url"
 )
 
-// Deploy uploads code and triggers a deployment
-func (c *Client) Deploy(agentID string, zipData []byte) (*DeployResponse, error) {
+// Deploy uploads code and triggers a deployment. confirmOverage=true accepts a
+// deploy that tips the account into overage (D2 Part 6) — sent as the
+// confirm_overage query param so the control-plane skips the 402 confirm gate.
+func (c *Client) Deploy(agentID string, zipData []byte, confirmOverage bool) (*DeployResponse, error) {
 	// Create multipart form
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -28,11 +30,14 @@ func (c *Client) Deploy(agentID string, zipData []byte) (*DeployResponse, error)
 
 	// Make the request
 	var resp DeployResponse
-	httpResp, err := c.http.R().
+	req := c.http.R().
 		SetHeader("Content-Type", writer.FormDataContentType()).
 		SetBody(body.Bytes()).
-		SetResult(&resp).
-		Post(c.url(fmt.Sprintf("/agents/%s/deploy", agentID)))
+		SetResult(&resp)
+	if confirmOverage {
+		req = req.SetQueryParam("confirm_overage", "true")
+	}
+	httpResp, err := req.Post(c.url(fmt.Sprintf("/agents/%s/deploy", agentID)))
 
 	if err != nil {
 		return nil, fmt.Errorf("deploy request failed: %w", err)

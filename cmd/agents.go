@@ -939,6 +939,10 @@ func formatStatus(status string) string {
 		// the same neutral/dim tone as other non-running lifecycle states so
 		// the list clearly signals "not live" without an alarming color.
 		return output.Gray.Sprint(status)
+	case "usage_paused":
+		// D2 spend-cap pause — a friendlier label than the raw enum value, in an
+		// attention color (the account hit its spend limit).
+		return output.Yellow.Sprint("paused (usage limit)")
 	case "error", "failed", "unhealthy":
 		return output.Red.Sprint(status)
 	default:

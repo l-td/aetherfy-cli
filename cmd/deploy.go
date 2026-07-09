@@ -65,12 +65,67 @@ var (
 	deployDetach     bool
 	deployAgent      string
 	deployFromGitHub string
+	deployYes        bool
 )
 
 func init() {
 	deployCmd.Flags().BoolVarP(&deployDetach, "detach", "d", false, "Return immediately after upload without waiting for completion")
 	deployCmd.Flags().StringVarP(&deployAgent, "agent", "a", "", "Agent ID or name (reads from aetherfy.yaml if not specified)")
 	deployCmd.Flags().StringVar(&deployFromGitHub, "from-github", "", "Deploy from a public GitHub repo: owner/repo[@ref]")
+	deployCmd.Flags().BoolVarP(&deployYes, "yes", "y", false, "Skip the overage confirmation prompt and proceed (non-interactive)")
+}
+
+// handleDeployResult post-processes the first deploy attempt for the D2 Part 6
+// overage cost gate and the freeze/pause 403s. The caller does the first
+// Deploy(confirm=false) with its spinner and stops it BEFORE calling this (so a
+// prompt isn't drawn over the spinner). On OVERAGE_CONFIRM_REQUIRED it shows
+// "this adds ~$X/mo — continue?" and, on confirm (or --yes), re-sends with
+// confirm_overage=true (its own brief spinner). Non-special errors pass through
+// for the caller to print generically.
+func handleDeployResult(client *api.Client, agentID string, tarballData []byte, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
+	if err == nil {
+		return resp, nil
+	}
+
+	apiErr, ok := err.(*api.APIError)
+	if !ok {
+		return nil, err // transport error — caller prints it
+	}
+
+	switch apiErr.Code {
+	case "OVERAGE_CONFIRM_REQUIRED":
+		amount := "more"
+		if apiErr.AdditionalMonthlyUSD != nil {
+			amount = fmt.Sprintf("~$%.2f/mo", *apiErr.AdditionalMonthlyUSD)
+		}
+		if !deployYes {
+			if !isInteractive() {
+				output.PrintError("This deployment adds %s of usage. Re-run with --yes to proceed.", amount)
+				os.Exit(1)
+			}
+			output.Warning.Printf("This deployment adds %s of usage — continue? [y/N] ", amount)
+			var confirm string
+			_, _ = fmt.Scanln(&confirm)
+			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
+				output.PrintInfo("Deployment cancelled.")
+				os.Exit(0)
+			}
+		}
+		// Confirmed (or --yes) → resend accepting the overage.
+		sp := output.NewSpinner("Deploying...")
+		sp.Start()
+		r, e := client.Deploy(agentID, tarballData, true)
+		sp.Stop()
+		return r, e
+
+	case "SOFT_CAP_EXCEEDED", "DUNNING_FROZEN":
+		// Freeze/pause: show the control-plane's actionable message cleanly,
+		// without the "[403] … (CODE)" wrapper.
+		output.PrintError("%s", apiErr.Message)
+		os.Exit(1)
+	}
+
+	return nil, err
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
@@ -160,8 +215,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	resp, err := client.Deploy(agentID, tarballData)
+	resp, err := client.Deploy(agentID, tarballData, false)
 	sp.Stop()
+	// Handle the D2 Part 6 overage confirm + freeze/pause 403s (may prompt,
+	// which is why the spinner is stopped first).
+	resp, err = handleDeployResult(client, agentID, tarballData, resp, err)
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)
@@ -281,8 +339,11 @@ func runDeployFromGitHub(repoRef string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	resp, err := client.Deploy(agentID, tarballData)
+	resp, err := client.Deploy(agentID, tarballData, false)
 	sp.Stop()
+	// Handle the D2 Part 6 overage confirm + freeze/pause 403s (may prompt,
+	// which is why the spinner is stopped first).
+	resp, err = handleDeployResult(client, agentID, tarballData, resp, err)
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)

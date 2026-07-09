@@ -34,6 +34,10 @@ type APIError struct {
 	Message    string `json:"detail"`
 	Code       string `json:"code,omitempty"`
 	Details    string `json:"details,omitempty"`
+	// AdditionalMonthlyUSD carries the `additional_monthly_usd` extra from the
+	// D2 Part 6 OVERAGE_CONFIRM_REQUIRED (402) envelope so `deploy` can show the
+	// "+$X/mo, continue?" prompt. nil for every other error.
+	AdditionalMonthlyUSD *float64 `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -88,6 +92,12 @@ func parseAPIError(resp *resty.Response) error {
 				}
 				if code, ok := v["code"].(string); ok && code != "" {
 					apiErr.Code = code
+				}
+				// D2 Part 6: the deploy cost gate carries the dollar delta so
+				// the CLI can render "+$X/mo, continue?". JSON numbers decode to
+				// float64 through interface{}.
+				if amt, ok := v["additional_monthly_usd"].(float64); ok {
+					apiErr.AdditionalMonthlyUSD = &amt
 				}
 			default:
 				// Unexpected shape — serialize whatever we got so it isn't
