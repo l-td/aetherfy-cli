@@ -6,3 +6,11 @@ updates:
     schedule: { interval: "weekly" }
     groups:
       actions: { patterns: ["*"] }
+    # golangci-lint-action v7+ dropped golangci-lint v1 support. This repo pins
+    # golangci-lint v1.64.8 (via `version:`) against action v4.0.1; Dependabot just
+    # proposed action v9.3.0 while keeping v1.64.8, which reds the lint job. Block
+    # MAJOR bumps of the action so the action+tool majors only move together, as a
+    # deliberate migration to golangci-lint v2 — never an auto-update.
+    ignore:
+      - dependency-name: "golangci/golangci-lint-action"
+        update-types: ["version-update:semver-major"]
