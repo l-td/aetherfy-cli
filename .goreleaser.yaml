@@ -31,11 +31,13 @@ builds:
 
 archives:
   - id: default
-    format: tar.gz
+    formats:
+      - tar.gz
     name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
     format_overrides:
       - goos: windows
-        format: zip
+        formats:
+          - zip
 
 checksum:
   name_template: 'checksums.txt'
@@ -58,7 +60,7 @@ brews:
     repository:
       owner: aetherfy
       name: homebrew-tap
-    folder: Formula
+    directory: Formula
     homepage: https://aetherfy.run
     description: "Aetherfy CLI - Deploy and manage AI agents"
     license: "Apache-2.0"

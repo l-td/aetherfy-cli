@@ -92,3 +92,20 @@ jobs:
         with:
           name: afy-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
+
+  goreleaser-check:
+    name: GoReleaser config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+      - name: Validate .goreleaser.yaml
+        uses: goreleaser/goreleaser-action@5742e2a039330cbb23ebf35f046f814d4c6ff811  # v5.1.0
+        with:
+          distribution: goreleaser
+          version: v2.17.0
+          args: check
