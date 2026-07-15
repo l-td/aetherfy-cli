@@ -1,0 +1,8 @@
+# Keep GitHub Actions pins + their # vX.Y.Z comments fresh so the SHA-pins don't rot (M6 supply-chain hardening).
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "weekly" }
+    groups:
+      actions: { patterns: ["*"] }

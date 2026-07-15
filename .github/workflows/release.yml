@@ -28,10 +28,10 @@ jobs:
         run: go test -v ./...
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@5742e2a039330cbb23ebf35f046f814d4c6ff811  # v5.1.0
         with:
           distribution: goreleaser
-          version: latest
+          version: v2.17.0
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -45,7 +45,7 @@ jobs:
   #   needs: release
   #   steps:
   #     - name: Update Homebrew formula
-  #       uses: mislav/bump-homebrew-formula-action@v2
+  #       uses: mislav/bump-homebrew-formula-action@9d4d820e1d00b99927bd36e67d41fff1cfc8bd07  # v2.4 — re-verify before enabling
   #       with:
   #         formula-name: afy
   #         homebrew-tap: aetherfy/homebrew-tap
