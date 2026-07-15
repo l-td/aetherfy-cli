@@ -1,0 +1,56 @@
+name: Pin Guard
+
+# Fails CI if any third-party (non actions/*) GitHub Action is referenced by a
+# mutable ref (tag/branch) instead of a full 40-char commit SHA. Keeps the M6
+# supply-chain pins from silently rotting back to floating tags. First-party
+# actions/* are allowed on tags by policy (lower risk, out of M6 scope).
+
+on:
+  pull_request:
+    paths: ['.github/workflows/**']
+  push:
+    branches: [main, master]
+    paths: ['.github/workflows/**']
+
+permissions:
+  contents: read
+
+jobs:
+  no-floating-pins:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: pip install --quiet pyyaml
+      - name: Assert all third-party actions are SHA-pinned
+        shell: python
+        run: |
+          import glob, re, sys, yaml
+          SHA = re.compile(r'^[0-9a-f]{40}$')
+          bad = []
+          def check(ref, where):
+              if not isinstance(ref, str) or ref.startswith(('./', 'docker://')):
+                  return
+              if ref.split('/')[0] == 'actions':        # first-party: tags allowed
+                  return
+              sha = ref.split('@')[-1] if '@' in ref else ''
+              if not SHA.match(sha):
+                  bad.append(f'{where}: {ref}')
+          for f in sorted(glob.glob('.github/workflows/*.yml') + glob.glob('.github/workflows/*.yaml')):
+              doc = yaml.safe_load(open(f, encoding='utf-8')) or {}
+              for jid, job in (doc.get('jobs') or {}).items():
+                  if not isinstance(job, dict):
+                      continue
+                  if 'uses' in job:                      # reusable-workflow call
+                      check(job['uses'], f'{f}:{jid}')
+                  for step in (job.get('steps') or []):
+                      if isinstance(step, dict) and 'uses' in step:
+                          check(step['uses'], f'{f}:{jid}')
+          if bad:
+              print('::error::Unpinned third-party actions — pin each to a full 40-char commit SHA:')
+              for b in bad:
+                  print(f'  - {b}')
+              sys.exit(1)
+          print('OK — all third-party actions are pinned to commit SHAs')
