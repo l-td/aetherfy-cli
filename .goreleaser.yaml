@@ -55,19 +55,15 @@ changelog:
       - Merge pull request
       - Merge branch
 
-brews:
+homebrew_casks:
   - name: afy
+    binaries:
+      - afy
     repository:
       owner: aetherfy
       name: homebrew-tap
-    directory: Formula
     homepage: https://aetherfy.run
     description: "Aetherfy CLI - Deploy and manage AI agents"
-    license: "Apache-2.0"
-    install: |
-      bin.install "afy"
-    test: |
-      system "#{bin}/afy", "version"
 
 release:
   github:
