@@ -119,9 +119,10 @@ type LogQuery struct {
 	Tail    int    // default 50, max 1000 when > 0
 	Since   string // e.g. "1h", "30m", "45s"
 	Search  string // ILIKE match on message
-	Level   string // comma-separated bucket(s): INFO,WARN,ERROR,DEBUG,SYSTEM
-	Stream  string // comma-separated stream(s): stdout,stderr,system
-	AfterID int64  // forward pagination: return logs with id > AfterID, ASC order
+	Level        string // comma-separated bucket(s): INFO,WARN,ERROR,DEBUG,SYSTEM
+	Stream       string // comma-separated stream(s): stdout,stderr,system
+	AfterID      int64  // forward pagination: return logs with id > AfterID, ASC order
+	DeploymentID string // scope to one run's logs (deployment_id query param)
 }
 
 // GetAgentLogs is the filter-aware variant. When AfterID is set, the server
@@ -146,6 +147,9 @@ func (c *Client) GetAgentLogs(agentID string, q LogQuery) ([]LogEntry, error) {
 	}
 	if q.AfterID > 0 {
 		params.Set("after_id", fmt.Sprintf("%d", q.AfterID))
+	}
+	if q.DeploymentID != "" {
+		params.Set("deployment_id", q.DeploymentID)
 	}
 	if encoded := params.Encode(); encoded != "" {
 		path = path + "?" + encoded

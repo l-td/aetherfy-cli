@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -125,6 +126,72 @@ func (c *Client) GetAgentStatus(idOrName string) (*Agent, error) {
 func (c *Client) SpawnAgent(agentID string, req *SpawnRequest) (*SpawnResponse, error) {
 	var resp SpawnResponse
 	err := c.Post(fmt.Sprintf("/agents/%s/spawn", agentID), req, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// RunAgent triggers a manual "run now" of a deployed JOB agent (POST
+// /agents/{id}/run). The run is a ROOT run: no parent, trigger_source=manual.
+// payload is optional (nil omits the body field). Errors carry the CP-4 code
+// taxonomy — AGENT_RUN_REQUIRES_JOB_TYPE / AGENT_NOT_DEPLOYED (422),
+// AGENT_RUN_IN_PROGRESS / AGENT_RUN_INELIGIBLE_STATE / AGENT_OPERATION_IN_PROGRESS
+// (409), the billing-gate 403s — for callers to switch on.
+func (c *Client) RunAgent(idOrName string, payload map[string]interface{}) (*RunAgentResponse, error) {
+	var resp RunAgentResponse
+	err := c.Post(fmt.Sprintf("/agents/%s/run", idOrName), &RunAgentRequest{Payload: payload}, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ListAgentRuns returns the run history (GET /agents/{id}/runs). Spawn rows are
+// excluded server-side; only cron/manual runs are returned. Empty query returns
+// the server defaults (both trigger sources, newest first).
+func (c *Client) ListAgentRuns(idOrName string, q RunsQuery) ([]AgentRun, error) {
+	path := fmt.Sprintf("/agents/%s/runs", idOrName)
+	params := url.Values{}
+	if q.TriggerSource != "" {
+		params.Set("trigger_source", q.TriggerSource)
+	}
+	if q.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", q.Limit))
+	}
+	if q.Before != "" {
+		params.Set("before", q.Before)
+	}
+	if encoded := params.Encode(); encoded != "" {
+		path = path + "?" + encoded
+	}
+
+	var runs []AgentRun
+	if err := c.Get(path, &runs); err != nil {
+		return nil, err
+	}
+	return runs, nil
+}
+
+// PauseSchedule pauses an agent's cron schedule (POST
+// /agents/{id}/schedule/pause). Idempotent: Changed is false when it was
+// already paused. 422 AGENT_SCHEDULE_NOT_SET when the agent has no schedule.
+func (c *Client) PauseSchedule(idOrName string) (*ScheduleStateResponse, error) {
+	var resp ScheduleStateResponse
+	err := c.Post(fmt.Sprintf("/agents/%s/schedule/pause", idOrName), nil, &resp)
+	if err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ResumeSchedule resumes a paused cron schedule (POST
+// /agents/{id}/schedule/resume). The server recomputes cron_next_run_at from
+// now (skip-to-future; elapsed occurrences are never backfired). Idempotent:
+// Changed is false when it was already live.
+func (c *Client) ResumeSchedule(idOrName string) (*ScheduleStateResponse, error) {
+	var resp ScheduleStateResponse
+	err := c.Post(fmt.Sprintf("/agents/%s/schedule/resume", idOrName), nil, &resp)
 	if err != nil {
 		return nil, err
 	}

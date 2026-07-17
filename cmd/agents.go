@@ -1,11 +1,13 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/aetherfy/cli/internal/api"
 	"github.com/aetherfy/cli/internal/config"
@@ -57,9 +59,24 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// The schedule columns only appear when at least one agent has a schedule —
+	// accounts with no scheduled agents keep the original five-column layout.
+	anyScheduled := false
+	for i := range agents {
+		if agents[i].CronSchedule != "" {
+			anyScheduled = true
+			break
+		}
+	}
+
 	// Table output
-	table := output.Table([]string{"Name", "Type", "Status", "Region", "ID"})
-	for _, a := range agents {
+	headers := []string{"Name", "Type", "Status", "Region", "ID"}
+	if anyScheduled {
+		headers = []string{"Name", "Type", "Status", "Region", "Schedule", "Next Run", "Last Run", "ID"}
+	}
+	table := output.Table(headers)
+	for i := range agents {
+		a := agents[i]
 		status := formatStatus(a.Status)
 		// Surface a degraded (partial multi-region) deploy inline on the list
 		// view — health belongs on the primary surface, not a detail click
@@ -68,7 +85,21 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		if tag := formatDegradedTag(a.IsDegraded, a.RegionsReady, a.RegionsTotal); tag != "" {
 			status += " " + tag
 		}
-		table.Append([]string{a.Name, a.AgentType, status, a.Region, a.ID})
+		if anyScheduled {
+			schedCell, nextCell, lastCell := "", "", ""
+			if a.CronSchedule != "" {
+				schedCell = a.CronSchedule
+				if a.CronPaused {
+					nextCell = "(paused)"
+				} else {
+					nextCell = formatUTCTime(a.CronNextRunAt)
+				}
+				lastCell = formatLastRun(a)
+			}
+			table.Append([]string{a.Name, a.AgentType, status, a.Region, schedCell, nextCell, lastCell, a.ID})
+		} else {
+			table.Append([]string{a.Name, a.AgentType, status, a.Region, a.ID})
+		}
 	}
 	table.Render()
 
@@ -494,6 +525,17 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	if agent.WorkspaceName != "" {
 		output.KeyValue("Workspace", agent.WorkspaceName)
 	}
+	// Cron schedule block — only for agents that actually have a schedule, so
+	// schedule-less agents keep the same status layout as before.
+	if agent.CronSchedule != "" {
+		output.KeyValue("Schedule", agent.CronSchedule+" (UTC)")
+		if agent.CronPaused {
+			output.KeyValue("Next run", "(paused)")
+		} else {
+			output.KeyValue("Next run", formatUTCTime(agent.CronNextRunAt))
+		}
+		output.KeyValue("Last run", formatLastRun(*agent))
+	}
 	output.KeyValue("Created", agent.CreatedAt.Format("2006-01-02 15:04:05"))
 	output.KeyValue("Updated", agent.UpdatedAt.Format("2006-01-02 15:04:05"))
 
@@ -546,6 +588,296 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 	}
 }
 
+// --- RUN (manual "run now" of a JOB agent) ---
+var agentsRunCmd = &cobra.Command{
+	Use:   "run <name>",
+	Short: "Run a job agent now",
+	Long: `Trigger a one-off run of a deployed job agent immediately.
+
+This is a manual run: the agent executes once and terminates, independent of any
+cron schedule. Only deployed 'type: job' agents can be run.
+
+Pass input with --payload (inline JSON) or --payload-file. Use --wait to block
+until the run finishes — the command then exits 0 on success, 1 on failure.`,
+	Example: `  # Run a job agent and return immediately
+  afy agents run nightly-report
+
+  # Run with a JSON payload and wait for the result
+  afy agents run nightly-report --payload '{"date":"2026-07-17"}' --wait`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsRun,
+}
+
+var (
+	runPayload     string
+	runPayloadFile string
+	runWait        bool
+)
+
+func init() {
+	agentsRunCmd.Flags().StringVarP(&runPayload, "payload", "p", "", "JSON payload to pass to the run")
+	agentsRunCmd.Flags().StringVarP(&runPayloadFile, "payload-file", "f", "", "Read the JSON payload from a file")
+	agentsRunCmd.Flags().BoolVar(&runWait, "wait", false, "Wait for the run to finish (exit 1 if it fails)")
+}
+
+// parseRunPayload resolves the run payload from --payload / --payload-file
+// (mutually exclusive). Returns nil when neither is set — the run body's
+// payload field is then omitted.
+func parseRunPayload() (map[string]interface{}, error) {
+	if runPayload != "" && runPayloadFile != "" {
+		return nil, fmt.Errorf("specify only one of --payload or --payload-file")
+	}
+	var raw []byte
+	switch {
+	case runPayload != "":
+		raw = []byte(runPayload)
+	case runPayloadFile != "":
+		data, err := os.ReadFile(runPayloadFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read payload file: %w", err)
+		}
+		raw = data
+	default:
+		return nil, nil
+	}
+	var payload map[string]interface{}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("invalid JSON payload: %w", err)
+	}
+	return payload, nil
+}
+
+func runAgentsRun(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+	name := args[0]
+
+	payload, err := parseRunPayload()
+	if err != nil {
+		output.PrintError("%v", err)
+		return nil
+	}
+
+	sp := output.NewSpinner(fmt.Sprintf("Starting run of '%s'...", name))
+	sp.Start()
+	client := api.NewClient()
+	resp, err := client.RunAgent(name, payload)
+	sp.Stop()
+	if err != nil {
+		printAgentActionError("Failed to run agent", err)
+		return err
+	}
+
+	if config.Get().OutputFormat == "json" {
+		return output.JSON(resp)
+	}
+
+	output.PrintSuccess("Run started.")
+	output.KeyValue("Deployment ID", resp.DeploymentID)
+	output.KeyValue("Version", fmt.Sprintf("v%d", resp.Version))
+	output.Println("")
+
+	if runWait {
+		watchRun(client, name, resp.DeploymentID)
+	} else {
+		output.Printf("Follow it with: afy logs %s --run %s\n", name, resp.DeploymentID)
+	}
+	return nil
+}
+
+// watchRun polls a run's deployment to a terminal state, printing status
+// transitions. A JOB run converges to COMPLETED (success) or FAILED (the
+// machine exited non-zero / OOM). Mirrors watchDeployment's ticker but only
+// terminates on the run-terminal states and sets the process exit code so
+// `afy agents run --wait` is usable as a CI gate.
+func watchRun(client *api.Client, agentName, deploymentID string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+	defer cancel()
+
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
+	lastStatus := ""
+	for {
+		select {
+		case <-ctx.Done():
+			output.PrintWarning("Run watch timed out; check it with 'afy logs %s --run %s'.", agentName, deploymentID)
+			return
+		case <-ticker.C:
+			d, err := client.GetDeployment(deploymentID)
+			if err != nil {
+				output.PrintWarning("Failed to get run status: %v", err)
+				continue
+			}
+			if d.Status != lastStatus {
+				output.Printf("Status: %s\n", formatRunState(d.Status))
+				lastStatus = d.Status
+			}
+			switch strings.ToLower(d.Status) {
+			case "completed":
+				output.PrintSuccess("Run completed.")
+				return
+			case "failed", "error":
+				output.PrintError("Run failed.")
+				if d.ErrorMessage != "" {
+					output.Printf("Reason: %s\n", d.ErrorMessage)
+				}
+				os.Exit(1)
+			}
+		}
+	}
+}
+
+// --- RUNS (scheduled + manual run history) ---
+var agentsRunsCmd = &cobra.Command{
+	Use:   "runs <name>",
+	Short: "Show run history for a job agent",
+	Long: `List recent scheduled and manual runs for a job agent, newest first.
+
+Only cron and manual runs are shown; spawned runs belong to the parent agent's
+history and are excluded.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsRuns,
+}
+
+var runsLimit int
+
+func init() {
+	agentsRunsCmd.Flags().IntVar(&runsLimit, "limit", 20, "Maximum number of runs to show (max 100)")
+}
+
+func runAgentsRuns(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+	name := args[0]
+
+	sp := output.NewSpinner("Fetching run history...")
+	sp.Start()
+	client := api.NewClient()
+	runs, err := client.ListAgentRuns(name, api.RunsQuery{Limit: runsLimit})
+	sp.Stop()
+	if err != nil {
+		printAgentActionError("Failed to list runs", err)
+		return nil
+	}
+
+	if config.Get().OutputFormat == "json" {
+		return output.JSON(runs)
+	}
+	if len(runs) == 0 {
+		output.PrintInfo("No runs found for '%s'.", name)
+		return nil
+	}
+
+	table := output.Table([]string{"When", "Trigger", "State", "Duration", "Run-ID"})
+	for i := range runs {
+		r := runs[i]
+		table.Append([]string{
+			r.CreatedAt.Local().Format("2006-01-02 15:04"),
+			r.TriggerSource,
+			formatRunState(r.State),
+			formatRunDuration(r.DurationSeconds),
+			r.ID,
+		})
+	}
+	table.Render()
+
+	output.Println("")
+	output.Dim.Printf("Total: %d run(s)\n", len(runs))
+	return nil
+}
+
+// --- SCHEDULE (pause / resume a cron schedule) ---
+var agentsScheduleCmd = &cobra.Command{
+	Use:   "schedule",
+	Short: "Manage a job agent's cron schedule",
+	Long:  "Pause or resume the cron schedule of a job agent.",
+}
+
+var agentsSchedulePauseCmd = &cobra.Command{
+	Use:   "pause <name>",
+	Short: "Pause a job agent's cron schedule",
+	Long: `Pause a job agent's cron schedule: no scheduled runs fire until you resume.
+Manual runs ('afy agents run') are unaffected. Idempotent.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsSchedulePause,
+}
+
+var agentsScheduleResumeCmd = &cobra.Command{
+	Use:   "resume <name>",
+	Short: "Resume a paused cron schedule",
+	Long: `Resume a paused cron schedule. The next run is recomputed from now —
+occurrences that elapsed while paused are skipped, never backfilled. Idempotent.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsScheduleResume,
+}
+
+func runAgentsSchedulePause(cmd *cobra.Command, args []string) error {
+	return runScheduleToggle(args[0], true)
+}
+
+func runAgentsScheduleResume(cmd *cobra.Command, args []string) error {
+	return runScheduleToggle(args[0], false)
+}
+
+// runScheduleToggle drives both schedule pause and resume — they share the same
+// auth, spinner, response shape ({cron_paused, cron_next_run_at, changed}), and
+// idempotent "already paused/live" messaging.
+func runScheduleToggle(name string, pause bool) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	verb := "Resuming"
+	if pause {
+		verb = "Pausing"
+	}
+	sp := output.NewSpinner(fmt.Sprintf("%s schedule for '%s'...", verb, name))
+	sp.Start()
+
+	client := api.NewClient()
+	var resp *api.ScheduleStateResponse
+	var err error
+	if pause {
+		resp, err = client.PauseSchedule(name)
+	} else {
+		resp, err = client.ResumeSchedule(name)
+	}
+	sp.Stop()
+
+	if err != nil {
+		printAgentActionError("Failed to update schedule", err)
+		return err
+	}
+
+	if config.Get().OutputFormat == "json" {
+		return output.JSON(resp)
+	}
+
+	switch {
+	case !resp.Changed:
+		state := "live"
+		if resp.CronPaused {
+			state = "paused"
+		}
+		output.PrintInfo("Schedule for '%s' is already %s.", name, state)
+	case resp.CronPaused:
+		output.PrintSuccess("Schedule for '%s' paused.", name)
+	default:
+		output.PrintSuccess("Schedule for '%s' resumed.", name)
+	}
+
+	output.KeyValue("Paused", fmt.Sprintf("%v", resp.CronPaused))
+	if resp.CronPaused {
+		output.KeyValue("Next run", "(paused)")
+	} else {
+		output.KeyValue("Next run", formatUTCTime(resp.CronNextRunAt))
+	}
+	return nil
+}
+
 // --- RENAME ---
 var agentsRenameCmd = &cobra.Command{
 	Use:   "rename <current-name> <new-name>",
@@ -575,6 +907,11 @@ func init() {
 	agentsCmd.AddCommand(agentsUpdateCmd)
 	agentsCmd.AddCommand(agentsPullCmd)
 	agentsCmd.AddCommand(agentsDiffCmd)
+	agentsCmd.AddCommand(agentsRunCmd)
+	agentsCmd.AddCommand(agentsRunsCmd)
+	agentsScheduleCmd.AddCommand(agentsSchedulePauseCmd)
+	agentsScheduleCmd.AddCommand(agentsScheduleResumeCmd)
+	agentsCmd.AddCommand(agentsScheduleCmd)
 }
 
 func runAgentsRename(cmd *cobra.Command, args []string) error {
@@ -926,6 +1263,111 @@ func formatDeploymentState(state string) string {
 		return state + " (current)"
 	}
 	return state
+}
+
+// printAgentActionError prints the server error for a run/schedule action plus
+// an actionable hint for the CP-4 cron/run-now error codes. Unknown codes fall
+// through to the plain server message (already actionable). Never special-cases
+// HTTP 502 — a bare 502 is edge infra, handled generically like the rest of the
+// CLI.
+func printAgentActionError(prefix string, err error) {
+	output.PrintError("%s: %v", prefix, err)
+	apiErr, ok := err.(*api.APIError)
+	if !ok {
+		return
+	}
+	switch apiErr.Code {
+	case "AGENT_NOT_DEPLOYED":
+		output.PrintInfo("Deploy it first: afy deploy")
+	case "AGENT_SCHEDULE_NOT_SET":
+		output.PrintInfo("Add `schedule:` to aetherfy.yaml and push (afy deploy).")
+	case "AGENT_RUN_REQUIRES_JOB_TYPE":
+		output.PrintInfo("Only `type: job` agents can be run on demand.")
+	}
+}
+
+// formatRunState colorizes a run's deployment state for the runs table:
+// COMPLETED green, FAILED red, in-flight (queued/building/deploying/active/
+// running) yellow — matching the deployments colorizer's intent.
+func formatRunState(state string) string {
+	switch strings.ToLower(state) {
+	case "completed":
+		return output.Success.Sprint("completed")
+	case "failed", "error":
+		return output.Error.Sprint("failed")
+	case "queued", "building", "deploying", "active", "running":
+		return output.Warning.Sprint(state)
+	default:
+		return state
+	}
+}
+
+// formatRunDuration renders a run's duration; nil (a run still in flight, or one
+// with no machine timing yet) shows a dash.
+func formatRunDuration(seconds *float64) string {
+	if seconds == nil {
+		return "-"
+	}
+	return output.FormatDuration(int(*seconds))
+}
+
+// formatUTCTime renders a timestamp in UTC with an explicit label — schedules
+// are evaluated in UTC, so next/last-run times are shown in UTC to match. "-"
+// for a nil time.
+func formatUTCTime(t *time.Time) string {
+	if t == nil {
+		return "-"
+	}
+	return t.UTC().Format("2006-01-02 15:04") + " UTC"
+}
+
+// formatLastRun renders a schedule's last fire outcome for the detail/list
+// views: a colored fired/skipped/missed badge plus a relative timestamp. Reads
+// as "never" when the schedule has not fired yet.
+func formatLastRun(a api.Agent) string {
+	if a.CronLastStatus == "" && a.CronLastRunAt == nil {
+		return "never"
+	}
+	badge := formatCronStatusBadge(a.CronLastStatus)
+	if a.CronLastRunAt != nil {
+		return fmt.Sprintf("%s (%s)", badge, relativeTime(*a.CronLastRunAt))
+	}
+	return badge
+}
+
+// formatCronStatusBadge colorizes a cron_last_status value:
+// fired green, skipped yellow, missed red.
+func formatCronStatusBadge(status string) string {
+	switch strings.ToLower(status) {
+	case "fired":
+		return output.Success.Sprint("fired")
+	case "skipped":
+		return output.Warning.Sprint("skipped")
+	case "missed":
+		return output.Error.Sprint("missed")
+	case "":
+		return "-"
+	default:
+		return status
+	}
+}
+
+// relativeTime renders a coarse "Nx ago" for the last-run column.
+func relativeTime(t time.Time) string {
+	d := time.Since(t)
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
 }
 
 // formatStatus adds color to status strings

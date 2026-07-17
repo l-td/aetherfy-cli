@@ -49,6 +49,7 @@ var (
 	initWorkspace  bool
 	initForce      bool
 	initYes        bool
+	initSchedule   string
 )
 
 func init() {
@@ -62,6 +63,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
+	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Cron schedule for job agents (UTC, 5-field, min every 5 minutes), e.g. '0 3 * * *'")
 }
 
 func fileExists(path string) bool {
@@ -244,6 +246,23 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// --- Schedule (job agents only) ---
+	// Cron scheduling is a top-level JOB concept, so the prompt only appears
+	// when the agent is a job. The server is the authoritative cron validator
+	// (min interval, 5-field dialect) — we never validate the expression here,
+	// we just carry it into aetherfy.yaml. The --schedule flag skips the prompt.
+	schedule := initSchedule
+	if schedule == "" && agentType == "job" && interactive {
+		schedulePrompt := promptui.Prompt{
+			Label:   "Schedule — UTC, 5-field cron (min every 5 minutes), e.g. '0 3 * * *' — leave blank for none",
+			Default: "",
+		}
+		s, sErr := schedulePrompt.Run()
+		if sErr == nil {
+			schedule = strings.TrimSpace(s)
+		}
+	}
+
 	// --- Region ---
 	region := initRegion
 	if region == "" {
@@ -356,7 +375,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	output.PrintInfo("Writing aetherfy.yaml...")
 
-	content := buildAetherfyYAML(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, entrypoint)
+	content := buildAetherfyYAML(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, entrypoint, schedule)
 
 	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
 		return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
@@ -364,7 +383,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	output.PrintSuccess("aetherfy.yaml created.")
 	output.Println("")
-	printConfigSummary(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB)
+	printConfigSummary(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, schedule)
 	output.Println("")
 	output.Println("Run 'afy deploy' when you are ready to go live.")
 	return nil
@@ -373,7 +392,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 // printConfigSummary prints the chosen config values as an aligned table.
 // Column widths are computed from the actual label set so adding or renaming
 // a row never requires re-padding by hand.
-func printConfigSummary(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool) {
+func printConfigSummary(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool, schedule string) {
 	billing := "auto-sleep"
 	if keepAlive {
 		billing = "always-on"
@@ -392,6 +411,11 @@ func printConfigSummary(name, runtime, agentType, region string, memoryMB int, k
 		{"Billing", billing},
 		{"Workspace", workspace},
 	}
+	// Only surface the schedule row when one was set — schedule-less agents
+	// keep the summary unchanged.
+	if schedule != "" {
+		rows = append(rows, [2]string{"Schedule", schedule + " (UTC)"})
+	}
 
 	maxLabel := 0
 	for _, r := range rows {
@@ -407,7 +431,7 @@ func printConfigSummary(name, runtime, agentType, region string, memoryMB int, k
 	}
 }
 
-func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool, entrypoint string) string {
+func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool, entrypoint, schedule string) string {
 	var sb strings.Builder
 
 	sb.WriteString("# Aetherfy Configuration File\n")
@@ -443,6 +467,12 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 
 	if vectorDB {
 		sb.WriteString(fmt.Sprintf("workspace: %s-workspace\n", name))
+	}
+
+	// Cron schedule (job agents). Quoted so cron expressions like "0 3 * * *"
+	// are always parsed as a string. Validated server-side on deploy.
+	if schedule != "" {
+		sb.WriteString(fmt.Sprintf("schedule: %q  # UTC, 5-field cron (min every 5 minutes)\n", schedule))
 	}
 
 	sb.WriteString("\n# --- ADVANCED SETTINGS ---\n")

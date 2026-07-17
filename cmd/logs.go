@@ -42,6 +42,7 @@ var (
 	logsSince  string
 	logsLevel  string
 	logsStream string
+	logsRun    string
 )
 
 func init() {
@@ -50,6 +51,7 @@ func init() {
 	logsCmd.Flags().StringVar(&logsSince, "since", "", "Show logs since duration (e.g., 1h, 30m)")
 	logsCmd.Flags().StringVar(&logsLevel, "level", "", "Filter by level(s), comma-separated (e.g., ERROR,WARN)")
 	logsCmd.Flags().StringVar(&logsStream, "stream", "", "Filter by stream(s), comma-separated (stdout,stderr,system)")
+	logsCmd.Flags().StringVar(&logsRun, "run", "", "Scope logs to a single run (deployment ID, e.g. from 'afy agents runs')")
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {
@@ -70,10 +72,11 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	logs, err := client.GetAgentLogs(agentID, api.LogQuery{
-		Tail:   logsTail,
-		Since:  logsSince,
-		Level:  logsLevel,
-		Stream: logsStream,
+		Tail:         logsTail,
+		Since:        logsSince,
+		Level:        logsLevel,
+		Stream:       logsStream,
+		DeploymentID: logsRun,
 	})
 	sp.Stop()
 
@@ -110,7 +113,7 @@ func streamLogs(client *api.Client, agentID string) error {
 
 	// Seed the cursor from the most recent batch so we don't replay history.
 	var afterID int64
-	seed, err := client.GetAgentLogs(agentID, api.LogQuery{Tail: 1, Level: logsLevel, Stream: logsStream})
+	seed, err := client.GetAgentLogs(agentID, api.LogQuery{Tail: 1, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
 	if err == nil && len(seed) > 0 {
 		afterID = seed[0].ID
 	}
@@ -121,7 +124,7 @@ func streamLogs(client *api.Client, agentID string) error {
 	for range ticker.C {
 		// When AfterID > 0, the server returns ASC — iterating in order prints
 		// lines as they were emitted and lets us advance the cursor exactly.
-		logs, err := client.GetAgentLogs(agentID, api.LogQuery{AfterID: afterID, Tail: 500, Level: logsLevel, Stream: logsStream})
+		logs, err := client.GetAgentLogs(agentID, api.LogQuery{AfterID: afterID, Tail: 500, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
 		if err != nil {
 			output.PrintWarning("Failed to fetch logs: %v", err)
 			continue

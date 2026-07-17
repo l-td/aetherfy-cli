@@ -37,6 +37,17 @@ type Agent struct {
 	RegionsTotal   int    `json:"regions_total"`
 	RegionsReady   int    `json:"regions_ready"`
 	DegradedReason string `json:"degraded_reason,omitempty"`
+	// Cron scheduling (CP-4). Carried on the agent list + detail responses.
+	// CronSchedule is the 5-field UTC expression (empty = no schedule); the
+	// rest is scheduler-written fire-time telemetry feeding the CLI badges.
+	// CronLastStatus is one of 'fired'|'skipped'|'missed'; CronLastReason is
+	// the reason/error code when a fire did not happen.
+	CronSchedule   string     `json:"cron_schedule,omitempty"`
+	CronNextRunAt  *time.Time `json:"cron_next_run_at,omitempty"`
+	CronPaused     bool       `json:"cron_paused,omitempty"`
+	CronLastRunAt  *time.Time `json:"cron_last_run_at,omitempty"`
+	CronLastStatus string     `json:"cron_last_status,omitempty"`
+	CronLastReason string     `json:"cron_last_reason,omitempty"`
 }
 
 // AgentCreateRequest is the request body for creating an agent
@@ -153,6 +164,55 @@ type SpawnResponse struct {
 	MachineID    string `json:"machine_id,omitempty"`
 	Status       string `json:"status"`
 	Message      string `json:"message"`
+}
+
+// RunAgentRequest is the optional body for POST /agents/{id}/run. Payload is
+// passed to the ephemeral run the same way spawn's payload is (omitted when
+// nil). Manual runs carry no client_operation_key — they are intentional
+// repeats — mirroring spawn's request contract.
+type RunAgentRequest struct {
+	Payload map[string]interface{} `json:"payload,omitempty"`
+}
+
+// RunAgentResponse is the 202 body from POST /agents/{id}/run — the ephemeral
+// (root) run's deployment id, version, and the DEPLOY job id.
+type RunAgentResponse struct {
+	DeploymentID string `json:"deployment_id"`
+	Version      int    `json:"version"`
+	JobID        string `json:"job_id"`
+}
+
+// AgentRun is one row from GET /agents/{id}/runs — the cron/manual run history.
+// State includes the terminal COMPLETED / FAILED outcomes (real results, not
+// just "started"). DurationSeconds is stopped-started when both machine
+// timestamps exist, else nil.
+type AgentRun struct {
+	ID               string     `json:"id"`
+	TriggerSource    string     `json:"trigger_source"`
+	State            string     `json:"state"`
+	CreatedAt        time.Time  `json:"created_at"`
+	ErrorMessage     string     `json:"error_message,omitempty"`
+	MachineStartedAt *time.Time `json:"machine_started_at,omitempty"`
+	MachineStoppedAt *time.Time `json:"machine_stopped_at,omitempty"`
+	DurationSeconds  *float64   `json:"duration_seconds,omitempty"`
+}
+
+// RunsQuery bundles the GET /agents/{id}/runs query parameters. TriggerSource
+// narrows to 'cron' or 'manual' (empty = both); Before is an ISO cursor
+// (created_at < before).
+type RunsQuery struct {
+	TriggerSource string
+	Limit         int
+	Before        string
+}
+
+// ScheduleStateResponse is the body from POST /agents/{id}/schedule/pause and
+// /schedule/resume. Changed is false when the schedule was already in the
+// requested pause state (idempotent no-op).
+type ScheduleStateResponse struct {
+	CronPaused    bool       `json:"cron_paused"`
+	CronNextRunAt *time.Time `json:"cron_next_run_at,omitempty"`
+	Changed       bool       `json:"changed"`
 }
 
 // UserInfo represents the authenticated user
