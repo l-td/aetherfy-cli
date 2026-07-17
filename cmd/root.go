@@ -35,6 +35,13 @@ Quick start:
 
 For more information, visit: https://docs.aetherfy.run`,
 	Version: version.Short(),
+	// Runtime errors (a failed API call, a rejected deploy) already print a
+	// clean "Error: ..." line — dumping the full usage/help text after them is
+	// noise. SilenceUsage suppresses that dump for every command (children
+	// inherit). SilenceErrors is deliberately left off so cobra still prints the
+	// error itself. Trade-off: unknown-flag/arg errors also stop dumping usage,
+	// but the error text still names the offending flag and `--help` remains.
+	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip config loading for certain commands
 		if cmd.Name() == "version" || cmd.Name() == "help" {
