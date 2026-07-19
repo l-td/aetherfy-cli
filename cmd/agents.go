@@ -674,7 +674,7 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 	}
 
 	output.PrintSuccess("Run started.")
-	output.KeyValue("Deployment ID", resp.DeploymentID)
+	output.KeyValue("Run ID", resp.DeploymentID)
 	output.KeyValue("Version", fmt.Sprintf("v%d", resp.Version))
 	output.Println("")
 
@@ -771,7 +771,7 @@ func runAgentsRuns(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	table := output.Table([]string{"When", "Trigger", "State", "Duration", "Run-ID"})
+	table := output.Table([]string{"When", "Trigger", "State", "Duration", "Run ID"})
 	for i := range runs {
 		r := runs[i]
 		table.Append([]string{
