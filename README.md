@@ -48,6 +48,10 @@ afy logs my-agent --follow
 # List deployment history and roll back if needed
 afy deployments my-agent
 afy rollback my-agent v3
+
+# Run a job agent on demand and inspect its run history
+afy agents run my-job --wait
+afy agents runs my-job
 ```
 
 ## Commands
@@ -66,7 +70,16 @@ afy rollback my-agent v3
 |---------|-------------|
 | `afy init [path]` | Scaffold an `aetherfy.yaml` by auto-detecting runtime and entrypoint |
 
-Flags: `--name`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--workspace`, `--force`.
+Flags: `--name`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--workspace`, `--schedule`, `--force`, `--yes`.
+
+```bash
+# Scaffold a scheduled job agent non-interactively
+afy init --name nightly-report --type job --schedule "0 3 * * *"
+```
+
+`--schedule` writes the `schedule:` field into `aetherfy.yaml`. When you pick
+`job` at the interactive type prompt, `afy init` also asks for a schedule
+(leave it blank for none). The expression is validated server-side on deploy.
 
 ### Agents
 
@@ -79,6 +92,51 @@ Flags: `--name`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, 
 | `afy agents stop <name>` | Pause a running agent |
 | `afy agents start <name>` | Resume a paused agent |
 | `afy agents rename <current> <new>` | Rename an agent (URL stays the same) |
+
+### Runs & Schedules
+
+Only `type: job` agents can be run on demand or scheduled. A run is one
+execution of the job: it starts, does its work, and terminates.
+
+| Command | Description |
+|---------|-------------|
+| `afy agents run <name>` | Trigger a one-off run now, independent of any schedule |
+| `afy agents run <name> --payload '{...}'` | Pass an inline JSON payload to the run |
+| `afy agents run <name> --payload-file <file>` | Read the JSON payload from a file |
+| `afy agents run <name> --wait` | Block until the run finishes (exit `0` completed, `1` failed) |
+| `afy agents runs <name>` | Show run history, newest first (scheduled + manual) |
+| `afy agents runs <name> --limit N` | Limit the run history (default 20, max 100) |
+| `afy agents schedule pause <name>` | Stop scheduled runs from firing (manual runs still work) |
+| `afy agents schedule resume <name>` | Resume a paused schedule |
+
+```bash
+# Fire a run and come back later
+afy agents run nightly-report
+
+# Run with input and gate a CI job on the result
+afy agents run nightly-report --payload '{"date":"2026-07-17"}' --wait
+
+# What ran recently, and how did it go?
+afy agents runs nightly-report --limit 5
+
+# Hold the schedule while you investigate, then let it run again
+afy agents schedule pause nightly-report
+afy agents schedule resume nightly-report
+```
+
+`--payload` and `--payload-file` are mutually exclusive. `--wait` polls to a
+terminal state (up to 30 minutes) and exits non-zero if the run fails, which
+makes it usable as a CI gate.
+
+Pausing is idempotent, and resuming recomputes the next run from now —
+occurrences that elapsed while paused are skipped, never backfilled.
+
+Once an agent has a schedule, `afy agents list` grows `SCHEDULE`, `NEXT RUN`,
+and `LAST RUN` columns, and `afy agents status <name>` shows the same three
+fields. Times are UTC. `NEXT RUN` reads `(paused)` while the schedule is
+paused; `LAST RUN` shows the last outcome (`fired`, `skipped`, `missed`) with
+a relative timestamp, or `never`. Accounts with no scheduled agents keep the
+original list layout.
 
 ### Workspaces
 
@@ -111,6 +169,17 @@ Workspaces group related agents so they can share secrets and vector collections
 | `afy logs <agent> --follow` | Stream logs in real-time |
 | `afy logs <agent> --tail 200` | View last 200 lines |
 | `afy logs <agent> --since 1h` | Show logs from the last hour |
+| `afy logs <agent> --level ERROR,WARN` | Filter by level(s), comma-separated |
+| `afy logs <agent> --stream stderr` | Filter by stream(s): `stdout`, `stderr`, `system` |
+| `afy logs <agent> --run <run-id>` | Show only the logs of one specific run |
+
+```bash
+# Grab a run id from the history, then read just that run's output
+afy agents runs nightly-report
+afy logs nightly-report --run <run-id>
+```
+
+`--run` combines with `--follow`, `--level`, and `--stream`.
 
 ### Secrets
 
@@ -137,6 +206,19 @@ Keys starting with `AETHERFY_` are reserved.
 | `afy spawn <parent> <child> --stdin` | Read payload from stdin |
 
 The parent must have `spawn.enabled: true`, and the child must be of type `job`.
+
+**`spawn` vs `agents run`** — both start a job agent with a JSON payload, but
+they are different entry points:
+
+- `afy spawn <parent> <child>` is the parent-to-worker path: a SERVICE agent
+  dispatches work to one of its declared workers. It requires a parent, and
+  the resulting runs belong to the parent's history.
+- `afy agents run <name>` is a manual **root** run of a job agent — no parent
+  involved. These runs appear in `afy agents runs <name>` alongside the
+  scheduled ones.
+
+Note the flags differ: `spawn` accepts `--stdin`, `agents run` does not;
+`agents run` accepts `--wait`, `spawn` does not.
 
 ### GitHub Integration
 
@@ -207,6 +289,9 @@ regions:                    # optional — list of iad, fra, sin
 memory_mb: 512              # 256, 512, or 1024
 keep_alive: false           # always-on billing
 
+# Optional: cron schedule — job agents only
+schedule: "0 3 * * *"
+
 # Optional: attach to a workspace to share secrets and vector collections
 workspace: invoice-pipeline
 
@@ -220,6 +305,11 @@ spawn:
 ```
 
 Required fields: `name`, `runtime`. Run `afy init` to scaffold a valid file.
+
+`schedule` is a 5-field cron expression, evaluated in **UTC**, with a minimum
+interval of every 5 minutes, and is valid only for `type: job` agents. Omit
+the field on a re-deploy to keep the existing schedule; set `schedule: null`
+to clear it.
 
 ### .afyignore
 
