@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // SpawnableBy returns the names of SERVICE agents whose allowed_workers
@@ -92,29 +93,93 @@ func (c *Client) DeleteAgent(idOrName string) error {
 	return c.Delete("/agents/" + idOrName)
 }
 
+// Bounded retry for the agent lifecycle verbs on the control-plane's two
+// explicit "this row is busy right now, the request never ran" answers.
+// Delays double from 2s (2+4+8+16 = 30s across 5 attempts), matching the
+// envelope the server's own messages suggest ("Retry in a few seconds").
+const lifecycleRetryAttempts = 5
+
+// var, not const, purely so tests can shrink the backoff. Read inside the retry
+// loop (not captured at init), so an override takes effect at call time.
+var lifecycleRetryBaseWait = 2 * time.Second
+
+// contendedLifecycleCodes are the control-plane responses that mean a worker
+// held the agent row and OUR REQUEST NEVER EXECUTED — so re-sending cannot
+// double-apply anything.
+//
+//	409 AGENT_OPERATION_IN_PROGRESS — the lifecycle handler's bounded 3s
+//	    agent-row wait expired (api/routes/agents.py _lock_agent_row_or_409).
+//	503 RESOURCE_BUSY — the global 5s request-path lock bound expired
+//	    (shared/error_codes.py). Contended lifecycle calls answer this
+//	    routinely now that the bound is actually armed for the whole
+//	    transaction; before, they blocked the server's event loop instead.
+//
+// Deliberately NOT retried: every other 409 (AGENT_ALREADY_PAUSED,
+// AGENT_NOT_PAUSED, AGENT_ALREADY_ARCHIVED, AGENT_HAS_PENDING_DEPLOYMENTS) is a
+// contract answer about state, and any other 5xx may have half-applied.
+var contendedLifecycleCodes = map[int]string{
+	409: "AGENT_OPERATION_IN_PROGRESS",
+	503: "RESOURCE_BUSY",
+}
+
+// postLifecycle issues an agent-lifecycle POST (stop/start/archive/restore)
+// with a bounded retry on server-declared contention.
+//
+// Retrying is safe precisely BECAUSE it is keyed on those two codes: both are
+// raised from a BOUNDED lock wait before the handler does any work, so they
+// mean "not started", never "half-done". A verb that already took effect
+// answers with a different code entirely, so a completed operation is never
+// re-sent. Everything else fails fast on the first attempt.
+//
+// This is the deliberate, response-code-aware retry that the transport-level
+// policy in client.go points at: a mutating verb earns a retry at its own call
+// site, where idempotency is known — not blindly, in the HTTP layer.
+func (c *Client) postLifecycle(path string) error {
+	var err error
+	for attempt := 1; ; attempt++ {
+		err = c.Post(path, nil, nil)
+		if !isContendedLifecycle(err) || attempt == lifecycleRetryAttempts {
+			return err
+		}
+		time.Sleep(lifecycleRetryBaseWait << (attempt - 1))
+	}
+}
+
+// isContendedLifecycle reports whether err is one of the control-plane's
+// retryable row-contention answers. Matched on the stable code, not the
+// message — a 409/503 carrying any other code must still fail fast.
+func isContendedLifecycle(err error) bool {
+	apiErr, ok := err.(*APIError)
+	if !ok {
+		return false
+	}
+	want, ok := contendedLifecycleCodes[apiErr.StatusCode]
+	return ok && apiErr.Code == want
+}
+
 // StopAgent pauses an agent (user-invoked). The server flips Fly's auto-start
 // off and stops every machine. Reversible via StartAgent.
 func (c *Client) StopAgent(idOrName string) error {
-	return c.Post(fmt.Sprintf("/agents/%s/stop", idOrName), nil, nil)
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/stop", idOrName))
 }
 
 // StartAgent resumes a paused agent.
 func (c *Client) StartAgent(idOrName string) error {
-	return c.Post(fmt.Sprintf("/agents/%s/start", idOrName), nil, nil)
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/start", idOrName))
 }
 
 // ArchiveAgent archives an agent: the server destroys its Fly app (freeing the
 // plan quota slot) while preserving all config and the S3 code bundle.
 // Reversible via RestoreAgent. Returns 202 on success.
 func (c *Client) ArchiveAgent(idOrName string) error {
-	return c.Post(fmt.Sprintf("/agents/%s/archive", idOrName), nil, nil)
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/archive", idOrName))
 }
 
 // RestoreAgent re-provisions an archived agent from its preserved code bundle.
 // Quota is re-checked server-side (may 403 PLAN_LIMIT_EXCEEDED). Returns 202 on
 // success; the deploy then runs asynchronously.
 func (c *Client) RestoreAgent(idOrName string) error {
-	return c.Post(fmt.Sprintf("/agents/%s/restore", idOrName), nil, nil)
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/restore", idOrName))
 }
 
 // GetAgentStatus returns detailed status for an agent
