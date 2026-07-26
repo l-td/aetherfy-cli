@@ -3,11 +3,49 @@ package api
 import (
 	"bytes"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/aetherfy/cli/internal/config"
 	"github.com/go-resty/resty/v2"
 )
+
+// Transport-level retries are restricted to methods that carry no server-side
+// effect.
+//
+// Resty's default with a retry count but no conditions is "retry on ANY
+// transport error, for ANY method" (v2 retry.go: `needsRetry := err != nil &&
+// err == err1` when no RetryConditions are registered). For a GET that is
+// harmless; for a POST/PATCH/DELETE it means a request the server may already
+// be executing gets sent a second time on nothing more than a slow reply or a
+// dropped connection — the client cannot tell "never arrived" from "arrived and
+// is still running".
+//
+// That is not theoretical: in nightly #30 it re-sent `agents stop` after a
+// client-side timeout while the server was still working, and the retry
+// collided with attempt 1's own agent-row lock (409 AGENT_OPERATION_IN_PROGRESS)
+// — the CLI reporting failure against itself. The same reflex on `deploy` or
+// `spawn` double-executes a create.
+//
+// A mutating verb that genuinely wants a retry should get a deliberate,
+// response-code-aware one at its own call site, where idempotency is known.
+var retryableMethods = map[string]bool{
+	http.MethodGet:     true,
+	http.MethodHead:    true,
+	http.MethodOptions: true,
+}
+
+// configureRetries applies the shared retry policy to a client.
+func configureRetries(client *resty.Client) {
+	client.SetRetryCount(2)
+	client.SetRetryWaitTime(1 * time.Second)
+	client.AddRetryCondition(func(resp *resty.Response, err error) bool {
+		if err == nil || resp == nil || resp.Request == nil {
+			return false
+		}
+		return retryableMethods[resp.Request.Method]
+	})
+}
 
 // Client wraps the HTTP client for API calls
 type Client struct {
@@ -24,8 +62,7 @@ func NewClient() *Client {
 
 	client := resty.New()
 	client.SetTimeout(30 * time.Second)
-	client.SetRetryCount(2)
-	client.SetRetryWaitTime(1 * time.Second)
+	configureRetries(client)
 
 	c := &Client{
 		http:    client,
@@ -55,6 +92,7 @@ func NewClient() *Client {
 func NewClientWithURL(baseURL, apiKey string) *Client {
 	client := resty.New()
 	client.SetTimeout(30 * time.Second)
+	configureRetries(client)
 	client.SetHeader("Content-Type", "application/json")
 	client.SetHeader("Accept", "application/json")
 	client.SetHeader("User-Agent", "afy-cli/1.0")
@@ -74,6 +112,7 @@ func NewClientWithKey(apiKey string) *Client {
 
 	client := resty.New()
 	client.SetTimeout(30 * time.Second)
+	configureRetries(client)
 	client.SetHeader("Content-Type", "application/json")
 	client.SetHeader("Accept", "application/json")
 	client.SetHeader("User-Agent", "afy-cli/1.0")
