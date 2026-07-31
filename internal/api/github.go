@@ -23,10 +23,10 @@ func (c *Client) GitHubDisconnect() error {
 }
 
 // GitHubLinkAgent links an agent to a GitHub repository and registers a push webhook.
-// branch defaults to "main" when empty.
-func (c *Client) GitHubLinkAgent(agentID, repo, branch string) (*GitHubLinkResponse, error) {
+// branch defaults to "main" when empty; rootDir empty means the repository root.
+func (c *Client) GitHubLinkAgent(agentID, repo, branch, rootDir string) (*GitHubLinkResponse, error) {
 	var resp GitHubLinkResponse
-	req := &GitHubLinkRequest{Repo: repo, Branch: branch}
+	req := &GitHubLinkRequest{Repo: repo, Branch: branch, RootDir: rootDir}
 	if err := c.Post(fmt.Sprintf("/agents/%s/github", agentID), req, &resp); err != nil {
 		return nil, err
 	}

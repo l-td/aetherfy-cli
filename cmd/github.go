@@ -149,7 +149,8 @@ var githubStatusCmd = &cobra.Command{
 // ---------------------------------------------------------------------------
 
 var (
-	githubLinkBranch string
+	githubLinkBranch  string
+	githubLinkRootDir string
 )
 
 var githubLinkCmd = &cobra.Command{
@@ -165,6 +166,11 @@ Requires your GitHub account to be connected ('afy github connect').
 <repo> format: owner/repo  (branch defaults to main)
 Use --branch or append @branch to override the branch.
 
+If several agents live in one repository, point each at its own folder
+with --root-dir. That folder holds the agent's aetherfy.yaml, and only
+that folder is uploaded when you push — sibling folders never enter the
+build. Omit it and the whole repository is the build context.
+
 Re-running 'afy github link' on an already-linked agent is supported
 and is the recovery path for two situations:
   * You need a fresh webhook secret (the response prints it once and
@@ -177,7 +183,8 @@ removes the old one — your existing auto-deploy keeps working until
 the new link is live.`,
 	Example: `  afy github link my-bot myorg/my-agent
   afy github link my-bot myorg/my-agent --branch develop
-  afy github link my-bot myorg/my-agent@develop`,
+  afy github link my-bot myorg/my-agent@develop
+  afy github link my-bot myorg/monorepo --root-dir agents/my-bot`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
@@ -209,15 +216,21 @@ the new link is live.`,
 		client := api.NewClient()
 		sp := output.NewSpinner(fmt.Sprintf("Linking %s to %s@%s...", agentID, repo, branch))
 		sp.Start()
-		resp, err := client.GitHubLinkAgent(agentID, repo, branch)
+		resp, err := client.GitHubLinkAgent(agentID, repo, branch, githubLinkRootDir)
 		sp.Stop()
 
 		if err != nil {
 			output.PrintError("Failed to link agent: %v", err)
+			// 422 has two causes now: GitHub not connected, and a rejected
+			// --root-dir. Gate the connect hint on the code, or a user who
+			// typed a bad path gets told to reconnect an account that is
+			// already fine.
 			if apiErr, ok := err.(*api.APIError); ok && apiErr.StatusCode == 422 {
-				output.Println("")
-				output.Println("Make sure your GitHub account is connected first:")
-				output.Println("  afy github connect")
+				if apiErr.Code == "GITHUB_NOT_CONNECTED" {
+					output.Println("")
+					output.Println("Make sure your GitHub account is connected first:")
+					output.Println("  afy github connect")
+				}
 			}
 			os.Exit(1)
 		}
@@ -225,9 +238,23 @@ the new link is live.`,
 		output.PrintSuccess("Agent linked to GitHub")
 		output.KeyValue("Repo", resp.Repo)
 		output.KeyValue("Branch", resp.Branch)
+		if resp.RootDir != "" {
+			output.KeyValue("Directory", resp.RootDir)
+		}
 		output.KeyValue("Webhook ID", resp.WebhookID)
+		// Shown ONCE — the server never returns it again, and re-linking is
+		// the only way to get a new one.
+		if resp.WebhookSecret != "" {
+			output.KeyValue("Webhook secret", resp.WebhookSecret)
+			output.Println("")
+			output.Println("Copy the webhook secret now — it is not retrievable later.")
+		}
 		output.Println("")
-		output.Println("Pushes to " + resp.Branch + " will now trigger automatic deployments.")
+		if resp.RootDir != "" {
+			output.Println("Pushes to " + resp.Branch + " that touch " + resp.RootDir + " will now trigger automatic deployments.")
+		} else {
+			output.Println("Pushes to " + resp.Branch + " will now trigger automatic deployments.")
+		}
 		return nil
 	},
 }
@@ -274,6 +301,7 @@ is not currently linked.`,
 
 func init() {
 	githubLinkCmd.Flags().StringVarP(&githubLinkBranch, "branch", "b", "", "Branch to watch (default: main, or embedded @branch in repo arg)")
+	githubLinkCmd.Flags().StringVar(&githubLinkRootDir, "root-dir", "", "Repo-relative folder holding this agent's code and aetherfy.yaml (default: the repository root)")
 
 	githubCmd.AddCommand(githubConnectCmd)
 	githubCmd.AddCommand(githubDisconnectCmd)

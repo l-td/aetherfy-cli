@@ -275,15 +275,22 @@ type GitHubStatus struct {
 	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
 }
 
-// GitHubLinkRequest is the request body for linking an agent to a GitHub repo
+// GitHubLinkRequest is the request body for linking an agent to a GitHub repo.
+// RootDir is the repo-relative folder holding this agent's code and
+// aetherfy.yaml; omitted means the repository root.
 type GitHubLinkRequest struct {
-	Repo   string `json:"repo"`
-	Branch string `json:"branch,omitempty"`
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch,omitempty"`
+	RootDir string `json:"root_dir,omitempty"`
 }
 
-// GitHubLinkResponse is the response from linking an agent to a GitHub repo
+// GitHubLinkResponse is the response from linking an agent to a GitHub repo.
+// WebhookSecret is returned ONCE, at link time — there is no fetch endpoint,
+// and `afy github link`'s help promises we print it, so it must be decoded.
 type GitHubLinkResponse struct {
-	Repo      string `json:"repo"`
-	Branch    string `json:"branch"`
-	WebhookID string `json:"webhook_id"`
+	Repo          string `json:"repo"`
+	Branch        string `json:"branch"`
+	RootDir       string `json:"root_dir"`
+	WebhookID     string `json:"webhook_id"`
+	WebhookSecret string `json:"webhook_secret"`
 }
