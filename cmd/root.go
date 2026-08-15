@@ -33,7 +33,7 @@ Quick start:
   afy deployments <agent>      # View deployment history
   afy rollback <agent> <ver>   # Roll back to a previous version
 
-For more information, visit: https://docs.aetherfy.run`,
+For more information, visit: https://docs.aetherfy.com`,
 	Version: version.Short(),
 	// Runtime errors (a failed API call, a rejected deploy) already print a
 	// clean "Error: ..." line — dumping the full usage/help text after them is

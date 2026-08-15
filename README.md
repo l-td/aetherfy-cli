@@ -7,7 +7,7 @@ The official command-line interface for the Aetherfy platform. Deploy, manage, a
 ### Quick Install (Linux/macOS)
 
 ```bash
-curl -fsSL https://aetherfy.run/install.sh | bash
+curl -fsSL https://aetherfy.com/install.sh | bash
 ```
 
 ### Homebrew (macOS)
@@ -352,9 +352,9 @@ make install
 
 ## Support
 
-- Documentation: https://docs.aetherfy.run
+- Documentation: https://docs.aetherfy.com
 - Issues: https://github.com/aetherfy/cli/issues
-- Email: support@aetherfy.run
+- Email: support@aetherfy.com
 
 ## License
 

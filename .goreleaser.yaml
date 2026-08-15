@@ -62,7 +62,7 @@ homebrew_casks:
     repository:
       owner: aetherfy
       name: homebrew-tap
-    homepage: https://aetherfy.run
+    homepage: https://aetherfy.com
     description: "Aetherfy CLI - Deploy and manage AI agents"
 
 release:

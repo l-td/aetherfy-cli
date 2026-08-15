@@ -17,7 +17,7 @@ var loginCmd = &cobra.Command{
 	Short: "Authenticate with your Aetherfy API key",
 	Long: `Authenticate with your Aetherfy API key.
 
-You can get your API key from the Aetherfy dashboard at https://app.aetherfy.run/settings/api-keys
+You can get your API key from the Aetherfy dashboard at https://app.aetherfy.com/dashboard/settings/api-keys
 
 The API key will be stored securely in ~/.aetherfy/credentials.yaml
 
@@ -72,7 +72,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		if apiErr, ok := err.(*api.APIError); ok {
 			if apiErr.StatusCode == 401 {
 				output.Println("\nMake sure your API key is correct and not expired.")
-				output.Println("Get a new key at: https://app.aetherfy.run/settings/api-keys")
+				output.Println("Get a new key at: https://app.aetherfy.com/dashboard/settings/api-keys")
 			}
 		}
 		return nil

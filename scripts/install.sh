@@ -3,7 +3,7 @@
 # Aetherfy CLI Installer
 #
 # Usage:
-#   curl -fsSL https://aetherfy.run/install.sh | bash
+#   curl -fsSL https://aetherfy.com/install.sh | bash
 #
 # Environment variables:
 #   AETHERFY_INSTALL_DIR - Installation directory (default: /usr/local/bin)
@@ -132,7 +132,7 @@ verify() {
         echo "  afy agents list        # List your agents"
         echo "  afy deploy             # Deploy your agent"
         echo ""
-        echo -e "${BLUE}Documentation: https://docs.aetherfy.run${NC}"
+        echo -e "${BLUE}Documentation: https://docs.aetherfy.com${NC}"
     else
         echo -e "${YELLOW}Warning: '${BINARY_NAME}' not found in PATH${NC}"
         echo "You may need to add ${INSTALL_DIR} to your PATH:"
