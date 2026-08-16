@@ -47,7 +47,7 @@ afy logs my-agent --follow
 
 # List deployment history and roll back if needed
 afy deployments my-agent
-afy rollback my-agent v3
+afy rollback my-agent 3
 
 # Run a job agent on demand and inspect its run history
 afy agents run my-job --wait
@@ -247,7 +247,7 @@ The CLI stores configuration in `~/.aetherfy/config.yaml`:
 
 ```yaml
 api_url: https://agents.aetherfy.com/api/v1
-default_region: iad
+default_region: us-east-1
 output_format: text
 no_color: false
 verbose: false
@@ -284,8 +284,8 @@ name: my-agent
 runtime: python3.11         # python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile
 type: service               # service or job
 entrypoint: main.py         # optional — auto-detected by `afy init`
-regions:                    # optional — list of iad, fra, sin
-  - iad
+regions:                    # optional — us-east-1, eu-central-1, ap-southeast-1
+  - us-east-1
 memory_mb: 512              # 256, 512, or 1024
 keep_alive: false           # always-on billing
 

@@ -453,7 +453,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 					}
 				}
 				output.Println("")
-				output.Println("Run 'aetherfy deploy' to try again.")
+				output.Println("Run 'afy deploy' to try again.")
 				return
 			}
 		}
