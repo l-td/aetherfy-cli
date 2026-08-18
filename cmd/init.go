@@ -63,7 +63,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
-	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Cron schedule for job agents (UTC, 5-field, min every 5 minutes), e.g. '0 3 * * *'")
+	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule for job-type agents — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
 }
 
 func fileExists(path string) bool {
