@@ -183,6 +183,44 @@ func TestInstallScriptTargetsTheRealRepo(t *testing.T) {
 		"scripts/install.sh must fetch releases from the repository that exists")
 }
 
+// The release target is the third place this repository names itself, and the
+// one nobody reads until a release is being cut — which is the worst moment to
+// discover it points at `aetherfy/cli`, an org that does not exist.
+//
+// NOT pinned here, deliberately: the Go MODULE path, `github.com/aetherfy/cli`.
+// It appears in every import block and in the ldflags below, it does not have
+// to match the release target for goreleaser, and renaming it is an owner
+// decision that only matters if `go install` support is ever wanted. A guard
+// that failed on it would fail on ~60 correct lines. So this scan skips
+// comments and looks only at the release block's own owner/name keys.
+func TestReleaseConfigTargetsTheRealRepo(t *testing.T) {
+	cfg := readSuggestionSource(t, ".goreleaser.yaml")
+
+	sawOwner, sawName := false, false
+	for i, line := range strings.Split(cfg, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "#") {
+			continue // commented-out blocks are inert; the cask is one
+		}
+		switch {
+		case strings.HasPrefix(trimmed, "owner:"):
+			sawOwner = true
+			assert.Equal(t, "owner: l-td", trimmed,
+				".goreleaser.yaml:%d — release owner must be the real org (l-td)", i+1)
+		case strings.HasPrefix(trimmed, "name: aetherfy-cli"), strings.HasPrefix(trimmed, "name: cli"):
+			sawName = true
+			assert.Equal(t, "name: aetherfy-cli", trimmed,
+				".goreleaser.yaml:%d — release repo must be aetherfy-cli, not cli", i+1)
+		}
+	}
+
+	// Anti-vacuity: both assertions live inside a conditional, so an edit that
+	// renamed or removed the keys would leave this test asserting nothing.
+	assert.True(t, sawOwner && sawName,
+		"no active release owner/name found in .goreleaser.yaml — the scan is dead "+
+			"and TestReleaseConfigTargetsTheRealRepo asserts nothing")
+}
+
 // Install paths that do not exist must not be advertised as if they did.
 //
 // `curl -fsSL https://aetherfy.com/install.sh | bash` — that URL is a 404;
@@ -210,7 +248,15 @@ func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 		for _, u := range unshipped {
 			if strings.Contains(line, u.fragment) {
 				assert.Fail(t, "README advertises an install path that does not work",
-					"README.md:%d — %s", i+1, u.why)
+					"README.md:%d — %s\n\n"+
+						"IF YOU JUST CUT THE FIRST RELEASE: this guard is the thing that is "+
+						"out of date, not your README. The rule it encodes — \"no release "+
+						"exists, so no download path can be documented\" — expires the moment "+
+						"one does. Delete the matching entry from `unshipped` in %s, re-point "+
+						"scripts/install.sh's header at the now-live URL, and restore the "+
+						"homebrew_casks block in .goreleaser.yaml with a tap repository that "+
+						"exists. Do not silence this by rewording the README.",
+					i+1, u.why, "test/suggested_commands_test.go")
 			}
 		}
 	}
