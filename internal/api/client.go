@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aetherfy/cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/go-resty/resty/v2"
 )
 

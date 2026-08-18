@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/aetherfy/cli/internal/detect"
-	"github.com/aetherfy/cli/internal/output"
+	"github.com/l-td/aetherfy-cli/internal/detect"
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aetherfy/cli/internal/api"
-	"github.com/aetherfy/cli/internal/archive"
-	"github.com/aetherfy/cli/internal/yamldiff"
+	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/archive"
+	"github.com/l-td/aetherfy-cli/internal/yamldiff"
 	"gopkg.in/yaml.v3"
 )
 

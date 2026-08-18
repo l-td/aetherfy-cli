@@ -126,10 +126,9 @@ func TestSuggestionSourcesAreActuallyScanned(t *testing.T) {
 // resolve to it.
 const realRepoURL = "https://github.com/l-td/aetherfy-cli"
 
-// A github.com URL in prose, as opposed to a Go import path. Import paths have
-// no scheme, so requiring `https://` separates the two: the module is still
-// github.com/aetherfy/cli in every source file's import block, and renaming
-// that is a different change from telling a reader where the code is.
+// A github.com URL in prose, as opposed to a Go import path. Import paths carry
+// no scheme, so requiring `https://` keeps this check on reader-facing links
+// only; the module path is pinned separately, by its own rule below.
 var proseGitHubURL = regexp.MustCompile(`https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`)
 
 // README URLs must point at the repository that exists.
@@ -187,12 +186,9 @@ func TestInstallScriptTargetsTheRealRepo(t *testing.T) {
 // one nobody reads until a release is being cut — which is the worst moment to
 // discover it points at `aetherfy/cli`, an org that does not exist.
 //
-// NOT pinned here, deliberately: the Go MODULE path, `github.com/aetherfy/cli`.
-// It appears in every import block and in the ldflags below, it does not have
-// to match the release target for goreleaser, and renaming it is an owner
-// decision that only matters if `go install` support is ever wanted. A guard
-// that failed on it would fail on ~60 correct lines. So this scan skips
-// comments and looks only at the release block's own owner/name keys.
+// This scan skips comment lines, so the commented-out cask block stays inert
+// and prose that quotes the old path (as the comments above do, describing what
+// was fixed) does not trip it.
 func TestReleaseConfigTargetsTheRealRepo(t *testing.T) {
 	cfg := readSuggestionSource(t, ".goreleaser.yaml")
 
@@ -219,6 +215,118 @@ func TestReleaseConfigTargetsTheRealRepo(t *testing.T) {
 	assert.True(t, sawOwner && sawName,
 		"no active release owner/name found in .goreleaser.yaml — the scan is dead "+
 			"and TestReleaseConfigTargetsTheRealRepo asserts nothing")
+}
+
+// The module path is the fourth place this repository names itself, and it used
+// to name someone else's: `github.com/aetherfy/cli`. The owner does not own the
+// `aetherfy` GitHub org (they hold aetherfy-hq; this CLI lives in a personal
+// account), so every import in this repo resolved into a namespace a stranger
+// could claim and publish under. That is a supply-chain problem, not a cosmetic
+// one, which is why it is pinned rather than left to judgement.
+//
+// Pinning the module path also makes the ldflags checkable, and they are the
+// quiet failure here: `-X` against a symbol path that does not exist is
+// silently ignored by the linker, so a half-done rename does not break the
+// build — it just makes `afy version` report "dev" forever.
+const realModulePath = "github.com/l-td/aetherfy-cli"
+
+func TestModulePathIsOwnedByUs(t *testing.T) {
+	// go.mod is the declaration; everything else follows it.
+	gomod := readSuggestionSource(t, "go.mod")
+	assert.Contains(t, gomod, "module "+realModulePath,
+		"go.mod must declare the module under a namespace we control")
+
+	// The two places the path is written by hand rather than by the compiler.
+	// A stale one here does not fail the build, it fails `afy version`.
+	//
+	// Every -X flag is extracted and checked INDIVIDUALLY. Checking the line
+	// instead lets a stale flag hide behind its correct neighbours: the
+	// Makefile carries all three (-X Version, -X Commit, -X BuildDate) on one
+	// line, so a line-level "contains the right path" passes while one of the
+	// three silently injects nothing.
+	flags := 0
+	for _, rel := range []string{"Makefile", ".goreleaser.yaml"} {
+		body := readSuggestionSource(t, rel)
+		for i, line := range strings.Split(body, "\n") {
+			for _, m := range ldflagX.FindAllStringSubmatch(line, -1) {
+				flags++
+				assert.Equal(t, realModulePath, m[1],
+					"%s:%d — ldflag -X names %q; we own %q. `-X` against a symbol "+
+						"that does not exist is IGNORED by the linker, so this does not "+
+						"break the build — it ships a binary reporting version \"dev\".",
+					rel, i+1, m[1], realModulePath)
+			}
+		}
+	}
+	assert.Equal(t, 6, flags,
+		"expected 6 -X ldflags (3 in the Makefile, 3 in .goreleaser.yaml), found %d — "+
+			"the extractor is stale and the assertions above are vacuous", flags)
+
+	// Nothing anywhere may still IMPORT through the foreign namespace. Scanned
+	// across the tracked Go sources rather than a hand-listed few, because an
+	// import that survives a rename is exactly the one nobody looked at.
+	//
+	// Anchored to import-line shape rather than a substring search. A substring
+	// search matches this file's own comments and its own detector string, so
+	// the first version of this guard failed on the prose describing the bug it
+	// guards against — a self-referential scan reports on itself, not on the
+	// code. Import lines are a bare (optionally aliased) quoted path.
+	scanned, foreign := 0, 0
+	for _, dir := range []string{"cmd", "internal", "test", "pkg"} {
+		for _, f := range goFilesUnder(t, dir) {
+			body := readSuggestionSource(t, f)
+			for i, line := range strings.Split(body, "\n") {
+				if !goImportLine.MatchString(line) {
+					continue
+				}
+				scanned++
+				if strings.Contains(line, `"github.com/aetherfy/`) {
+					foreign++
+					assert.Fail(t, "import path in a namespace we do not own",
+						"%s:%d — %s", f, i+1, strings.TrimSpace(line))
+				}
+			}
+		}
+	}
+	assert.Equal(t, 0, foreign)
+
+	// Negative control: a zero above is worthless unless the detector fires.
+	assert.Greater(t, scanned, 50,
+		"only %d import lines seen — the scan is not reaching the sources", scanned)
+	assert.True(t, goImportLine.MatchString(`	"github.com/aetherfy/cli/internal/api"`),
+		"the import-line matcher no longer matches an import line; the zero above means nothing")
+	assert.False(t, goImportLine.MatchString(`// github.com/aetherfy/cli in a comment`),
+		"the import-line matcher matches comments again — it will report on its own prose")
+}
+
+// An import line: optional alias, then a quoted path. Deliberately not a
+// substring search — see TestModulePathIsOwnedByUs.
+var goImportLine = regexp.MustCompile(`^\s*(?:[\w.]+\s+)?"[^"]+"\s*$`)
+
+// One `-X <module>/pkg/version.<Symbol>=...` ldflag, capturing the module path
+// so each flag can be checked on its own rather than by line.
+var ldflagX = regexp.MustCompile(`-X\s+(\S+?)/pkg/version\.\w+=`)
+
+// goFilesUnder lists .go files in a repo-relative directory, so the import scan
+// covers what is actually there instead of a list that rots.
+func goFilesUnder(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	root := filepath.Join("..", filepath.FromSlash(dir))
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil // pkg/ may not exist; absence is not a failure
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			out = append(out, goFilesUnder(t, dir+"/"+e.Name())...)
+			continue
+		}
+		if strings.HasSuffix(e.Name(), ".go") {
+			out = append(out, dir+"/"+e.Name())
+		}
+	}
+	return out
 }
 
 // Install paths that do not exist must not be advertised as if they did.

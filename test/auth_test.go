@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
 // TestUserInfoStructure tests that UserInfo has all required fields

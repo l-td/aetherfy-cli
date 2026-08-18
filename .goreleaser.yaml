@@ -25,9 +25,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/aetherfy/cli/pkg/version.Version={{.Version}}
-      - -X github.com/aetherfy/cli/pkg/version.Commit={{.Commit}}
-      - -X github.com/aetherfy/cli/pkg/version.BuildDate={{.Date}}
+      - -X github.com/l-td/aetherfy-cli/pkg/version.Version={{.Version}}
+      - -X github.com/l-td/aetherfy-cli/pkg/version.Commit={{.Commit}}
+      - -X github.com/l-td/aetherfy-cli/pkg/version.BuildDate={{.Date}}
 
 archives:
   - id: default
@@ -72,10 +72,9 @@ changelog:
 
 release:
   # The real repository (git remote origin). This said `aetherfy/cli`, which
-  # does not exist. Note the Go MODULE path is still github.com/aetherfy/cli —
-  # that is an import path baked into every file, renamed separately or not at
-  # all; it does not have to match the release target for goreleaser, but it
-  # does break `go install`, which is why the README does not suggest it.
+  # does not exist — and the module path said the same, in a GitHub org we do
+  # not own. Both now name this repository, so the ldflags above resolve and
+  # `go install` is possible for the first time.
   github:
     owner: l-td
     name: aetherfy-cli

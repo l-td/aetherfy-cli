@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
 // CancelDeployment is the API-client primitive; the `afy agents cancel`

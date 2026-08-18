@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

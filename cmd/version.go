@@ -3,7 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/aetherfy/cli/pkg/version"
+	"github.com/l-td/aetherfy-cli/pkg/version"
 	"github.com/spf13/cobra"
 )
 

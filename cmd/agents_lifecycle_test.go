@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
 // These tests mirror the existing agents_test.go pattern (httptest.Server +

@@ -3,9 +3,9 @@ package cmd
 import (
 	"os"
 
-	"github.com/aetherfy/cli/internal/config"
-	"github.com/aetherfy/cli/internal/output"
-	"github.com/aetherfy/cli/pkg/version"
+	"github.com/l-td/aetherfy-cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/output"
+	"github.com/l-td/aetherfy-cli/pkg/version"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/aetherfy/cli/internal/detect"
+	"github.com/l-td/aetherfy-cli/internal/detect"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

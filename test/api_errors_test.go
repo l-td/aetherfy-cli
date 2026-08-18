@@ -3,7 +3,7 @@ package test
 import (
 	"testing"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/stretchr/testify/assert"
 )
 

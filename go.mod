@@ -1,4 +1,4 @@
-module github.com/aetherfy/cli
+module github.com/l-td/aetherfy-cli
 
 go 1.21
 

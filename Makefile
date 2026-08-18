@@ -5,7 +5,7 @@ BINARY_NAME=afy
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
-LDFLAGS=-ldflags "-s -w -X github.com/aetherfy/cli/pkg/version.Version=$(VERSION) -X github.com/aetherfy/cli/pkg/version.Commit=$(COMMIT) -X github.com/aetherfy/cli/pkg/version.BuildDate=$(BUILD_DATE)"
+LDFLAGS=-ldflags "-s -w -X github.com/l-td/aetherfy-cli/pkg/version.Version=$(VERSION) -X github.com/l-td/aetherfy-cli/pkg/version.Commit=$(COMMIT) -X github.com/l-td/aetherfy-cli/pkg/version.BuildDate=$(BUILD_DATE)"
 
 # Go parameters
 GOCMD=go

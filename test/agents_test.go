@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
 // TestAgentCreateRequestWithRuntime tests that AgentCreateRequest includes runtime field

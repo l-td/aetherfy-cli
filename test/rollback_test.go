@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aetherfy/cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
 func TestRollback_Success(t *testing.T) {

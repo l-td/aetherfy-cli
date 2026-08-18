@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aetherfy/cli/internal/api"
-	"github.com/aetherfy/cli/internal/output"
+	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
 

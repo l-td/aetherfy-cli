@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aetherfy/cli/internal/api"
-	"github.com/aetherfy/cli/internal/config"
-	"github.com/aetherfy/cli/internal/output"
-	"github.com/aetherfy/cli/internal/yamldiff"
+	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/output"
+	"github.com/l-td/aetherfy-cli/internal/yamldiff"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )

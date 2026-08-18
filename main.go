@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/aetherfy/cli/cmd"
+	"github.com/l-td/aetherfy-cli/cmd"
 )
 
 func main() {
