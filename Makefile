@@ -7,6 +7,12 @@ COMMIT?=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE?=$(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-s -w -X github.com/l-td/aetherfy-cli/pkg/version.Version=$(VERSION) -X github.com/l-td/aetherfy-cli/pkg/version.Commit=$(COMMIT) -X github.com/l-td/aetherfy-cli/pkg/version.BuildDate=$(BUILD_DATE)"
 
+# GOPATH is only sometimes exported. `go env GOPATH` always answers
+# (~/go when unset), and `?=` keeps an explicit environment GOPATH winning.
+# Without this, install/uninstall expanded to /bin/afy: the install wrote
+# outside the user's tree and the uninstall deleted from it.
+GOPATH ?= $(shell go env GOPATH)
+
 # Go parameters
 GOCMD=go
 GOBUILD=$(GOCMD) build
@@ -40,13 +46,14 @@ build-debug:
 ## Install to GOPATH/bin
 install: build
 	@echo "Installing $(BINARY_NAME)..."
-	@cp $(BUILD_DIR)/$(BINARY_NAME) $(GOPATH)/bin/$(BINARY_NAME)
+	@mkdir -p "$(GOPATH)/bin"
+	@cp "$(BUILD_DIR)/$(BINARY_NAME)" "$(GOPATH)/bin/$(BINARY_NAME)"
 	@echo "Installed to $(GOPATH)/bin/$(BINARY_NAME)"
 
 ## Uninstall from GOPATH/bin
 uninstall:
 	@echo "Uninstalling $(BINARY_NAME)..."
-	@rm -f $(GOPATH)/bin/$(BINARY_NAME)
+	@rm -f "$(GOPATH)/bin/$(BINARY_NAME)"
 
 ## Run tests
 test:
