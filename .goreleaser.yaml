@@ -55,20 +55,30 @@ changelog:
       - Merge pull request
       - Merge branch
 
-homebrew_casks:
-  - name: afy
-    binaries:
-      - afy
-    repository:
-      owner: aetherfy
-      name: homebrew-tap
-    homepage: https://aetherfy.com
-    description: "Aetherfy CLI - Deploy and manage AI agents"
+# No Homebrew tap yet. The block below named `aetherfy/homebrew-tap`, an org and
+# repository that do not exist, so the first release would have failed trying to
+# push a cask into it. Restore it — with a tap repository that exists — when
+# there is one; until then the README documents build-from-source only.
+#
+# homebrew_casks:
+#   - name: afy
+#     binaries:
+#       - afy
+#     repository:
+#       owner: <tap-owner>
+#       name: homebrew-tap
+#     homepage: https://aetherfy.com
+#     description: "Aetherfy CLI - Deploy and manage AI agents"
 
 release:
+  # The real repository (git remote origin). This said `aetherfy/cli`, which
+  # does not exist. Note the Go MODULE path is still github.com/aetherfy/cli —
+  # that is an import path baked into every file, renamed separately or not at
+  # all; it does not have to match the release target for goreleaser, but it
+  # does break `go install`, which is why the README does not suggest it.
   github:
-    owner: aetherfy
-    name: cli
+    owner: l-td
+    name: aetherfy-cli
   draft: false
   prerelease: auto
   name_template: "v{{.Version}}"

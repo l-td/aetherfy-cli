@@ -120,3 +120,98 @@ func TestSuggestionSourcesAreActuallyScanned(t *testing.T) {
 			"expected suggestion %q not found — suggestionSources is stale and the guards are vacuous", canary)
 	}
 }
+
+// The repository this code actually lives in (`git remote get-url origin`).
+// A URL a reader is told to clone, browse, or file an issue against must
+// resolve to it.
+const realRepoURL = "https://github.com/l-td/aetherfy-cli"
+
+// A github.com URL in prose, as opposed to a Go import path. Import paths have
+// no scheme, so requiring `https://` separates the two: the module is still
+// github.com/aetherfy/cli in every source file's import block, and renaming
+// that is a different change from telling a reader where the code is.
+var proseGitHubURL = regexp.MustCompile(`https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+`)
+
+// README URLs must point at the repository that exists.
+//
+// The README told readers to `git clone https://github.com/aetherfy/cli.git`,
+// to download releases from `aetherfy/cli/releases`, and to file issues at
+// `aetherfy/cli/issues`. That org and repo do not exist — every one of those
+// links 404s, and the clone is the FIRST thing a reader does. The docs site now
+// points at this repository, so the repository must not point at a fiction.
+func TestReadmeGitHubURLsPointAtTheRealRepo(t *testing.T) {
+	readme := readSuggestionSource(t, "README.md")
+
+	found := 0
+	for i, line := range strings.Split(readme, "\n") {
+		for _, u := range proseGitHubURL.FindAllString(line, -1) {
+			found++
+			assert.True(t, strings.HasPrefix(u, realRepoURL),
+				"README.md:%d links %q — the repository is %s (git remote origin). "+
+					"github.com/aetherfy/* does not exist.", i+1, u, realRepoURL)
+		}
+	}
+
+	// Boundary check, not a truthy one: the loop above asserts nothing if the
+	// regex stops matching. The README carries at least the clone URL and the
+	// issues URL.
+	assert.GreaterOrEqual(t, found, 2,
+		"expected at least 2 github.com URLs in README.md, found %d — "+
+			"the URL scan is dead and the assertion above is vacuous", found)
+
+	// The clone command specifically: the shape a reader copies. Scanned line
+	// by line and reported with Fail rather than asserted with Contains over
+	// the whole file — Contains prints the entire README on failure, burying
+	// the one line you need to fix.
+	cloneOK := false
+	for _, line := range strings.Split(readme, "\n") {
+		if strings.Contains(line, "git clone "+realRepoURL+".git") {
+			cloneOK = true
+			break
+		}
+	}
+	if !cloneOK {
+		assert.Fail(t, "README.md shows no working clone command",
+			"expected a line containing `git clone %s.git`", realRepoURL)
+	}
+}
+
+// The installer script downloads from a GitHub repo; same rule.
+func TestInstallScriptTargetsTheRealRepo(t *testing.T) {
+	script := readSuggestionSource(t, "scripts/install.sh")
+	assert.Contains(t, script, `GITHUB_REPO="l-td/aetherfy-cli"`,
+		"scripts/install.sh must fetch releases from the repository that exists")
+}
+
+// Install paths that do not exist must not be advertised as if they did.
+//
+// `curl -fsSL https://aetherfy.com/install.sh | bash` — that URL is a 404;
+// the landing site serves no install.sh. `brew install aetherfy/tap/afy` —
+// there is no tap, and no tagged release for one to carry. Both were printed
+// as ready-to-run commands under "Installation". Build-from-source is the
+// only path today; when a release exists, document these again then.
+func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
+	readme := readSuggestionSource(t, "README.md")
+
+	unshipped := []struct{ fragment, why string }{
+		{"aetherfy.com/install.sh", "aetherfy.com serves no install.sh — the URL 404s"},
+		{"brew install", "no Homebrew tap exists and there are no releases to package"},
+		{"github.com/l-td/aetherfy-cli/releases", "this repository has no tagged releases"},
+	}
+
+	for i, line := range strings.Split(readme, "\n") {
+		// Only executable-looking lines: a sentence explaining that these are
+		// not published yet is exactly what should be there instead.
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "curl ") && !strings.HasPrefix(trimmed, "brew ") &&
+			!strings.Contains(trimmed, "](https://github.com/") {
+			continue
+		}
+		for _, u := range unshipped {
+			if strings.Contains(line, u.fragment) {
+				assert.Fail(t, "README advertises an install path that does not work",
+					"README.md:%d — %s", i+1, u.why)
+			}
+		}
+	}
+}

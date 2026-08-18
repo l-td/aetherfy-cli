@@ -4,31 +4,25 @@ The official command-line interface for the Aetherfy platform. Deploy, manage, a
 
 ## Installation
 
-### Quick Install (Linux/macOS)
-
-```bash
-curl -fsSL https://aetherfy.com/install.sh | bash
-```
-
-### Homebrew (macOS)
-
-```bash
-brew install aetherfy/tap/afy
-```
+Building from source is the only install path today, on every platform.
+There are no tagged releases yet, so anything that downloads a prebuilt
+binary — the `curl | bash` installer, a Homebrew tap, GitHub Releases —
+has nothing to fetch. Those paths will be documented here when the first
+release is cut, and not before.
 
 ### From Source
 
-Requires Go 1.21+:
+Requires Go 1.21+ (and, on Windows, Git Bash or WSL for `make` — otherwise
+run the `go build` line the Makefile wraps):
 
 ```bash
-git clone https://github.com/aetherfy/cli.git
-cd cli
+git clone https://github.com/l-td/aetherfy-cli.git
+cd aetherfy-cli
 make install
 ```
 
-### Windows
-
-Download the latest release from [GitHub Releases](https://github.com/aetherfy/cli/releases).
+`make install` puts `afy` in `$(go env GOPATH)/bin`; make sure that
+directory is on your `PATH`.
 
 ## Quick Start
 
@@ -353,7 +347,7 @@ make install
 ## Support
 
 - Documentation: https://docs.aetherfy.com
-- Issues: https://github.com/aetherfy/cli/issues
+- Issues: https://github.com/l-td/aetherfy-cli/issues
 - Email: support@aetherfy.com
 
 ## License

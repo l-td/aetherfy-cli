@@ -2,7 +2,10 @@
 #
 # Aetherfy CLI Installer
 #
-# Usage:
+# NOT PUBLISHED YET. aetherfy.com/install.sh is a 404 and this repository has no
+# tagged releases, so the download below has nothing to fetch. Keep it working
+# and correct; the README documents build-from-source only until a release
+# exists. Intended usage once it is hosted:
 #   curl -fsSL https://aetherfy.com/install.sh | bash
 #
 # Environment variables:
@@ -21,7 +24,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 BINARY_NAME="afy"
-GITHUB_REPO="aetherfy/cli"
+GITHUB_REPO="l-td/aetherfy-cli"
 INSTALL_DIR="${AETHERFY_INSTALL_DIR:-/usr/local/bin}"
 VERSION="${AETHERFY_VERSION:-latest}"
 
