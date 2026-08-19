@@ -30,11 +30,15 @@ Subcommands:
   disconnect           Remove the GitHub App installation
   status               Show GitHub connection status
   link <agent> <repo>  Link an agent to a GitHub repo for auto-deploy
-  unlink <agent>       Remove the GitHub link from an agent`,
+  unlink <agent>       Remove the GitHub link from an agent
+
+Several agents can share one repository — give each its own folder with
+'link --root-dir'.`,
 	Example: `  afy github connect
   afy github status
   afy github link my-bot myorg/my-agent
   afy github link my-bot myorg/my-agent@develop
+  afy github link my-bot myorg/monorepo --root-dir agents/my-bot
   afy github unlink my-bot
   afy github disconnect`,
 }
