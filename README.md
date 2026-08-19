@@ -54,7 +54,7 @@ afy agents runs my-job
 
 | Command | Description |
 |---------|-------------|
-| `afy login` | Authenticate with your API key (stored in `~/.aetherfy/credentials.yaml`, mode 0600) |
+| `afy login` | Authenticate with your API key (stored in `credentials.yaml` in the [config directory](#config-file), mode 0600) |
 | `afy logout` | Remove stored credentials |
 | `afy whoami` | Show current authentication status and account info |
 
@@ -237,7 +237,16 @@ Connect your GitHub account to deploy on every push.
 
 ### Config File
 
-The CLI stores configuration in `~/.aetherfy/config.yaml`:
+The CLI resolves its config directory in this order:
+
+1. `$AETHERFY_CONFIG_DIR`, if set.
+2. On Windows, `%APPDATA%\aetherfy`.
+3. On Linux, `$XDG_CONFIG_HOME/aetherfy`, if `XDG_CONFIG_HOME` is set.
+4. Otherwise, `~/.aetherfy`.
+
+`afy whoami` prints the resolved credentials path if you need the concrete one.
+
+The CLI stores configuration in `config.yaml` inside that directory:
 
 ```yaml
 api_url: https://agents.aetherfy.com/api/v1

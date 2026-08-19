@@ -12,6 +12,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// The stored-credentials path is COMPUTED, not described. It used to be
+// hardcoded as "~/.aetherfy/credentials.yaml", which is wrong on Windows:
+// ConfigDir() resolves to %APPDATA%\aetherfy\ on that platform, and
+// $AETHERFY_CONFIG_DIR overrides everywhere. This is the sentence a user
+// follows to find, inspect, or delete their credentials, so being wrong on a
+// whole platform sends them hunting in a directory that does not exist.
+// Asking config for the real path cannot drift from it.
 var loginCmd = &cobra.Command{
 	Use:   "login",
 	Short: "Authenticate with your Aetherfy API key",
@@ -19,7 +26,7 @@ var loginCmd = &cobra.Command{
 
 You can get your API key from the Aetherfy dashboard at https://app.aetherfy.com/dashboard/settings/api-keys
 
-The API key will be stored securely in ~/.aetherfy/credentials.yaml
+The API key will be stored securely in ` + config.CredentialsPath() + `
 
 You can also set the AETHERFY_API_KEY environment variable to authenticate.`,
 	Example: `  # Interactive login

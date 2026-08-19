@@ -88,7 +88,10 @@ func Execute() error {
 
 func init() {
 	// Global flags
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is ~/.aetherfy/config.yaml)")
+	// Computed, not hardcoded — see the note on loginCmd. "~/.aetherfy" is only
+	// the FALLBACK branch of config.ConfigDir(); on Windows the real directory
+	// is %APPDATA%\aetherfy, and $AETHERFY_CONFIG_DIR overrides both.
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is "+config.ConfigPath()+")")
 	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "", "API base URL (overrides config)")
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "", "output format: text, json, table")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
