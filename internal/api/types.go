@@ -14,7 +14,6 @@ type Agent struct {
 	Status        string    `json:"status"`
 	AgentType     string    `json:"agent_type"`
 	Runtime       string    `json:"runtime,omitempty"`
-	Region        string    `json:"region,omitempty"`
 	WorkspaceName string    `json:"workspace_name,omitempty"`
 	SpawnEnabled  bool      `json:"spawn_enabled"`
 	// AllowedWorkers / ParentAgentID pull through from the server's
@@ -37,6 +36,15 @@ type Agent struct {
 	RegionsTotal   int    `json:"regions_total"`
 	RegionsReady   int    `json:"regions_ready"`
 	DegradedReason string `json:"degraded_reason,omitempty"`
+	// The agent's actual region footprint, from the server's AgentResponse
+	// `regions` (the full target list) and `pending_regions` (the subset still
+	// converging). This replaces a singular `Region` field that the server has
+	// never sent: it unmarshalled to "" and printed as a permanently blank
+	// REGION column on `afy agents list` and a blank `Region:` on status.
+	// Declaring a field the API does not send is how that survived — it fails
+	// as an empty value, never as an error.
+	Regions        []string `json:"regions,omitempty"`
+	PendingRegions []string `json:"pending_regions,omitempty"`
 	// Cron scheduling (CP-4). Carried on the agent list + detail responses.
 	// CronSchedule is the 5-field UTC expression (empty = no schedule); the
 	// rest is scheduler-written fire-time telemetry feeding the CLI badges.

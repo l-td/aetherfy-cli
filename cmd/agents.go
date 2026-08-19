@@ -70,9 +70,9 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 	}
 
 	// Table output
-	headers := []string{"Name", "Type", "Status", "Region", "ID"}
+	headers := []string{"Name", "Type", "Status", "Regions", "ID"}
 	if anyScheduled {
-		headers = []string{"Name", "Type", "Status", "Region", "Schedule", "Next Run", "Last Run", "ID"}
+		headers = []string{"Name", "Type", "Status", "Regions", "Schedule", "Next Run", "Last Run", "ID"}
 	}
 	table := output.Table(headers)
 	for i := range agents {
@@ -96,9 +96,9 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 				}
 				lastCell = formatLastRun(a)
 			}
-			table.Append([]string{a.Name, a.AgentType, status, a.Region, schedCell, nextCell, lastCell, a.ID})
+			table.Append([]string{a.Name, a.AgentType, status, formatRegions(a.Regions), schedCell, nextCell, lastCell, a.ID})
 		} else {
-			table.Append([]string{a.Name, a.AgentType, status, a.Region, a.ID})
+			table.Append([]string{a.Name, a.AgentType, status, formatRegions(a.Regions), a.ID})
 		}
 	}
 	table.Render()
@@ -520,7 +520,7 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 			output.KeyValue("Degraded reason", agent.DegradedReason)
 		}
 	}
-	output.KeyValue("Region", agent.Region)
+	output.KeyValue("Regions", formatRegions(agent.Regions))
 	output.KeyValue("Spawn Enabled", fmt.Sprintf("%v", agent.SpawnEnabled))
 	if agent.WorkspaceName != "" {
 		output.KeyValue("Workspace", agent.WorkspaceName)
@@ -1251,6 +1251,21 @@ func formatDegradedTag(isDegraded bool, regionsReady, regionsTotal int) string {
 		return ""
 	}
 	return output.Warning.Sprintf("⚠ DEGRADED %d/%d", regionsReady, regionsTotal)
+}
+
+// formatRegions renders an agent's region footprint for the list table and the
+// status view. ONE formatter so the two surfaces cannot drift, the same reason
+// formatDegradedTag is shared.
+//
+// An agent with no ACTIVE deployment has no footprint yet, and the server sends
+// an empty list for it. That renders as "—" rather than "": a blank cell is
+// what the old phantom `Region` field produced for EVERY agent, and it read as
+// a broken column instead of as "nothing deployed".
+func formatRegions(regions []string) string {
+	if len(regions) == 0 {
+		return "—"
+	}
+	return strings.Join(regions, ", ")
 }
 
 // formatDeploymentState renders the State column value for the rollback

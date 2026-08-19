@@ -89,3 +89,25 @@ func TestArchiveRestoreCommandsWired(t *testing.T) {
 		t.Error("`start` short help must not mention archive (stays resume)")
 	}
 }
+
+// formatRegions is the ONE renderer behind both the `afy agents list` Regions
+// column and the `Regions:` line on `afy agents status`, so the two surfaces
+// cannot drift. It replaced a singular `Region` field the server never sent,
+// which rendered as a permanently blank column on every agent.
+func TestFormatRegions(t *testing.T) {
+	if got := formatRegions([]string{"us-east-1"}); got != "us-east-1" {
+		t.Errorf("single region → %q", got)
+	}
+	if got := formatRegions([]string{"us-east-1", "eu-central-1"}); got != "us-east-1, eu-central-1" {
+		t.Errorf("multi region → %q", got)
+	}
+	// No ACTIVE deployment → no footprint. An em dash, NOT "": a blank cell is
+	// exactly what the old phantom field produced, and it read as a broken
+	// column rather than as "nothing deployed".
+	if got := formatRegions(nil); got != "—" {
+		t.Errorf("no regions → %q, want an em dash", got)
+	}
+	if got := formatRegions([]string{}); got != "—" {
+		t.Errorf("empty regions → %q, want an em dash", got)
+	}
+}
