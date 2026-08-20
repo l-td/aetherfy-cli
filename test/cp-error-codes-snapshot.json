@@ -6,20 +6,17 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 117,
-      "why": "the registry of every code that can appear as detail.code"
+      "count": 117
     },
     {
       "path": "api/routes/regions.py",
       "tier": "violation",
-      "count": 5,
-      "why": "the five region-preflight codes, deliberately kept out of the top-level registry"
+      "count": 5
     },
     {
       "path": "shared/plan_validator.py",
       "tier": "violation",
-      "count": 1,
-      "why": "AGENT_COLLECTION_REGION_MISMATCH, raised through AgentScopeViolation"
+      "count": 1
     }
   ],
   "codes": {

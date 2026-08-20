@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/l-td/aetherfy-cli/test/cperrors"
 )
@@ -39,10 +40,19 @@ func run(repoRoot, cpRoot string) error {
 		cpRoot = cperrors.Root(repoRoot)
 	}
 
-	if !cperrors.Present(cpRoot) {
+	if !cperrors.RootExists(cpRoot) {
 		return fmt.Errorf("aetherfy-control-plane is not checked out at %s.\n"+
 			"  This script only runs where the sibling is present; CI consumes the committed\n"+
 			"  snapshot. Point it elsewhere with -cp, or set %s.", cpRoot, cperrors.RootEnv)
+	}
+	// A checkout WITH a moved registry is a different failure from no checkout,
+	// and must never be reported as the latter.
+	if missing := cperrors.MissingSources(cpRoot); len(missing) > 0 {
+		return fmt.Errorf("the control plane is checked out at %s, but these registries are "+
+			"not where the extractor looks:\n    %s\n"+
+			"  They were moved or renamed. Update `sources` in test/cperrors/extract.go to "+
+			"the new paths — extracting from the rest would write a snapshot that reports the "+
+			"missing file's codes as deletions.", cpRoot, strings.Join(missing, "\n    "))
 	}
 
 	reg, err := cperrors.Extract(cpRoot)
@@ -50,7 +60,7 @@ func run(repoRoot, cpRoot string) error {
 		return err
 	}
 	// Refuse to write what we cannot vouch for — before touching the file.
-	if err := cperrors.Validate(reg); err != nil {
+	if err := cperrors.ValidateExtraction(reg); err != nil {
 		return fmt.Errorf("extraction from %s is not trustworthy: %v.\n"+
 			"  Refusing to write a snapshot that would green-light any error code.", cpRoot, err)
 	}

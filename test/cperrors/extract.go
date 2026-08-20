@@ -40,36 +40,41 @@ import (
 // one is pinning a real string — but the snapshot records which is which so a
 // reader can tell where a code can actually surface.
 const (
-	TierTopLevel  = "top-level"
-	TierViolation = "violation"
+	tierTopLevel  = "top-level"
+	tierViolation = "violation"
 )
 
-// Source is one control-plane file that declares error codes.
-type Source struct {
-	Path string // CP-repo-relative, slash-separated
-	Tier string
-	Why  string
+// source is one control-plane file that declares error codes. `why` is
+// documentation for the next reader of this list and deliberately stays in the
+// source: it used to be copied into the committed snapshot, where a sentence
+// nothing verifies is just drift bait in an artifact that claims to be extracted.
+type source struct {
+	path string // CP-repo-relative, slash-separated
+	tier string
+	why  string
 }
 
-// Sources is the complete set of control-plane error-code registries, per the
+// sources is the complete set of control-plane error-code registries, per the
 // scope ruling recorded at the top of shared/error_codes.py: that file is the
 // registry of every top-level `detail.code`, and the violation-tier codes stay
-// module-local to the endpoint that owns them.
-var Sources = []Source{
+// module-local to the endpoint that owns them. Verified complete 2026-08-20 by
+// sweeping the whole control plane for `^NAME = "NAME"$` outside these three —
+// zero hits.
+var sources = []source{
 	{
-		Path: "shared/error_codes.py",
-		Tier: TierTopLevel,
-		Why:  "the registry of every code that can appear as detail.code",
+		path: "shared/error_codes.py",
+		tier: tierTopLevel,
+		why:  "the registry of every code that can appear as detail.code",
 	},
 	{
-		Path: "api/routes/regions.py",
-		Tier: TierViolation,
-		Why:  "the five region-preflight codes, deliberately kept out of the top-level registry",
+		path: "api/routes/regions.py",
+		tier: tierViolation,
+		why:  "the five region-preflight codes, deliberately kept out of the top-level registry",
 	},
 	{
-		Path: "shared/plan_validator.py",
-		Tier: TierViolation,
-		Why:  "AGENT_COLLECTION_REGION_MISMATCH, raised through AgentScopeViolation",
+		path: "shared/plan_validator.py",
+		tier: tierViolation,
+		why:  "AGENT_COLLECTION_REGION_MISMATCH, raised through AgentScopeViolation",
 	},
 }
 
@@ -85,13 +90,21 @@ type SourceStat struct {
 	Path  string `json:"path"`
 	Tier  string `json:"tier"`
 	Count int    `json:"count"`
-	Why   string `json:"why"`
 }
 
 // Registry is one extraction of the control plane's error codes.
+//
+// Literals holds the raw `NAME = "VALUE"` pairs the extraction accepted, keyed
+// by name. It is never serialized: storing a value identical to its key would
+// be noise in the artifact. It exists so ValidateExtraction can re-assert the
+// self-naming rule the whole extractor rests on, rather than trusting that the
+// one regexp implementing it was never loosened. A snapshot loaded from disk
+// has no Literals, which is why the two validators are separate functions and
+// not one function with a silent skip.
 type Registry struct {
-	Codes   map[string]Code `json:"codes"`
-	Sources []SourceStat    `json:"sources"`
+	Codes    map[string]Code   `json:"codes"`
+	Sources  []SourceStat      `json:"sources"`
+	Literals map[string]string `json:"-"`
 }
 
 // Snapshot is the on-disk form of a Registry.
@@ -127,7 +140,7 @@ const RootEnv = "AETHERFY_CP_ROOT"
 // class attributes and locals are never mistaken for a registry entry.
 var pyConst = regexp.MustCompile(`^([A-Z][A-Z0-9_]*) = "([^"]*)"\s*(?:#.*)?$`)
 
-// CodeShape is what an error code looks like: SCREAMING_SNAKE with at least
+// codeShape is what an error code looks like: SCREAMING_SNAKE with at least
 // one underscore.
 //
 // The underscore is load-bearing for the Go-side scan — without it every
@@ -135,7 +148,7 @@ var pyConst = regexp.MustCompile(`^([A-Z][A-Z0-9_]*) = "([^"]*)"\s*(?:#.*)?$`)
 // and the guard drowns. Every code the control plane has ever published is
 // multi-word, and Validate re-checks that against the live registry, so if a
 // single-word code is ever added the guard reds and says to widen this.
-var CodeShape = regexp.MustCompile(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$`)
+var codeShape = regexp.MustCompile(`^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$`)
 
 // Root answers where the control-plane checkout should be, given the CLI repo
 // root. Siblings by default; RootEnv wins.
@@ -146,28 +159,44 @@ func Root(repoRoot string) string {
 	return filepath.Join(repoRoot, "..", "aetherfy-control-plane")
 }
 
-// Present reports whether every configured source file is readable under
-// cpRoot. A partial checkout counts as absent: extracting from some of the
-// registries and comparing the result against a snapshot built from all of
-// them would report the missing file's codes as deletions.
-func Present(cpRoot string) bool {
-	for _, s := range Sources {
-		if _, err := os.Stat(filepath.Join(cpRoot, filepath.FromSlash(s.Path))); err != nil {
-			return false
+// RootExists reports whether there is a control-plane checkout at cpRoot at all.
+//
+// This is a SEPARATE question from whether its registries are where we look for
+// them, and conflating the two is how a guard stops guarding in silence: one
+// function answering "present?" for both meant a checkout whose registry had
+// merely MOVED reported "no control-plane checkout", skipped, and went green.
+// The control plane is refactored often and shared/error_codes.py is exactly the
+// kind of file that gets folded into a package. See MissingSources.
+func RootExists(cpRoot string) bool {
+	info, err := os.Stat(cpRoot)
+	return err == nil && info.IsDir()
+}
+
+// MissingSources lists the configured registries that are not readable under
+// cpRoot. Callers that found a checkout must treat a non-empty result as a
+// FAILURE naming the paths, never as absence: extracting from two registries of
+// three and diffing against a snapshot built from all three would report the
+// third's codes as deletions, and skipping instead would silently drop drift
+// detection on every machine that has the sibling.
+func MissingSources(cpRoot string) []string {
+	var missing []string
+	for _, s := range sources {
+		if _, err := os.Stat(filepath.Join(cpRoot, filepath.FromSlash(s.path))); err != nil {
+			missing = append(missing, s.path)
 		}
 	}
-	return true
+	return missing
 }
 
 // Extract reads every source under cpRoot and returns the codes they declare.
 func Extract(cpRoot string) (*Registry, error) {
-	reg := &Registry{Codes: map[string]Code{}}
+	reg := &Registry{Codes: map[string]Code{}, Literals: map[string]string{}}
 
-	for _, s := range Sources {
-		full := filepath.Join(cpRoot, filepath.FromSlash(s.Path))
+	for _, s := range sources {
+		full := filepath.Join(cpRoot, filepath.FromSlash(s.path))
 		body, err := os.ReadFile(full)
 		if err != nil {
-			return nil, fmt.Errorf("reading %s: %w", s.Path, err)
+			return nil, fmt.Errorf("reading %s: %w", s.path, err)
 		}
 
 		count := 0
@@ -180,25 +209,31 @@ func Extract(cpRoot string) (*Registry, error) {
 			if _, dup := reg.Codes[m[1]]; dup {
 				continue // first source wins; the count still records the sighting
 			}
-			reg.Codes[m[1]] = Code{Source: s.Path, Tier: s.Tier}
+			reg.Codes[m[1]] = Code{Source: s.path, Tier: s.tier}
+			reg.Literals[m[1]] = m[2]
 		}
 
-		reg.Sources = append(reg.Sources, SourceStat{
-			Path: s.Path, Tier: s.Tier, Count: count, Why: s.Why,
-		})
+		reg.Sources = append(reg.Sources, SourceStat{Path: s.path, Tier: s.tier, Count: count})
 	}
 
 	return reg, nil
 }
 
-// MinTotalCodes is the anti-no-op floor. The registry held 123 codes when this
+// minTotalCodes is the anti-no-op floor. The registry held 123 codes when this
 // guard was written and is append-only by policy, so falling under 80 means the
 // extractor has rotted, not that the control plane shrank.
-const MinTotalCodes = 80
+//
+// It is a PARSER-ROT TRIPWIRE and nothing more. It deliberately does not try to
+// notice a mass deletion — 40 codes could vanish and this would still pass — and
+// it does not need to: the drift check re-extracts wherever the sibling exists
+// and reds on every single missing code by name, and regeneration puts the diff
+// in front of a human. Raising the floor toward the real count would only turn
+// every legitimate addition into a second edit.
+const minTotalCodes = 80
 
-// Validate is the refuse-to-write / refuse-to-trust check, called by the
-// generator BEFORE it writes and by the guard BEFORE it believes either the
-// committed snapshot or a fresh extraction.
+// Validate is the refuse-to-trust check for a registry's STRUCTURE: source
+// coverage, non-empty extraction per source, the floor, and the shape of every
+// code name. It is what can be asked of a snapshot loaded from disk.
 //
 // An extraction that found nothing must never read as "everything matches",
 // because it would — by having nothing to disagree with. A wrong extracted
@@ -207,9 +242,9 @@ func Validate(reg *Registry) error {
 	if reg == nil {
 		return fmt.Errorf("no registry at all")
 	}
-	if len(reg.Sources) != len(Sources) {
+	if len(reg.Sources) != len(sources) {
 		return fmt.Errorf("covers %d source(s), want %d — the source list changed; "+
-			"regenerate the snapshot", len(reg.Sources), len(Sources))
+			"regenerate the snapshot", len(reg.Sources), len(sources))
 	}
 	for _, s := range reg.Sources {
 		if s.Count == 0 {
@@ -217,15 +252,50 @@ func Validate(reg *Registry) error {
 				"or the file moved. Refusing to treat an empty extraction as agreement", s.Path)
 		}
 	}
-	if len(reg.Codes) < MinTotalCodes {
+	if len(reg.Codes) < minTotalCodes {
 		return fmt.Errorf("extracted %d code(s), floor is %d — too few to be the real registry",
-			len(reg.Codes), MinTotalCodes)
+			len(reg.Codes), minTotalCodes)
 	}
 	for name := range reg.Codes {
-		if !CodeShape.MatchString(name) {
+		if !codeShape.MatchString(name) {
 			return fmt.Errorf("code %q does not match the shape the Go-side scan looks for (%s). "+
-				"A code the scan cannot see is a code the guard cannot check: widen CodeShape "+
-				"in test/cperrors/extract.go and re-run", name, CodeShape)
+				"A code the scan cannot see is a code the guard cannot check: widen codeShape "+
+				"in test/cperrors/extract.go and re-run", name, codeShape)
+		}
+	}
+	return nil
+}
+
+// ValidateExtraction is Validate plus the check only a FRESH extraction can be
+// asked for: that every accepted constant was self-named.
+//
+// Validate alone shape-checks the KEY and never looks at the value, so the
+// self-naming rule lived in exactly one place — the `m[1] != m[2]` test inside
+// Extract — with nothing asserting it. Deleting that test made the generator
+// write UPGRADE_URL = "/billing/upgrade", SUPPORT_CONTACT and both FREEZE_REASON_*
+// values into the snapshot AS ERROR CODES, and every check passed: the keys are
+// perfectly code-shaped. The count went 123 → 127 while error_codes.py still
+// reported its usual 117, so the number a reader would look at did not move.
+// From there the guard would have blessed a CLI branch on "UPGRADE_URL".
+//
+// The generator and the live-drift check both call this. A loaded snapshot has
+// no Literals and gets Validate instead — two functions rather than one with a
+// conditional, so neither can silently degrade into the other.
+func ValidateExtraction(reg *Registry) error {
+	if err := Validate(reg); err != nil {
+		return err
+	}
+	if len(reg.Literals) != len(reg.Codes) {
+		return fmt.Errorf("carries %d literal(s) for %d code(s) — an extraction must record "+
+			"what it read, or the self-naming check below proves nothing",
+			len(reg.Literals), len(reg.Codes))
+	}
+	for name, literal := range reg.Literals {
+		if literal != name {
+			return fmt.Errorf("%s is bound to %q, not to itself — this extraction accepted a "+
+				"constant that is not self-named, so it is picking up things that are not error "+
+				"codes (URLs, reason strings). The `NAME = \"NAME\"` rule in Extract is the only "+
+				"thing separating the two", name, literal)
 		}
 	}
 	return nil
@@ -328,7 +398,7 @@ func ScanGoSource(name, src string) ([]Literal, error) {
 		}
 		line := fset.Position(lit.Pos()).Line
 
-		if CodeShape.MatchString(v) {
+		if codeShape.MatchString(v) {
 			out = append(out, Literal{Value: v, File: name, Line: line})
 			return true
 		}

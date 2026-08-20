@@ -98,8 +98,21 @@ var notControlPlaneCodes = map[string]string{
 	"SHARED_CACHE_URL": "fixture secret name (test/workspaces_test.go)",
 	"SHARED_DB_URL":    "fixture secret name (test/workspaces_test.go)",
 
-	// Deliberately not a control-plane code — the only literal in the repo that
-	// LOOKS like drift and is not.
+	// Fixture constants in test/cperrors/extract_test.go, which builds a fake
+	// control-plane tree to pin the extractor's form rule. They are there
+	// precisely BECAUSE they are not error codes: the first four are the real
+	// non-self-named constants sitting beside the one code plan_validator.py
+	// owns, and the fifth is an indented assignment. That this guard demanded
+	// they be classified is the mechanism working — a file full of things that
+	// look like codes is exactly what must not slip in unexamined.
+	"UPGRADE_URL":               "extractor-test fixture: plan_validator.py's `UPGRADE_URL = \"/billing/upgrade\"`, not self-named",
+	"SUPPORT_CONTACT":           "extractor-test fixture: bound to a mailto:, not self-named",
+	"FREEZE_REASON_CEILING":     "extractor-test fixture: bound to \"ceiling\", not self-named",
+	"FREEZE_REASON_DUNNING":     "extractor-test fixture: bound to \"dunning\", not self-named",
+	"INDENTED_NOT_MODULE_LEVEL": "extractor-test fixture: an indented assignment, not a module-level registry entry",
+
+	// Deliberately not a control-plane code — the only literal in shipped code
+	// that LOOKS like drift and is not.
 	//
 	// Two fixtures answer with it: internal/api/lifecycle_retry_test.go asserts a
 	// 500 carrying a code the retry does not recognise fails fast, and
@@ -283,15 +296,32 @@ func TestCommittedSnapshotIsTrustworthy(t *testing.T) {
 // skips this — same trust model as docs-site's cli-surface-snapshot.
 func TestSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 	cpRoot := cperrors.Root(repoRoot)
-	if !cperrors.Present(cpRoot) {
+	if !cperrors.RootExists(cpRoot) {
 		t.Skipf("SKIPPED the live-drift check: no control-plane checkout at %s "+
 			"(set %s to point elsewhere). The committed snapshot was checked instead.",
 			cpRoot, cperrors.RootEnv)
 	}
 
+	// A checkout IS here. From this point absence is a failure, never a skip.
+	//
+	// These were one question once — "is the control plane present?" answered by
+	// stat-ing all three registries — and that is how a guard stops guarding
+	// without saying so: move shared/error_codes.py and every dev machine reports
+	// "no control-plane checkout", skips, and goes green, while CI keeps validating
+	// a snapshot that has quietly become fiction. The control plane is refactored
+	// often and that file is exactly the kind that gets folded into a package.
+	if missing := cperrors.MissingSources(cpRoot); len(missing) > 0 {
+		t.Fatalf("the control plane IS checked out at %s, but %d of its error-code "+
+			"registries are not where this guard looks:\n    %s\n\n"+
+			"That is a move or a rename, not a missing checkout — do not read this as "+
+			"'skip'. Update `sources` in test/cperrors/extract.go to the new paths, then "+
+			"regenerate: go run ./%s",
+			cpRoot, len(missing), strings.Join(missing, "\n    "), cperrors.GeneratorPath)
+	}
+
 	live, err := cperrors.Extract(cpRoot)
 	require.NoError(t, err)
-	require.NoError(t, cperrors.Validate(live),
+	require.NoError(t, cperrors.ValidateExtraction(live),
 		"the extraction from %s is not trustworthy — refusing to compare against it, because "+
 			"an empty extraction agrees with everything", cpRoot)
 
