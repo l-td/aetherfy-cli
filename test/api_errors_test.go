@@ -67,10 +67,10 @@ func TestParseErrorResponse(t *testing.T) {
 	}{
 		{
 			name:       "canonical envelope with code and message",
-			body:       `{"detail":{"code":"AUTH_INVALID_API_KEY","message":"Invalid API key"}}`,
+			body:       `{"detail":{"code":"INVALID_API_KEY","message":"Invalid API key"}}`,
 			statusCode: 401,
 			wantMsg:    "Invalid API key",
-			wantCode:   "AUTH_INVALID_API_KEY",
+			wantCode:   "INVALID_API_KEY",
 		},
 		{
 			name:       "canonical envelope with extras",

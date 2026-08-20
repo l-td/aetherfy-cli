@@ -10,8 +10,15 @@ package api
 // `{"detail": {"code": "VALIDATION_ERROR", "message": "...", "violations": [...]}}`)
 // — use this nested dict shape. `code` is one of the stable strings
 // defined in aetherfy-control-plane/shared/error_codes.py (e.g.
-// AGENT_NOT_FOUND, WORKSPACE_NAME_TAKEN, AUTH_INVALID_API_KEY) and is
-// append-only — clients pin literal strings and switch on them.
+// AGENT_NOT_FOUND, WORKSPACE_NAME_TAKEN, INVALID_API_KEY) and is
+// append-only — clients pin literal strings and switch on them. The one
+// exception on record: on 2026-08-20 four auth codes were renamed onto the
+// vector plane's spellings (AUTH_REQUIRED → MISSING_API_KEY,
+// AUTH_INVALID_API_KEY → INVALID_API_KEY, AUTH_ACCOUNT_SUSPENDED →
+// ACCOUNT_SUSPENDED, AUTH_SERVICE_ERROR → AUTHENTICATION_ERROR) while
+// nothing external pinned them. The CLI does not switch on any of the
+// four — it copies `code` through for display and branches on status —
+// so nothing here changed but this comment and a test fixture.
 //
 // The CLI talks ONLY to control-plane, so it parses `detail` exclusively.
 // Per docs/REVIEW_FAQ.md section 56, each consumer reads only from the
