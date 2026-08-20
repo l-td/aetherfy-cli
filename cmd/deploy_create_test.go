@@ -265,6 +265,44 @@ func TestNilConfigNeverCreates(t *testing.T) {
 	}
 }
 
+// promptYesNo is now shared by the create question AND the pre-existing overage
+// cost confirmation, so its answer parsing is money-facing: a wrong "yes" spends
+// the user's money, a wrong "no" cancels their deploy. Default NO — only "y"
+// (any case) consents, and a closed stdin must never read as consent.
+func TestPromptYesNoOnlyTakesYForYes(t *testing.T) {
+	for _, tc := range []struct {
+		typed string
+		want  bool
+	}{
+		{"y\n", true},
+		{"Y\n", true},
+		{" y \n", true},
+		{"n\n", false},
+		{"\n", false},    // bare Enter
+		{"", false},      // EOF / closed stdin
+		{"yes\n", false}, // deliberate: the prompt says [y/N], not [yes/no]
+	} {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatalf("pipe: %v", err)
+		}
+		if _, err := w.WriteString(tc.typed); err != nil {
+			t.Fatalf("write: %v", err)
+		}
+		w.Close()
+
+		old := os.Stdin
+		os.Stdin = r
+		got := promptYesNo("Continue?")
+		os.Stdin = old
+		r.Close()
+
+		if got != tc.want {
+			t.Errorf("promptYesNo with %q: got %v, want %v", tc.typed, got, tc.want)
+		}
+	}
+}
+
 // --- the call the decision turns into ---
 
 // createCaptureServer answers POST /agents and POST /agents/{id}/deploy,
