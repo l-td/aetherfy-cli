@@ -104,8 +104,14 @@ var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]
 // whether a deploy may create the missing agent. Every input is a parameter —
 // no globals, no terminal — so the ratified automation rule is testable.
 type createOnDeployInput struct {
-	AgentName   string                  // the agent this deploy targeted
-	Config      *archive.AetherfyConfig // parsed aetherfy.yaml; nil disables the offer
+	AgentName string // the agent this deploy targeted
+	// AllowCreate gates the whole offer. The first deploy attempt sets it;
+	// the retry AFTER a successful create sets it false, which is what stops a
+	// second AGENT_NOT_FOUND from creating again. Explicit on purpose — this
+	// used to be inferred from a nil Config, and an accidental nil elsewhere
+	// would have silently disabled creation with nothing to notice it.
+	AllowCreate bool
+	Config      *archive.AetherfyConfig // parsed aetherfy.yaml
 	CreateFlag  bool                    // --create
 	YesFlag     bool                    // --yes (the COST prompt's flag)
 	Interactive bool                    // stdin is a terminal
@@ -136,9 +142,12 @@ type createOnDeployOutcome struct {
 // The type/runtime it reports are the exact values the create will send —
 // whatever this returns is what gets printed AND what gets sent.
 func decideCreateOnDeploy(in createOnDeployInput) createOnDeployOutcome {
-	// No manifest to describe the agent with → never offer. This is also the
-	// terminator for the post-create retry, which passes a nil Config so a
-	// second AGENT_NOT_FOUND cannot loop back into creating.
+	// The caller says whether creating is on the table at all (see AllowCreate).
+	if !in.AllowCreate {
+		return createOnDeployOutcome{}
+	}
+
+	// No manifest to describe the agent with → nothing to print, nothing to send.
 	if in.Config == nil {
 		return createOnDeployOutcome{}
 	}
@@ -217,9 +226,11 @@ func decideCreateOnDeploy(in createOnDeployInput) createOnDeployOutcome {
 // and, on confirm (or --yes), re-sends with confirm_overage=true (its own brief
 // spinner). Non-special errors pass through for the caller to print generically.
 //
-// cfg is the parsed aetherfy.yaml, and is what the AGENT_NOT_FOUND branch
-// describes a would-be agent with; pass nil to disable creation entirely.
-func handleDeployResult(client *api.Client, agentID string, cfg *archive.AetherfyConfig, tarballData []byte, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
+// cfg is the parsed aetherfy.yaml, which is what the AGENT_NOT_FOUND branch
+// describes a would-be agent with. allowCreate says whether that branch may
+// offer to create at all: true from a first deploy attempt, false from the
+// retry this function issues after creating one.
+func handleDeployResult(client *api.Client, agentID string, cfg *archive.AetherfyConfig, allowCreate bool, tarballData []byte, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
 	if err == nil {
 		return resp, nil
 	}
@@ -233,6 +244,7 @@ func handleDeployResult(client *api.Client, agentID string, cfg *archive.Aetherf
 	case "AGENT_NOT_FOUND":
 		outcome := decideCreateOnDeploy(createOnDeployInput{
 			AgentName:   agentID,
+			AllowCreate: allowCreate,
 			Config:      cfg,
 			CreateFlag:  deployCreate,
 			YesFlag:     deployYes,
@@ -267,10 +279,10 @@ func handleDeployResult(client *api.Client, agentID string, cfg *archive.Aetherf
 		sp.Start()
 		r, e := client.Deploy(agentID, tarballData, false)
 		sp.Stop()
-		// cfg=nil: the retry keeps the overage/freeze handling but can never
-		// offer to create again, so a repeat AGENT_NOT_FOUND fails instead of
-		// looping.
-		return handleDeployResult(client, agentID, nil, tarballData, r, e)
+		// allowCreate=false: the retry keeps the overage/freeze handling but can
+		// never offer to create again, so a repeat AGENT_NOT_FOUND fails instead
+		// of looping.
+		return handleDeployResult(client, agentID, cfg, false, tarballData, r, e)
 
 	case "OVERAGE_CONFIRM_REQUIRED":
 		// The additional monthly $ is usually present; when the control-plane
@@ -402,7 +414,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 	// Handle the D2 Part 6 overage confirm + freeze/pause 403s + the consented
 	// create-on-deploy (may prompt, which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agentID, cfg, tarballData, resp, err)
+	resp, err = handleDeployResult(client, agentID, cfg, true, tarballData, resp, err)
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)
@@ -529,7 +541,7 @@ func runDeployFromGitHub(repoRef string) error {
 	sp.Stop()
 	// Handle the D2 Part 6 overage confirm + freeze/pause 403s + the consented
 	// create-on-deploy (may prompt, which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agentID, cfg, tarballData, resp, err)
+	resp, err = handleDeployResult(client, agentID, cfg, true, tarballData, resp, err)
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)

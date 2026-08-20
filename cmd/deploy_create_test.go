@@ -67,7 +67,7 @@ func neverAsked(t *testing.T) func(string) bool {
 // INTERACTIVE, answered y → creates, with the manifest's type/runtime.
 func TestInteractiveYesCreatesFromManifest(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:   "hello-agent",
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:      yamlConfig(t, helloYAML),
 		Interactive: true,
 		Confirm:     answerYes,
@@ -89,7 +89,7 @@ func TestInteractiveYesCreatesFromManifest(t *testing.T) {
 // INTERACTIVE, answered n → no creation, and nothing is added to today's error.
 func TestInteractiveNoDoesNotCreate(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:   "hello-agent",
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:      yamlConfig(t, helloYAML),
 		Interactive: true,
 		Confirm:     answerNo,
@@ -107,7 +107,7 @@ func TestInteractiveNoDoesNotCreate(t *testing.T) {
 // created, nothing printed.
 func TestNonInteractiveWithoutCreateFlagRefuses(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:   "hello-agent",
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:      yamlConfig(t, helloYAML),
 		Interactive: false,
 		Confirm:     neverAsked(t),
@@ -124,7 +124,7 @@ func TestNonInteractiveWithoutCreateFlagRefuses(t *testing.T) {
 // NON-TTY with --create → creates, announcing exactly what it will send.
 func TestNonInteractiveWithCreateFlagCreates(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:   "hello-agent",
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:      yamlConfig(t, helloYAML),
 		CreateFlag:  true,
 		Interactive: false,
@@ -150,7 +150,7 @@ func TestNonInteractiveWithCreateFlagCreates(t *testing.T) {
 func TestYesAloneNeverCreates(t *testing.T) {
 	for _, interactive := range []bool{true, false} {
 		got := decideCreateOnDeploy(createOnDeployInput{
-			AgentName:   "hello-agent",
+			AgentName: "hello-agent", AllowCreate: true,
 			Config:      yamlConfig(t, helloYAML),
 			YesFlag:     true,
 			Interactive: interactive,
@@ -169,7 +169,7 @@ func TestYesAloneNeverCreates(t *testing.T) {
 // --yes only means "don't ask me about cost".
 func TestYesWithCreateFlagStillCreates(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:   "hello-agent",
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:      yamlConfig(t, helloYAML),
 		YesFlag:     true,
 		CreateFlag:  true,
@@ -198,6 +198,7 @@ func TestManifestWithoutTypeRefusesToCreate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			in := tc.in
 			in.AgentName = "hello-agent"
+			in.AllowCreate = true
 			in.Config = yamlConfig(t, noType)
 
 			got := decideCreateOnDeploy(in)
@@ -215,7 +216,7 @@ func TestManifestWithoutTypeRefusesToCreate(t *testing.T) {
 // `afy agents create -t` applies — the deploy path accepts no less.
 func TestManifestWithInvalidTypeRefusesToCreate(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:  "hello-agent",
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:     yamlConfig(t, "name: hello-agent\nruntime: python3.12\ntype: worker\n"),
 		CreateFlag: true,
 		Confirm:    neverAsked(t),
@@ -237,7 +238,7 @@ func TestManifestWithInvalidTypeRefusesToCreate(t *testing.T) {
 // minting an agent named after a typo'd ID.
 func TestUUIDTargetIsNeverCreated(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
-		AgentName:  "550e8400-e29b-41d4-a716-446655440000",
+		AgentName: "550e8400-e29b-41d4-a716-446655440000", AllowCreate: true,
 		Config:     yamlConfig(t, helloYAML),
 		CreateFlag: true,
 		Confirm:    neverAsked(t),
@@ -250,11 +251,31 @@ func TestUUIDTargetIsNeverCreated(t *testing.T) {
 	}
 }
 
-// No manifest → nothing to describe the agent with → never offered. This is
-// also what stops the post-create retry from looping (see below).
-func TestNilConfigNeverCreates(t *testing.T) {
+// AllowCreate=false refuses everything, even the fully-consented case. This is
+// the retry-after-create's off switch, and it is what stops a second
+// AGENT_NOT_FOUND from creating a second agent (see TestCreateOnDeployDoesNotLoop,
+// which drives this through handleDeployResult).
+func TestAllowCreateFalseNeverCreates(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
 		AgentName:   "hello-agent",
+		AllowCreate: false,
+		Config:      yamlConfig(t, helloYAML),
+		CreateFlag:  true, // everything else says yes...
+		Interactive: true,
+		Confirm:     neverAsked(t),
+	})
+	if got.Create {
+		t.Errorf("AllowCreate=false created anyway: %+v", got)
+	}
+	if got.Warn != "" || got.Announce != "" {
+		t.Errorf("AllowCreate=false must be silent, got %+v", got)
+	}
+}
+
+// No manifest → nothing to describe the agent with → never offered.
+func TestNilConfigNeverCreates(t *testing.T) {
+	got := decideCreateOnDeploy(createOnDeployInput{
+		AgentName: "hello-agent", AllowCreate: true,
 		Config:      nil,
 		CreateFlag:  true,
 		Interactive: true,
@@ -334,8 +355,20 @@ func newCreateCaptureServer(t *testing.T, deployAfterCreateOK bool) *createCaptu
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/deploy"):
 			s.mu.Lock()
 			s.deployCalls++
+			creates := len(s.createBodies)
 			s.mu.Unlock()
 			if !deployAfterCreateOK {
+				// LOOP BOUND. A regression that re-enables creation on the retry
+				// would otherwise recurse forever and this test would HANG — a
+				// timeout says "something is wrong somewhere", ten minutes later.
+				// Answering a non-AGENT_NOT_FOUND error once a second create has
+				// happened terminates the recursion so the count assertion below
+				// fires instead, immediately and by name.
+				if creates >= 2 {
+					w.WriteHeader(http.StatusInternalServerError)
+					_, _ = w.Write([]byte(`{"detail":{"code":"INTERNAL_ERROR","message":"loop bound tripped"}}`))
+					return
+				}
 				w.WriteHeader(http.StatusNotFound)
 				_, _ = w.Write([]byte(`{"detail":{"code":"AGENT_NOT_FOUND","message":"Agent 'hello-agent' not found"}}`))
 				return
@@ -378,7 +411,7 @@ func TestCreateOnDeploySendsTheSharedCreateCallThenRedeploys(t *testing.T) {
 	srv := newCreateCaptureServer(t, true)
 	client := api.NewClientWithURL(srv.URL, "afy_test_key")
 
-	resp, err := handleDeployResult(client, "hello-agent", yamlConfig(t, helloYAML),
+	resp, err := handleDeployResult(client, "hello-agent", yamlConfig(t, helloYAML), true,
 		[]byte("tarball"), nil, notFound())
 	if err != nil {
 		t.Fatalf("create-then-deploy: %v", err)
@@ -413,7 +446,7 @@ func TestCreateOnDeployDoesNotLoop(t *testing.T) {
 	srv := newCreateCaptureServer(t, false)
 	client := api.NewClientWithURL(srv.URL, "afy_test_key")
 
-	_, err := handleDeployResult(client, "hello-agent", yamlConfig(t, helloYAML),
+	_, err := handleDeployResult(client, "hello-agent", yamlConfig(t, helloYAML), true,
 		[]byte("tarball"), nil, notFound())
 	if err == nil {
 		t.Fatal("want the AGENT_NOT_FOUND error back, got nil")
@@ -435,7 +468,7 @@ func TestNoConsentReturnsTodaysErrorAndCreatesNothing(t *testing.T) {
 	client := api.NewClientWithURL(srv.URL, "afy_test_key")
 
 	in := notFound()
-	_, err := handleDeployResult(client, "hello-agent", yamlConfig(t, helloYAML),
+	_, err := handleDeployResult(client, "hello-agent", yamlConfig(t, helloYAML), true,
 		[]byte("tarball"), nil, in)
 	if err != in {
 		t.Errorf("want the original error returned verbatim, got %v", err)
