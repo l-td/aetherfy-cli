@@ -349,6 +349,29 @@ make test
 make install
 ```
 
+### Control-plane error codes
+
+The CLI branches on the error-code strings the control plane sends — the deploy
+prompts, the lifecycle retry and the run-now paths each key on one. Those
+strings are a contract, and a rename on the server side would silently turn a
+branch here into dead code: the tests mock the server, so they would keep
+agreeing with themselves. (No codes are spelled out here on purpose. Prose
+naming one is one more place to go stale, and nothing checks prose.)
+
+`test/cp-error-codes-snapshot.json` is the control plane's registry, committed
+so CI can check against it without a checkout of that repo, and
+`test/cp_error_codes_test.go` requires every code-shaped literal in this
+repository to be either a code that registry holds or an allowlisted non-code.
+When the control plane adds or changes a code:
+
+```bash
+# needs ../aetherfy-control-plane checked out (or set AETHERFY_CP_ROOT)
+make cp-error-snapshot
+```
+
+Where that checkout is present, `make test` re-runs the extraction and fails on
+any difference, so the committed snapshot cannot quietly go stale.
+
 ### Requirements
 
 - Go 1.21+

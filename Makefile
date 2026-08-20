@@ -25,7 +25,7 @@ GOFMT=gofmt
 BUILD_DIR=./build
 DIST_DIR=./dist
 
-.PHONY: all build clean test lint fmt help install uninstall release
+.PHONY: all build clean test lint fmt help install uninstall release cp-error-snapshot
 
 ## Default target
 all: clean lint test build
@@ -67,6 +67,11 @@ test-coverage:
 	$(GOTEST) -v -race -coverprofile=$(BUILD_DIR)/coverage.out ./...
 	$(GOCMD) tool cover -html=$(BUILD_DIR)/coverage.out -o $(BUILD_DIR)/coverage.html
 	@echo "Coverage report: $(BUILD_DIR)/coverage.html"
+
+## Regenerate the control-plane error-code snapshot (needs ../aetherfy-control-plane)
+cp-error-snapshot:
+	@echo "Regenerating test/cp-error-codes-snapshot.json..."
+	$(GOCMD) run ./scripts/cp-error-codes-snapshot
 
 ## Run linting
 lint:

@@ -1,0 +1,519 @@
+{
+  "$comment": "The control plane's error-code registry, extracted from the sibling aetherfy-control-plane repo — do not edit by hand. Consumed by test/cp_error_codes_test.go so the CLI cannot branch on an error code the control plane does not publish. Regenerate with `go run ./scripts/cp-error-codes-snapshot`.",
+  "generator": "scripts/cp-error-codes-snapshot",
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "path": "shared/error_codes.py",
+      "tier": "top-level",
+      "count": 117,
+      "why": "the registry of every code that can appear as detail.code"
+    },
+    {
+      "path": "api/routes/regions.py",
+      "tier": "violation",
+      "count": 5,
+      "why": "the five region-preflight codes, deliberately kept out of the top-level registry"
+    },
+    {
+      "path": "shared/plan_validator.py",
+      "tier": "violation",
+      "count": 1,
+      "why": "AGENT_COLLECTION_REGION_MISMATCH, raised through AgentScopeViolation"
+    }
+  ],
+  "codes": {
+    "ACCOUNT_SUSPENDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_ALREADY_ARCHIVED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_ALREADY_PAUSED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_CHILD_NOT_DEPLOYED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_CHILD_NOT_JOB_TYPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_COLLECTION_REGION_MISMATCH": {
+      "source": "shared/plan_validator.py",
+      "tier": "violation"
+    },
+    "AGENT_DEPLOYMENT_OUTSIDE_NEW_WORKSPACE_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_HAS_PENDING_DEPLOYMENTS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_HAS_WORKER_DEPENDENTS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_LOGS_INVALID_DEPLOYMENT_ID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_LOGS_INVALID_FILTER": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_LOGS_INVALID_SINCE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NAME_TAKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_ARCHIVABLE_SYSTEM_STATE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_ARCHIVED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_DEPLOYED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_PAUSEABLE_SYSTEM_STATE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_PAUSED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NOT_SPAWN_ENABLED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_NO_MACHINES": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_OPERATION_IN_PROGRESS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PARENT_NOT_SPAWNABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PARENT_NO_DEPLOYMENT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PARENT_PAUSED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PAUSED_CANNOT_DEPLOY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PAUSED_CANNOT_ROLLBACK": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PAUSE_FAILED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_REGION_STRANDED": {
+      "source": "api/routes/regions.py",
+      "tier": "violation"
+    },
+    "AGENT_RESUME_FAILED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_RUNS_INVALID_BEFORE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_RUNS_INVALID_TRIGGER_SOURCE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_RUN_INELIGIBLE_STATE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_RUN_IN_PROGRESS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_RUN_REQUIRES_JOB_TYPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SCHEDULE_NOT_ALLOWED_ON_WORKER": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SCHEDULE_NOT_SET": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SPAWN_CONCURRENCY_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SPAWN_DEPTH_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SPAWN_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOGGLE_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_WORKER_NOT_ALLOWED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_WORKER_PAUSED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_WOULD_LOSE_REGION_OVERLAP": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTHENTICATION_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_INTERNAL_TOKEN_UNCONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_INVALID_INTERNAL_TOKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_INVALID_LOG_TOKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_MISSING_LOG_TOKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_MISSING_USER_ID_HEADER": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_SUBSCRIPTION_INACTIVE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_MOVE_ENQUEUE_FAILED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_MOVE_IN_FLIGHT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_REGIONS_EMPTY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_REGIONS_NOT_IN_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_REGIONS_WORKSPACE_COMBINED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_WORKSPACE_BROKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COMPONENT_NOT_READY": {
+      "source": "api/routes/regions.py",
+      "tier": "violation"
+    },
+    "DEPLOYMENT_ACCESS_DENIED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_ARCHIVE_TOO_LARGE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_CONFIG_PARSE_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_IN_PROGRESS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_NOT_EPHEMERAL": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_ROLLBACK_TARGET_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_TERMINAL_CANNOT_CANCEL": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_UPLOAD_FAILED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOY_REGIONS_NOT_IN_COLLECTION_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOY_REGIONS_NOT_IN_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DUNNING_FROZEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_API_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_APP_NOT_CONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_NOT_CONNECTED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_PERSISTENCE_FAILED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_REPO_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_SETUP_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_WEBHOOK_CREATE_FAILED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_WEBHOOK_INVALID_JSON": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_WEBHOOK_SIGNATURE_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_WEBHOOK_STALE_HOOK": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "HOME_REGION_NOT_APPLICABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "INVALID_API_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "INVALID_REGION": {
+      "source": "api/routes/regions.py",
+      "tier": "violation"
+    },
+    "INVALID_TARGET_TIER": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "INVALID_TEST_POOL_SELECTOR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "INVALID_WORKSPACE_REGIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "LOG_CHUNK_TOO_LARGE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "LOG_QUOTA_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "LOG_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "MISSING_API_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "MISSING_TEST_POOL_SELECTOR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "OPERATION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "OVERAGE_CONFIRM_REQUIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "PLAN_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "PLAN_REGION_LIMIT": {
+      "source": "api/routes/regions.py",
+      "tier": "violation"
+    },
+    "RATE_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "REGION_OP_IN_FLIGHT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "REGION_UNAVAILABLE": {
+      "source": "api/routes/regions.py",
+      "tier": "violation"
+    },
+    "RESOURCE_BUSY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "RUNTIME_IMMUTABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "SECRET_INTERNAL_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "SECRET_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "SECRET_VALIDATION_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "SERVICE_NOT_READY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "SOFT_CAP_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "STARTER_REGION_CONSISTENCY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "STORAGE_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "TARGET_WORKSPACE_HAS_NO_REGIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "TARGET_WORKSPACE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "USER_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "VALIDATION_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "VALIDATION_VIOLATIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKER_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_HAS_AGENTS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_HAS_COLLECTIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_HAS_NO_REGIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_NAME_IMMUTABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_NAME_TAKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_NARROW_BLOCKED_BY_RESOURCES": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_REGIONS_EMPTY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    }
+  }
+}
