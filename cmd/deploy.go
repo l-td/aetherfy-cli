@@ -41,7 +41,12 @@ Files matching patterns in .afyignore will be excluded.
 
 Use --from-github to deploy directly from a public GitHub repository
 without a local clone. The agent name is read from the repo's aetherfy.yaml
-unless --agent is specified.`,
+unless --agent is specified.
+
+If the agent does not exist yet, an interactive deploy offers to create it
+from the type and runtime declared in aetherfy.yaml. Creation is never
+automatic: on a terminal it asks and defaults to no, and anywhere else it
+happens only when --create is passed.`,
 	Example: `  # Deploy current directory (waits for completion)
   afy deploy
 
@@ -53,6 +58,9 @@ unless --agent is specified.`,
 
   # Deploy and specify agent by name
   afy deploy --agent my-bot
+
+  # Create the agent from aetherfy.yaml if it does not exist yet (works in CI)
+  afy deploy --create
 
   # Deploy from a public GitHub repo (Level 1)
   afy deploy --from-github owner/repo
@@ -66,6 +74,7 @@ var (
 	deployAgent      string
 	deployFromGitHub string
 	deployYes        bool
+	deployCreate     bool
 )
 
 func init() {
@@ -73,16 +82,144 @@ func init() {
 	deployCmd.Flags().StringVarP(&deployAgent, "agent", "a", "", "Agent ID or name (reads from aetherfy.yaml if not specified)")
 	deployCmd.Flags().StringVar(&deployFromGitHub, "from-github", "", "Deploy from a public GitHub repo: owner/repo[@ref]")
 	deployCmd.Flags().BoolVarP(&deployYes, "yes", "y", false, "Skip the overage confirmation prompt and proceed (non-interactive)")
+	deployCmd.Flags().BoolVar(&deployCreate, "create", false, "Create the agent from aetherfy.yaml's type and runtime if it does not exist. Required to create without a terminal; --yes never implies it")
+}
+
+// promptYesNo asks a yes/no question on stdin and reports whether the answer
+// was yes. Default NO: anything other than "y" — including a blank line, EOF,
+// or a closed stdin — declines. It is a var so tests can drive the confirm
+// paths without a terminal.
+var promptYesNo = func(question string) bool {
+	output.Warning.Printf("%s [y/N] ", question)
+	var answer string
+	_, _ = fmt.Scanln(&answer)
+	return strings.EqualFold(strings.TrimSpace(answer), "y")
+}
+
+// uuidPattern matches the canonical UUID form the control-plane resolves agents
+// by (api/routes/agents.py _resolve_agent tries UUID() first, then name).
+var uuidPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// createOnDeployInput is everything the AGENT_NOT_FOUND branch needs to decide
+// whether a deploy may create the missing agent. Every input is a parameter —
+// no globals, no terminal — so the ratified automation rule is testable.
+type createOnDeployInput struct {
+	AgentName   string                  // the agent this deploy targeted
+	Config      *archive.AetherfyConfig // parsed aetherfy.yaml; nil disables the offer
+	CreateFlag  bool                    // --create
+	YesFlag     bool                    // --yes (the COST prompt's flag)
+	Interactive bool                    // stdin is a terminal
+	Confirm     func(question string) bool
+}
+
+// createOnDeployOutcome is the decision. Create=false means "print today's
+// AGENT_NOT_FOUND error and stop" — verbatim when Warn is empty.
+type createOnDeployOutcome struct {
+	Create    bool
+	AgentType string // normalized, backend form — the value that will be SENT
+	Runtime   string // from aetherfy.yaml — the value that will be SENT
+	Announce  string // printed immediately before creating (non-interactive consent)
+	Question  string // the question that was asked (interactive consent)
+	Warn      string // printed before today's error when creation cannot be offered
+}
+
+// decideCreateOnDeploy resolves the ratified consent rule for a deploy that hit
+// AGENT_NOT_FOUND:
+//
+//   - INTERACTIVE (a terminal, no --yes, no --create): ask, defaulting to No.
+//   - NON-INTERACTIVE (no terminal, or --yes present): never auto-confirm.
+//     --yes covers the overage cost confirmation ONLY. Creation requires an
+//     explicit --create; without it the deploy fails with today's error,
+//     verbatim. A typo in CI costs a failed run, never a duplicate agent.
+//   - --create is itself the consent, so it does not ask.
+//
+// The type/runtime it reports are the exact values the create will send —
+// whatever this returns is what gets printed AND what gets sent.
+func decideCreateOnDeploy(in createOnDeployInput) createOnDeployOutcome {
+	// No manifest to describe the agent with → never offer. This is also the
+	// terminator for the post-create retry, which passes a nil Config so a
+	// second AGENT_NOT_FOUND cannot loop back into creating.
+	if in.Config == nil {
+		return createOnDeployOutcome{}
+	}
+
+	consented := in.CreateFlag
+	mayAsk := in.Interactive && !in.YesFlag && !in.CreateFlag
+	if !consented && !mayAsk {
+		// Today's error, verbatim — no hint, no prompt, nothing created.
+		return createOnDeployOutcome{}
+	}
+
+	// A UUID target names an agent RECORD, not a name to mint. The control-plane
+	// name rule (lowercase letters, digits, hyphens) happens to accept a UUID,
+	// so creating here would silently succeed and leave an agent named after a
+	// typo'd ID.
+	if uuidPattern.MatchString(in.AgentName) {
+		return createOnDeployOutcome{
+			Warn: fmt.Sprintf("'%s' is an agent ID, not a name — refusing to create an agent named after it. "+
+				"Target the agent by name (--agent <name>) or create it with 'afy agents create <name>'.", in.AgentName),
+		}
+	}
+
+	// aetherfy.yaml must SAY what the agent is. Nothing here is defaulted:
+	// runtime is fixed at creation server-side (a guessed one would fail every
+	// later deploy with RUNTIME_IMMUTABLE), and a guessed type is a guess the
+	// prompt would have to hide.
+	if strings.TrimSpace(in.Config.Type) == "" {
+		return createOnDeployOutcome{
+			Warn: fmt.Sprintf("Agent '%s' does not exist and aetherfy.yaml declares no 'type:' — "+
+				"creating it would have to guess. Add 'type: service' or 'type: job' and re-run.", in.AgentName),
+		}
+	}
+	agentType, err := normalizeAgentType(in.Config.Type)
+	if err != nil {
+		return createOnDeployOutcome{
+			Warn: fmt.Sprintf("Agent '%s' does not exist and aetherfy.yaml declares type: %q — "+
+				"it must be 'service' or 'job'.", in.AgentName, in.Config.Type),
+		}
+	}
+	runtime := strings.TrimSpace(in.Config.Runtime)
+	if runtime == "" {
+		return createOnDeployOutcome{
+			Warn: fmt.Sprintf("Agent '%s' does not exist and aetherfy.yaml declares no 'runtime:' — "+
+				"creating it would have to guess. Add a 'runtime:' and re-run.", in.AgentName),
+		}
+	}
+
+	if consented {
+		return createOnDeployOutcome{
+			Create:    true,
+			AgentType: agentType,
+			Runtime:   runtime,
+			Announce: fmt.Sprintf("Agent '%s' doesn't exist. Creating it as %s/%s (from aetherfy.yaml).",
+				in.AgentName, agentType, runtime),
+		}
+	}
+
+	question := fmt.Sprintf("Agent '%s' doesn't exist. Create it as %s/%s (from aetherfy.yaml)?",
+		in.AgentName, agentType, runtime)
+	if !in.Confirm(question) {
+		return createOnDeployOutcome{Question: question}
+	}
+	return createOnDeployOutcome{
+		Create:    true,
+		AgentType: agentType,
+		Runtime:   runtime,
+		Question:  question,
+	}
 }
 
 // handleDeployResult post-processes the first deploy attempt for the D2 Part 6
-// overage cost gate and the freeze/pause 403s. The caller does the first
-// Deploy(confirm=false) with its spinner and stops it BEFORE calling this (so a
-// prompt isn't drawn over the spinner). On OVERAGE_CONFIRM_REQUIRED it shows
-// "this adds ~$X/mo — continue?" and, on confirm (or --yes), re-sends with
-// confirm_overage=true (its own brief spinner). Non-special errors pass through
-// for the caller to print generically.
-func handleDeployResult(client *api.Client, agentID string, tarballData []byte, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
+// overage cost gate, the freeze/pause 403s, and the consented create-on-deploy
+// (AGENT_NOT_FOUND). The caller does the first Deploy(confirm=false) with its
+// spinner and stops it BEFORE calling this (so a prompt isn't drawn over the
+// spinner). On OVERAGE_CONFIRM_REQUIRED it shows "this adds ~$X/mo — continue?"
+// and, on confirm (or --yes), re-sends with confirm_overage=true (its own brief
+// spinner). Non-special errors pass through for the caller to print generically.
+//
+// cfg is the parsed aetherfy.yaml, and is what the AGENT_NOT_FOUND branch
+// describes a would-be agent with; pass nil to disable creation entirely.
+func handleDeployResult(client *api.Client, agentID string, cfg *archive.AetherfyConfig, tarballData []byte, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
 	if err == nil {
 		return resp, nil
 	}
@@ -93,6 +230,48 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 	}
 
 	switch apiErr.Code {
+	case "AGENT_NOT_FOUND":
+		outcome := decideCreateOnDeploy(createOnDeployInput{
+			AgentName:   agentID,
+			Config:      cfg,
+			CreateFlag:  deployCreate,
+			YesFlag:     deployYes,
+			Interactive: isInteractive(),
+			Confirm:     promptYesNo,
+		})
+		if !outcome.Create {
+			if outcome.Warn != "" {
+				output.PrintWarning("%s", outcome.Warn)
+			}
+			// Declined, or never offered → today's actionable error, unchanged.
+			return nil, err
+		}
+		if outcome.Announce != "" {
+			output.PrintInfo("%s", outcome.Announce)
+		}
+
+		// The same POST /agents `afy agents create` issues, with the type and
+		// runtime that were just printed — no other create path exists.
+		sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", agentID))
+		sp.Start()
+		agent, createErr := createAgentRecord(client, agentID, "", outcome.AgentType, outcome.Runtime, false)
+		sp.Stop()
+		if createErr != nil {
+			output.PrintError("Failed to create agent '%s': %v", agentID, createErr)
+			return nil, createErr
+		}
+		output.PrintSuccess("Agent '%s' created (%s/%s).", agent.Name, outcome.AgentType, outcome.Runtime)
+
+		// Continue the deploy with the archive already in hand.
+		sp = output.NewSpinner("Uploading and deploying...")
+		sp.Start()
+		r, e := client.Deploy(agentID, tarballData, false)
+		sp.Stop()
+		// cfg=nil: the retry keeps the overage/freeze handling but can never
+		// offer to create again, so a repeat AGENT_NOT_FOUND fails instead of
+		// looping.
+		return handleDeployResult(client, agentID, nil, tarballData, r, e)
+
 	case "OVERAGE_CONFIRM_REQUIRED":
 		// The additional monthly $ is usually present; when the control-plane
 		// omits it, fall back to a grammatical phrase rather than "adds more of
@@ -106,10 +285,7 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 				output.PrintError("This deployment %s. Re-run with --yes to proceed.", impact)
 				os.Exit(1)
 			}
-			output.Warning.Printf("This deployment %s — continue? [y/N] ", impact)
-			var confirm string
-			_, _ = fmt.Scanln(&confirm)
-			if strings.ToLower(strings.TrimSpace(confirm)) != "y" {
+			if !promptYesNo(fmt.Sprintf("This deployment %s — continue?", impact)) {
 				output.PrintInfo("Deployment cancelled.")
 				os.Exit(0)
 			}
@@ -181,11 +357,15 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
+	// Parsed once: the agent target falls back to 'name', and a deploy that hits
+	// AGENT_NOT_FOUND needs 'type'/'runtime' to describe what creating it would
+	// make. ValidateAetherfyConfig above already proved this parses.
+	cfg, cfgErr := archive.ParseAetherfyConfig(absPath)
+
 	// Use --agent flag or fall back to 'name' in aetherfy.yaml
 	agentID := deployAgent
 	if agentID == "" {
-		cfg, err := archive.ParseAetherfyConfig(absPath)
-		if err != nil || cfg.Name == "" {
+		if cfgErr != nil || cfg.Name == "" {
 			output.PrintError("Agent name not found. Use --agent flag or set 'name' in aetherfy.yaml")
 			os.Exit(1)
 		}
@@ -220,9 +400,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	client := api.NewClient()
 	resp, err := client.Deploy(agentID, tarballData, false)
 	sp.Stop()
-	// Handle the D2 Part 6 overage confirm + freeze/pause 403s (may prompt,
-	// which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agentID, tarballData, resp, err)
+	// Handle the D2 Part 6 overage confirm + freeze/pause 403s + the consented
+	// create-on-deploy (may prompt, which is why the spinner is stopped first).
+	resp, err = handleDeployResult(client, agentID, cfg, tarballData, resp, err)
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)
@@ -310,11 +490,14 @@ func runDeployFromGitHub(repoRef string) error {
 		os.Exit(1)
 	}
 
+	// Parsed once — same two readers as the local deploy: the agent target, and
+	// the type/runtime a consented create would use.
+	cfg, cfgErr := archive.ParseAetherfyConfig(tmpDir)
+
 	// Determine agent ID
 	agentID := deployAgent
 	if agentID == "" {
-		cfg, err := archive.ParseAetherfyConfig(tmpDir)
-		if err != nil || cfg.Name == "" {
+		if cfgErr != nil || cfg.Name == "" {
 			output.PrintError("Agent name not found. Use --agent flag or set 'name' in aetherfy.yaml")
 			os.Exit(1)
 		}
@@ -344,9 +527,9 @@ func runDeployFromGitHub(repoRef string) error {
 	client := api.NewClient()
 	resp, err := client.Deploy(agentID, tarballData, false)
 	sp.Stop()
-	// Handle the D2 Part 6 overage confirm + freeze/pause 403s (may prompt,
-	// which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agentID, tarballData, resp, err)
+	// Handle the D2 Part 6 overage confirm + freeze/pause 403s + the consented
+	// create-on-deploy (may prompt, which is why the spinner is stopped first).
+	resp, err = handleDeployResult(client, agentID, cfg, tarballData, resp, err)
 
 	if err != nil {
 		output.PrintError("Deployment failed: %v", err)

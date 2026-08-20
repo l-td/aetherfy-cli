@@ -151,6 +151,7 @@ Workspaces group related agents so they can share secrets and vector collections
 | `afy deploy [path]` | Build and deploy the project (watches by default) |
 | `afy deploy --detach` | Upload and return immediately without streaming |
 | `afy deploy --agent <name>` | Override agent target (otherwise read from `aetherfy.yaml`) |
+| `afy deploy --create` | Create the agent from `aetherfy.yaml`'s `type` and `runtime` if it does not exist |
 | `afy deploy --from-github <owner/repo[@ref]>` | Deploy directly from a public GitHub repo |
 | `afy deployments <agent>` | Show deployment history (newest first) |
 | `afy rollback <agent> [version]` | Roll back to a previously deployed version (skips the build step) |

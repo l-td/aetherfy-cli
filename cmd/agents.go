@@ -132,6 +132,36 @@ func init() {
 	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent")
 }
 
+// normalizeAgentType validates a user-supplied agent type against the
+// SERVICE|JOB enum and returns the lowercase value the backend expects.
+//
+// Single source for BOTH creation surfaces — the `-t` flag on `agents create`
+// and the `type:` a consented `afy deploy --create` reads from aetherfy.yaml —
+// so the deploy path cannot accept a type the create command would reject.
+func normalizeAgentType(raw string) (string, error) {
+	switch strings.ToUpper(strings.TrimSpace(raw)) {
+	case "SERVICE":
+		return "service", nil
+	case "JOB":
+		return "job", nil
+	}
+	return "", fmt.Errorf("invalid agent type: must be SERVICE or JOB")
+}
+
+// createAgentRecord issues the POST /agents that creates an agent. Both
+// `afy agents create` and the consented create inside `afy deploy` go through
+// here rather than building their own request body, so the two can't drift.
+// agentType must already be normalized (lowercase, backend form).
+func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool) (*api.Agent, error) {
+	return client.CreateAgent(&api.AgentCreateRequest{
+		Name:         name,
+		Description:  description,
+		AgentType:    agentType,
+		Runtime:      runtime,
+		SpawnEnabled: spawnEnabled,
+	})
+}
+
 func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
 		return err
@@ -140,23 +170,17 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	// Validate agent type
-	agentType = strings.ToUpper(agentType)
-	if agentType != "SERVICE" && agentType != "JOB" {
+	normalizedType, typeErr := normalizeAgentType(agentType)
+	if typeErr != nil {
 		output.PrintError("Invalid agent type. Must be SERVICE or JOB")
-		return fmt.Errorf("invalid agent type: must be SERVICE or JOB")
+		return typeErr
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", name))
 	sp.Start()
 
 	client := api.NewClient()
-	agent, err := client.CreateAgent(&api.AgentCreateRequest{
-		Name:         name,
-		Description:  agentDescription,
-		AgentType:    strings.ToLower(agentType), // Backend expects lowercase
-		Runtime:      agentRuntime,
-		SpawnEnabled: spawnEnabled,
-	})
+	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled)
 	sp.Stop()
 
 	if err != nil {
