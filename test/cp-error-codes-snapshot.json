@@ -6,12 +6,12 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 117
+      "count": 121
     },
     {
       "path": "api/routes/regions.py",
       "tier": "violation",
-      "count": 5
+      "count": 4
     },
     {
       "path": "shared/plan_validator.py",
@@ -121,6 +121,10 @@
       "tier": "top-level"
     },
     "AGENT_PAUSED_CANNOT_DEPLOY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_PAUSED_CANNOT_REDEPLOY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -280,6 +284,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "DEPLOYMENT_REDEPLOY_SOURCE_UNAVAILABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "DEPLOYMENT_ROLLBACK_TARGET_INVALID": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -353,8 +361,8 @@
       "tier": "top-level"
     },
     "INVALID_REGION": {
-      "source": "api/routes/regions.py",
-      "tier": "violation"
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
     },
     "INVALID_TARGET_TIER": {
       "source": "shared/error_codes.py",
@@ -437,6 +445,10 @@
       "tier": "top-level"
     },
     "SERVICE_NOT_READY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "SERVICE_UNAVAILABLE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -94,6 +94,14 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 			for _, d := range deployments[1:] {
 				if d.Status == "active" || d.Status == "superseded" {
 					output.Printf("Roll back to v%d: afy rollback %s %d\n", d.Version, agentID, d.Version)
+					// Rollback re-deploys that version's IMAGE, which carries the
+					// secrets it was built with. Offer the rebuild alongside it
+					// only when the server says that version still has its source
+					// (CanRedeploy) — the two commands answer different questions
+					// and the failed deployment above may well be a missing secret.
+					if d.CanRedeploy {
+						output.Printf("Rebuild v%d with current secrets: afy redeploy %s %d\n", d.Version, agentID, d.Version)
+					}
 					break
 				}
 			}

@@ -111,6 +111,7 @@ func init() {
 	rootCmd.AddCommand(spawnCmd)
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(rollbackCmd)
+	rootCmd.AddCommand(redeployCmd)
 	rootCmd.AddCommand(deploymentsCmd)
 
 	// Custom version template

@@ -118,6 +118,13 @@ type Deployment struct {
 	RegionsTotal            int    `json:"regions_total"`
 	RegionsReady            int    `json:"regions_ready"`
 	PendingRegionAlertStage string `json:"pending_region_alert_stage,omitempty"`
+	// Whether this version can be rebuilt from its stored source archive
+	// (server Deployment.can_redeploy). Server-derived: the source is an
+	// internal S3 URI the API never returns, and the archive is deleted when a
+	// build fails and reaped past the 3 most recent successful deployments — so
+	// this cannot be inferred from State. No omitempty: `false` must serialize
+	// explicitly for `-o json` scripting, same reason as IsDegraded.
+	CanRedeploy bool `json:"can_redeploy"`
 }
 
 // DeployRequest is the request body for deploying

@@ -91,6 +91,25 @@ func (c *Client) CancelDeployment(agentID string, version int) (*Deployment, err
 	return &resp, nil
 }
 
+// Redeploy re-runs a version's BUILD from its stored source archive, injecting
+// current secrets. Distinct from Rollback, which re-deploys an already-built
+// image and therefore cannot pick up a secret written since that build.
+// Returns the new deployment created for the redeploy.
+func (c *Client) Redeploy(agentID string, version int) (*RollbackResponse, error) {
+	var resp RollbackResponse
+	path := fmt.Sprintf("/agents/%s/deployments/%d/redeploy", agentID, version)
+	httpResp, err := c.http.R().
+		SetResult(&resp).
+		Post(c.url(path))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if httpResp.IsError() {
+		return nil, parseAPIError(httpResp)
+	}
+	return &resp, nil
+}
+
 // Rollback rolls an agent back to a specific deployment version.
 // Returns the new deployment created for the rollback.
 func (c *Client) Rollback(agentID string, version int) (*RollbackResponse, error) {
