@@ -282,7 +282,20 @@ func handleDeployResult(client *api.Client, agentID string, cfg *archive.Aetherf
 		// allowCreate=false: the retry keeps the overage/freeze handling but can
 		// never offer to create again, so a repeat AGENT_NOT_FOUND fails instead
 		// of looping.
-		return handleDeployResult(client, agentID, cfg, false, tarballData, r, e)
+		res, deployErr := handleDeployResult(client, agentID, cfg, false, tarballData, r, e)
+
+		// The agent quota is a DEPLOY concept: the create above always succeeds,
+		// and only the deploy can be refused for want of a slot. That leaves the
+		// user having just read "Agent 'X' created" followed by a failure, which
+		// reads like a half-finished operation unless we say otherwise. It is
+		// not: the record is theirs, it is a draft, and drafts are not rationed.
+		// Same shape as the restore hint in cmd/agents.go — one actionable line
+		// on top of the server message, only for the code that means "no slot".
+		if apiErr, ok := deployErr.(*api.APIError); ok && apiErr.Code == "PLAN_LIMIT_EXCEEDED" {
+			output.Println("")
+			output.PrintInfo("Agent '%s' was created and stays as a draft until a slot frees. Delete or archive a deployed agent, or upgrade, then run 'afy deploy' again — you do not need to create it a second time.", agentID)
+		}
+		return res, deployErr
 
 	case "OVERAGE_CONFIRM_REQUIRED":
 		// The additional monthly $ is usually present; when the control-plane
