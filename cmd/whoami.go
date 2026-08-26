@@ -14,13 +14,11 @@ var whoamiCmd = &cobra.Command{
 }
 
 func runWhoami(cmd *cobra.Command, args []string) error {
-	creds := config.GetCredentials()
-
-	if !config.IsLoggedIn() {
-		output.PrintError("Not logged in. Run 'afy login' first.")
-		return nil
+	if err := checkAuth(); err != nil {
+		return err
 	}
 
+	creds := config.GetCredentials()
 	cfg := config.Get()
 
 	output.Header("Authentication Status")

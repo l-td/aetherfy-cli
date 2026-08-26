@@ -234,6 +234,27 @@ Connect your GitHub account to deploy on every push.
 | `afy version` | Print version, build date, and commit hash |
 | `afy completion [bash\|zsh\|fish\|powershell]` | Generate shell completion script |
 
+`completion` writes the script to stdout; wire it into your shell:
+
+```bash
+# bash
+source <(afy completion bash)
+
+# zsh
+source <(afy completion zsh)
+
+# fish
+afy completion fish | source
+```
+
+```powershell
+# PowerShell
+afy completion powershell | Out-String | Invoke-Expression
+```
+
+Add the line to your shell's startup file (`~/.bashrc`, `~/.zshrc`,
+`~/.config/fish/config.fish`, `$PROFILE`) to make it permanent.
+
 ## Configuration
 
 ### Config File
@@ -257,7 +278,11 @@ no_color: false
 verbose: false
 ```
 
-Credentials are stored separately in `~/.aetherfy/credentials.yaml` with permissions `0600`.
+Credentials are stored separately in `credentials.yaml`, in that same resolved
+config directory, with permissions `0600`.
+
+`--config` selects the config *file* only; `credentials.yaml` always resolves
+from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 
 ### Environment Variables
 
@@ -265,7 +290,7 @@ Credentials are stored separately in `~/.aetherfy/credentials.yaml` with permiss
 |----------|-------------|
 | `AETHERFY_API_KEY` | API key (overrides stored credentials) |
 | `AETHERFY_API_URL` | API base URL (overrides config) |
-| `AETHERFY_CONFIG_DIR` | Config directory path (defaults to `~/.aetherfy`) |
+| `AETHERFY_CONFIG_DIR` | Overrides the config directory (see resolution order above) |
 | `NO_COLOR` | Disable colored output |
 | `XDG_CONFIG_HOME` | Used on Linux if set |
 
@@ -278,6 +303,14 @@ Credentials are stored separately in `~/.aetherfy/credentials.yaml` with permiss
 | `--output, -o` | Output format: `text`, `json`, `table` |
 | `--verbose, -v` | Verbose output |
 | `--no-color` | Disable colors |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | Error — usage errors and failed operations |
+| `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
 
 ## Project Structure
 

@@ -3,6 +3,12 @@
 
 version: 2
 
+# Release assets are named from this ({{ .ProjectName }}-<os>-<arch>), and
+# scripts/install.sh constructs exactly `afy-<os>-<arch>` URLs. Left unset,
+# goreleaser infers "aetherfy-cli" and every one of those URLs 404s. Never
+# rename it once the first release has shipped.
+project_name: afy
+
 before:
   hooks:
     - go mod tidy

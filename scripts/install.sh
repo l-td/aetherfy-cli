@@ -8,9 +8,16 @@
 # exists. Intended usage once it is hosted:
 #   curl -fsSL https://aetherfy.com/install.sh | bash
 #
+# Linux and macOS only. Windows is not supported by this script: Git Bash has
+# no sudo and no /usr/local/bin, and an extensionless binary is useless to cmd
+# or PowerShell. On Windows, download the release zip from
+# https://github.com/l-td/aetherfy-cli/releases or build from source (README).
+#
 # Environment variables:
 #   AETHERFY_INSTALL_DIR - Installation directory (default: /usr/local/bin)
-#   AETHERFY_VERSION     - Specific version to install (default: latest)
+#   AETHERFY_VERSION     - Specific version to install (default: latest).
+#                          Accepts "0.1.0" or "v0.1.0"; both resolve to the
+#                          same release.
 #
 
 set -e
@@ -27,6 +34,8 @@ BINARY_NAME="afy"
 GITHUB_REPO="l-td/aetherfy-cli"
 INSTALL_DIR="${AETHERFY_INSTALL_DIR:-/usr/local/bin}"
 VERSION="${AETHERFY_VERSION:-latest}"
+# Tags are vX.Y.Z; accept the version with or without the leading v.
+VERSION="${VERSION#v}"
 
 # Detect OS and architecture
 detect_platform() {
@@ -36,7 +45,13 @@ detect_platform() {
     case "$OS" in
         linux)   OS="linux" ;;
         darwin)  OS="darwin" ;;
-        mingw*|msys*|cygwin*) OS="windows" ;;
+        mingw*|msys*|cygwin*)
+            echo -e "${RED}Error: this installer supports Linux and macOS only.${NC}"
+            echo "On Windows, download the release zip from:"
+            echo "  https://github.com/${GITHUB_REPO}/releases"
+            echo "or build from source (see the README)."
+            exit 1
+            ;;
         *)
             echo -e "${RED}Error: Unsupported operating system: $OS${NC}"
             exit 1
@@ -56,28 +71,62 @@ detect_platform() {
     echo -e "${BLUE}Detected platform: ${PLATFORM}${NC}"
 }
 
-# Get the latest version from GitHub
-get_latest_version() {
+# Resolve the release URL prefix. Deliberately no api.github.com call: the
+# /releases/latest/download redirect serves the newest asset directly, which
+# costs us neither the anonymous rate limit nor a JSON parse that can only
+# fail silently.
+resolve_release() {
     if [ "$VERSION" = "latest" ]; then
-        echo -e "${BLUE}Fetching latest version...${NC}"
-        VERSION=$(curl -fsSL "https://api.github.com/repos/${GITHUB_REPO}/releases/latest" | grep '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')
-        if [ -z "$VERSION" ]; then
-            echo -e "${RED}Error: Failed to fetch latest version${NC}"
-            exit 1
-        fi
+        URL_PREFIX="https://github.com/${GITHUB_REPO}/releases/latest/download"
+        echo -e "${BLUE}Installing version: latest${NC}"
+    else
+        URL_PREFIX="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}"
+        echo -e "${BLUE}Installing version: v${VERSION}${NC}"
     fi
-    echo -e "${BLUE}Installing version: ${VERSION}${NC}"
+}
+
+# Fetch $1 into $2
+download() {
+    if command -v curl &> /dev/null; then
+        curl -fsSL "$1" -o "$2"
+    elif command -v wget &> /dev/null; then
+        wget -q "$1" -O "$2"
+    else
+        echo -e "${RED}Error: curl or wget is required${NC}"
+        exit 1
+    fi
+}
+
+# Check the archive against checksums.txt. Fails closed: no checksum tool
+# means no install, never an unverified one.
+verify_checksum() {
+    echo -e "${BLUE}Verifying checksum...${NC}"
+
+    if ! grep " ${ASSET}\$" checksums.txt > "${ASSET}.sha256"; then
+        echo -e "${RED}Error: ${ASSET} is not listed in checksums.txt${NC}"
+        exit 1
+    fi
+
+    if command -v sha256sum &> /dev/null; then
+        CHECK_CMD="sha256sum -c"
+    elif command -v shasum &> /dev/null; then
+        CHECK_CMD="shasum -a 256 -c"
+    else
+        echo -e "${RED}Error: sha256sum or shasum is required to verify the download${NC}"
+        echo "Refusing to install an unverified binary."
+        exit 1
+    fi
+
+    if ! $CHECK_CMD "${ASSET}.sha256"; then
+        echo -e "${RED}Error: checksum verification failed for ${ASSET}${NC}"
+        exit 1
+    fi
 }
 
 # Download and install
 install() {
-    # Construct download URL
-    EXTENSION="tar.gz"
-    if [ "$OS" = "windows" ]; then
-        EXTENSION="zip"
-    fi
-
-    DOWNLOAD_URL="https://github.com/${GITHUB_REPO}/releases/download/v${VERSION}/${BINARY_NAME}-${PLATFORM}.${EXTENSION}"
+    ASSET="${BINARY_NAME}-${PLATFORM}.tar.gz"
+    DOWNLOAD_URL="${URL_PREFIX}/${ASSET}"
 
     echo -e "${BLUE}Downloading from: ${DOWNLOAD_URL}${NC}"
 
@@ -85,28 +134,21 @@ install() {
     TMP_DIR=$(mktemp -d)
     trap "rm -rf ${TMP_DIR}" EXIT
 
-    # Download
-    if command -v curl &> /dev/null; then
-        curl -fsSL "${DOWNLOAD_URL}" -o "${TMP_DIR}/afy.${EXTENSION}"
-    elif command -v wget &> /dev/null; then
-        wget -q "${DOWNLOAD_URL}" -O "${TMP_DIR}/afy.${EXTENSION}"
-    else
-        echo -e "${RED}Error: curl or wget is required${NC}"
-        exit 1
-    fi
+    # Under its real name: checksums.txt lists the asset by that name, and the
+    # -c check matches on the filename in the line.
+    download "${DOWNLOAD_URL}" "${TMP_DIR}/${ASSET}"
+    download "${URL_PREFIX}/checksums.txt" "${TMP_DIR}/checksums.txt"
+
+    cd "${TMP_DIR}"
+
+    # Verify before extracting, never after
+    verify_checksum
 
     # Extract
-    cd "${TMP_DIR}"
-    if [ "$EXTENSION" = "tar.gz" ]; then
-        tar xzf "afy.${EXTENSION}"
-    else
-        unzip -q "afy.${EXTENSION}"
-    fi
+    tar xzf "${ASSET}"
 
-    # Find binary
-    BINARY_FILE=$(find . -name "${BINARY_NAME}*" -type f | head -1)
-    if [ -z "$BINARY_FILE" ]; then
-        echo -e "${RED}Error: Binary not found in archive${NC}"
+    if [ ! -f "./${BINARY_NAME}" ]; then
+        echo -e "${RED}Error: binary not found in archive${NC}"
         exit 1
     fi
 
@@ -114,29 +156,38 @@ install() {
     echo -e "${BLUE}Installing to ${INSTALL_DIR}/${BINARY_NAME}...${NC}"
 
     if [ -w "$INSTALL_DIR" ]; then
-        mv "$BINARY_FILE" "${INSTALL_DIR}/${BINARY_NAME}"
+        mv "./${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
         chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
     else
         echo -e "${YELLOW}Requesting sudo access to install to ${INSTALL_DIR}...${NC}"
-        sudo mv "$BINARY_FILE" "${INSTALL_DIR}/${BINARY_NAME}"
+        sudo mv "./${BINARY_NAME}" "${INSTALL_DIR}/${BINARY_NAME}"
         sudo chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
     fi
 }
 
 # Verify installation
 verify() {
-    if command -v "$BINARY_NAME" &> /dev/null; then
-        echo -e "${GREEN}✓ Aetherfy CLI installed successfully!${NC}"
+    # Success is what the binary we just installed reports, by its full path.
+    # `command -v` would answer about some other afy already on PATH.
+    echo ""
+    if ! "${INSTALL_DIR}/${BINARY_NAME}" version; then
+        echo -e "${RED}Error: ${INSTALL_DIR}/${BINARY_NAME} did not run${NC}"
+        exit 1
+    fi
+
+    echo ""
+    echo -e "${GREEN}✓ Aetherfy CLI installed successfully!${NC}"
+    echo ""
+    echo -e "${BLUE}Get started:${NC}"
+    echo "  afy login              # Authenticate with your API key"
+    echo "  afy agents list        # List your agents"
+    echo "  afy deploy             # Deploy your agent"
+    echo ""
+    echo -e "${BLUE}Documentation: https://docs.aetherfy.com${NC}"
+
+    # command -v decides one thing only: whether the PATH hint is needed.
+    if ! command -v "$BINARY_NAME" &> /dev/null; then
         echo ""
-        "${BINARY_NAME}" version
-        echo ""
-        echo -e "${BLUE}Get started:${NC}"
-        echo "  afy login              # Authenticate with your API key"
-        echo "  afy agents list        # List your agents"
-        echo "  afy deploy             # Deploy your agent"
-        echo ""
-        echo -e "${BLUE}Documentation: https://docs.aetherfy.com${NC}"
-    else
         echo -e "${YELLOW}Warning: '${BINARY_NAME}' not found in PATH${NC}"
         echo "You may need to add ${INSTALL_DIR} to your PATH:"
         echo ""
@@ -154,7 +205,7 @@ main() {
     echo ""
 
     detect_platform
-    get_latest_version
+    resolve_release
     install
     verify
 }
