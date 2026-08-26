@@ -202,3 +202,23 @@ func TestPinnedInstallURLMatchesTheReleaseTagShape(t *testing.T) {
 			"AETHERFY_VERSION=0.1.0 must resolve to the tag the release workflow actually published.",
 		tagFilter, pinned)
 }
+
+// The published-contract freeze. The pair gate above proves the two files
+// AGREE — it is satisfied by a coordinated rename of both sides, and before
+// the first release such a rename is legal. After it, the name is a published
+// contract: a version-pinned install (AETHERFY_VERSION=0.1.0) builds the old
+// URL shape against an already-shipped release, and a rename 404s every one
+// of them. The pair gate structurally cannot catch a coordinated rename; this
+// pin is the freeze that does.
+func TestReleaseAssetNameIsThePublishedContract(t *testing.T) {
+	cfg := dropComments(readSuggestionSource(t, ".goreleaser.yaml"))
+
+	projectName := mustMatch(t, cfg, ".goreleaser.yaml project_name",
+		regexp.MustCompile(`(?m)^project_name:\s*(\S+)\s*$`))
+
+	assert.Equal(t, "afy", projectName,
+		"project_name is the published asset-name contract (afy-<os>-<arch>.tar.gz). "+
+			"If no release has EVER shipped, a rename is still legal — update this pin in "+
+			"the same commit, deliberately. If one has, do not rename: every version-pinned "+
+			"install of an already-published release would 404.")
+}
