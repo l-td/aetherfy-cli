@@ -98,6 +98,10 @@ var notControlPlaneCodes = map[string]string{
 	"SHARED_CACHE_URL": "fixture secret name (test/workspaces_test.go)",
 	"SHARED_DB_URL":    "fixture secret name (test/workspaces_test.go)",
 
+	// Shell variable names read out of scripts/install.sh by the install
+	// pair gate. They are substitution keys, not anything a server sends.
+	"BINARY_NAME": "shell variable name in scripts/install.sh, pinned by test/install_contract_test.go",
+
 	// Fixture constants in test/cperrors/extract_test.go, which builds a fake
 	// control-plane tree to pin the extractor's form rule. They are there
 	// precisely BECAUSE they are not error codes: the first four are the real

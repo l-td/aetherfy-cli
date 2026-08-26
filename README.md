@@ -252,8 +252,11 @@ afy completion fish | source
 afy completion powershell | Out-String | Invoke-Expression
 ```
 
-Add the line to your shell's startup file (`~/.bashrc`, `~/.zshrc`,
-`~/.config/fish/config.fish`, `$PROFILE`) to make it permanent.
+To make it permanent: append the bash or zsh line to `~/.bashrc` or `~/.zshrc`;
+for fish, write the script once with `afy completion fish >
+~/.config/fish/completions/afy.fish`; for PowerShell, append `afy completion
+powershell >> $PROFILE`. `afy completion --help` prints the same instructions —
+it is the source of truth if this ever disagrees.
 
 ## Configuration
 

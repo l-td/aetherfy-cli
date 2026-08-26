@@ -85,12 +85,20 @@ resolve_release() {
     fi
 }
 
-# Fetch $1 into $2
+# Fetch $1 into $2. Say which URL failed: under `set -e` a bare non-zero curl
+# kills the script with no output whatsoever, and a 404 here — wrong tag, asset
+# renamed, release not published yet — is the likeliest way this ever fails.
 download() {
     if command -v curl &> /dev/null; then
-        curl -fsSL "$1" -o "$2"
+        if ! curl -fsSL "$1" -o "$2"; then
+            echo -e "${RED}Error: download failed: $1${NC}"
+            exit 1
+        fi
     elif command -v wget &> /dev/null; then
-        wget -q "$1" -O "$2"
+        if ! wget -q "$1" -O "$2"; then
+            echo -e "${RED}Error: download failed: $1${NC}"
+            exit 1
+        fi
     else
         echo -e "${RED}Error: curl or wget is required${NC}"
         exit 1
