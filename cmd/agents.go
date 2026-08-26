@@ -323,7 +323,13 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' paused. Resume with 'afy agents start %s'.", idOrName, idOrName)
+	// Two facts, because two things are true on return. The pause IS applied —
+	// the control plane commits status=paused and closes the billing interval
+	// before answering — while the Fly machines take a few more seconds to wind
+	// down, converged by a background job. Saying only "paused" would hide that;
+	// saying the agent is "stopping" would contradict `afy agents status`, which
+	// reports paused immediately.
+	output.PrintSuccess("Agent '%s' paused; its machines are stopping. Resume with 'afy agents start %s'.", idOrName, idOrName)
 	output.PrintInfo("Stopped agents keep billing at the base rate; archive to stop billing.")
 	return nil
 }
