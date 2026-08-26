@@ -1,0 +1,7 @@
+# Shell scripts MUST be LF in the index and on disk. They run on ubuntu in
+# GitHub Actions and on the Linux boxes; a CRLF shebang line dies there with
+# "bad interpreter: /bin/bash^M" — a failure that names nothing relevant.
+# Not hypothetical: PowerShell's bare `bash` is WSL, whose git does not read
+# the Windows global core.autocrlf, so a commit from that side puts CRLF in the
+# index. Pinned here so correctness does not depend on every  client being configured.
+*.sh text eol=lf
