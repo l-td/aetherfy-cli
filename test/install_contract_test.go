@@ -475,3 +475,107 @@ func TestReleaseAssetNameIsThePublishedContract(t *testing.T) {
 			"the same commit, deliberately. If one has, do not rename: every version-pinned "+
 			"install of an already-published release would 404.")
 }
+
+// The FOURTH knower: scripts/install.ps1.
+//
+// install.sh is Linux/macOS only, so the Windows half of the asset contract had
+// exactly one consumer (internal/release, via `afy update`) until install.ps1
+// existed. Now a PowerShell script builds the same string a fourth way, and an
+// ungated fourth copy is the drift this whole gate exists to prevent — with the
+// extra sharpness that NOTHING ELSE reads the .zip path: install.sh cannot see
+// it, and a Linux CI runner cannot execute install.ps1 to find out.
+//
+// Derived from the same .goreleaser.yaml the other three are checked against,
+// never from a hardcoded literal, so a coordinated rename still reds in
+// TestReleaseAssetNameIsThePublishedContract rather than passing here.
+func TestWindowsInstallScriptAgreesOnTheAssetName(t *testing.T) {
+	cfg := dropComments(readSuggestionSource(t, ".goreleaser.yaml"))
+	ps := readSuggestionSource(t, "scripts/install.ps1")
+
+	projectName := mustMatch(t, cfg, ".goreleaser.yaml project_name",
+		regexp.MustCompile(`(?m)^project_name:\s*(\S+)\s*$`))
+
+	// install.ps1 builds "$BinaryName-$platform.zip" from $BinaryName and a
+	// $platform of "windows-$goarch". Read all three rather than the joined
+	// result, so a change to any part is visible here.
+	binaryName := mustMatch(t, ps, "install.ps1 $BinaryName",
+		regexp.MustCompile(`(?m)^\s*\$BinaryName\s*=\s*'([^']+)'`))
+	platformExpr := mustMatch(t, ps, "install.ps1 $platform",
+		regexp.MustCompile(`(?m)^\s*\$platform\s*=\s*"([^"]+)"`))
+	assetExpr := mustMatch(t, ps, "install.ps1 $asset",
+		regexp.MustCompile(`(?m)^\s*\$asset\s*=\s*"([^"]+)"`))
+	goarch := mustMatch(t, ps, "install.ps1 amd64 switch arm",
+		regexp.MustCompile(`(?m)^\s*'AMD64'\s*\{\s*\$goarch\s*=\s*'([^']+)'`))
+
+	expand := strings.NewReplacer(
+		"$goarch", goarch,
+		"$BinaryName", binaryName,
+		"$platform", strings.NewReplacer("$goarch", goarch).Replace(platformExpr),
+	)
+	downloaded := expand.Replace(assetExpr)
+	require.NotContains(t, downloaded, "$",
+		"install.ps1 $asset=%q still holds an unexpanded variable after substitution (%q) — "+
+			"teach this test the new variable or the gate is comparing PowerShell syntax.", assetExpr, downloaded)
+
+	// windows/amd64 is the only Windows platform .goreleaser.yaml publishes;
+	// its `ignore` list drops windows/arm64, which is why install.ps1 refuses
+	// every arch but AMD64 instead of building a URL that 404s.
+	want := projectName + "-windows-amd64" + release.ArchiveExt("windows")
+
+	assert.Equal(t, want, downloaded,
+		"WINDOWS ASSET-NAME CONTRACT BROKEN.\n"+
+			"  .goreleaser.yaml publishes: %s\n"+
+			"  scripts/install.ps1 fetches: %s\n"+
+			"Every `irm ... | iex` install would 404, and no other test covers this path:\n"+
+			"install.sh is Unix-only and CI cannot run PowerShell against a real release.",
+		want, downloaded)
+
+	// The Windows binary carries .exe INSIDE the archive; install.ps1 must look
+	// for the name goreleaser actually writes, not the bare one install.sh uses.
+	binaryFile := mustMatch(t, ps, "install.ps1 $BinaryFile",
+		regexp.MustCompile(`(?m)^\s*\$BinaryFile\s*=\s*'([^']+)'`))
+	assert.Equal(t, release.BinaryFileName("windows"), binaryFile,
+		"install.ps1 looks for %q inside the archive but goreleaser writes %q — "+
+			"the download and checksum would both pass and the install would then fail.",
+		binaryFile, release.BinaryFileName("windows"))
+
+	// Same repo as every other side of the contract.
+	repo := mustMatch(t, ps, "install.ps1 $GitHubRepo",
+		regexp.MustCompile(`(?m)^\s*\$GitHubRepo\s*=\s*'([^']+)'`))
+	assert.Equal(t, release.Repo, repo,
+		"install.ps1 downloads from %q but the release publishes to %q", repo, release.Repo)
+
+	// checksums.txt is verified before extracting; a wrong name fails closed,
+	// so this would block every Windows install rather than weakening one.
+	checksums := mustMatch(t, ps, "install.ps1 $ChecksumFile",
+		regexp.MustCompile(`(?m)^\s*\$ChecksumFile\s*=\s*'([^']+)'`))
+	assert.Equal(t, release.ChecksumsFile, checksums,
+		"install.ps1 fetches %q but the release publishes %q", checksums, release.ChecksumsFile)
+}
+
+// install.ps1 must stay pure ASCII.
+//
+// Not style. Windows PowerShell 5.1 reads a BOM-less file as ANSI, so a UTF-8
+// em-dash decodes to three characters — one of which is a double quote. That
+// closes the surrounding string early and the script dies with a parse error
+// naming a token nowhere near the real cause. It happened while writing this
+// file: eight em-dashes produced twelve parse errors, none of them at the
+// em-dash. The file is served over HTTP to `iex`, so no reader can be assumed.
+func TestWindowsInstallScriptIsAscii(t *testing.T) {
+	ps := readSuggestionSource(t, "scripts/install.ps1")
+	require.NotEmpty(t, ps, "scripts/install.ps1 is empty — the scan is dead")
+
+	for i, line := range strings.Split(ps, "\n") {
+		for _, r := range line {
+			if r > 127 {
+				assert.Fail(t, "scripts/install.ps1 contains a non-ASCII character",
+					"line %d contains %q (U+%04X).\n\n"+
+						"Windows PowerShell 5.1 reads a BOM-less file as ANSI, so this decodes to "+
+						"mojibake — and if the replacement contains a quote it terminates the "+
+						"enclosing string and the script fails to parse, pointing at the wrong line. "+
+						"Use an ASCII equivalent (-- for an em-dash).", i+1, r, r)
+				return
+			}
+		}
+	}
+}

@@ -120,3 +120,40 @@ jobs:
               fi
               ;;
           esac
+
+  # The Windows half of the same idea, and the ONLY place scripts/install.ps1
+  # ever runs. install.sh's smoke above is a Linux runner and cannot execute
+  # PowerShell against a real release; the unit gates can only compare strings.
+  # So everything past the platform check in install.ps1 -- download, checksum,
+  # Expand-Archive, the PATH write -- executes here or nowhere.
+  #
+  # Pins what the Linux job cannot see at all: the .zip that
+  # archives.format_overrides publishes, and afy.exe at the archive root.
+  # Version-pinned URL, same as above, so there is no /latest redirect race.
+  smoke-windows:
+    name: Install smoke (Windows, published assets)
+    runs-on: windows-latest
+    needs: release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install from the release just published
+        shell: powershell
+        env:
+          AETHERFY_VERSION: ${{ github.ref_name }}
+        run: |
+          $env:AETHERFY_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'afybin'
+          .\scripts\install.ps1
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+          $afy = Join-Path $env:AETHERFY_INSTALL_DIR 'afy.exe'
+          & $afy version
+          # The tag without its leading v is what ldflags stamped; if the
+          # binary reports anything else the release did not build from this tag.
+          $want = $env:AETHERFY_VERSION -replace '^v', ''
+          $got = (& $afy version | Out-String)
+          if ($got -notlike "*$want*") {
+            throw "installed afy reports:`n$got`nexpected it to contain $want"
+          }

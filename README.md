@@ -5,16 +5,16 @@ The official command-line interface for the Aetherfy platform. Deploy, manage, a
 ## Installation
 
 <!-- remove-on-first-release -->
-No release is tagged yet, so the install script and the release downloads have
+No release is tagged yet, so the install scripts and the release downloads have
 nothing to fetch — until the first tag, use `go install` or build from source.
 
-### Install script (Linux and macOS)
+### Install script — Linux and macOS
 
 ```bash
 curl -fsSL https://aetherfy.com/install.sh | bash
 ```
 
-Windows is not supported by this script — use the release zip below. Two
+Windows is not supported by this script — use the PowerShell one below. Two
 environment variables control it:
 
 | Variable | Default | Meaning |
@@ -26,12 +26,36 @@ environment variables control it:
 curl -fsSL https://aetherfy.com/install.sh | AETHERFY_INSTALL_DIR="$HOME/.local/bin" bash
 ```
 
+### Install script — Windows
+
+```powershell
+irm https://aetherfy.com/install.ps1 | iex
+```
+
+Installs to `%LOCALAPPDATA%\Programs\afy` and adds that directory to your user
+`PATH` — no elevation, and `afy` works in the terminal you ran it from. The same
+two environment variables control it:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AETHERFY_INSTALL_DIR` | `%LOCALAPPDATA%\Programs\afy` | Where to put `afy.exe` |
+| `AETHERFY_VERSION` | latest | Version to install; takes `0.1.0` or `v0.1.0` |
+
+```powershell
+$env:AETHERFY_VERSION = "0.1.0"
+irm https://aetherfy.com/install.ps1 | iex
+```
+
+Windows on ARM has no published build. The script says so rather than
+downloading something that does not exist — run the amd64 build under x64
+emulation, or build from source.
+
 ### GitHub Releases
 
 Download the archive for your platform from
 [the releases page](https://github.com/l-td/aetherfy-cli/releases), extract it,
-and put `afy` somewhere on your `PATH`. **On Windows this is the supported
-path** — take the `.zip`; the install script above refuses to run there.
+and put `afy` somewhere on your `PATH`. Use this to pin a version by hand, or to
+install somewhere the scripts above do not reach.
 
 ### go install
 

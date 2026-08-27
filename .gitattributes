@@ -5,3 +5,11 @@
 # the Windows global core.autocrlf, so a commit from that side puts CRLF in the
 # index. Pinned here so correctness does not depend on every  client being configured.
 *.sh text eol=lf
+
+# PowerShell scripts are Windows-only and pinned to CRLF for the same reason the
+# .sh rule exists: so correctness does not depend on any client's autocrlf. Note
+# the endings are NOT the encoding hazard here -- install.ps1 must also stay pure
+# ASCII, because Windows PowerShell 5.1 reads a BOM-less file as ANSI and a UTF-8
+# em-dash then decodes to a string-terminating quote. Enforced by
+# TestWindowsInstallScriptIsAscii.
+*.ps1 text eol=crlf

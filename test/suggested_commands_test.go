@@ -372,6 +372,7 @@ func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 		okWithMarker  bool
 	}{
 		{"aetherfy.com/install.sh", "the URL 307s to this repo's scripts/install.sh, but the download it runs has no tagged release to fetch", true},
+		{"aetherfy.com/install.ps1", "the URL 307s to this repo's scripts/install.ps1, but the download it runs has no tagged release to fetch", true},
 		{"brew install", "no Homebrew tap exists and there are no releases to package", false},
 		{"github.com/l-td/aetherfy-cli/releases", "this repository has no tagged releases", true},
 	}
@@ -403,7 +404,10 @@ func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 		// Only executable-looking lines: a sentence explaining that these are
 		// not published yet is exactly what should be there instead.
 		trimmed := strings.TrimSpace(line)
+		// `irm` is the Windows one-liner's verb; without it scripts/install.ps1
+		// could be advertised while unshipped and no guard would notice.
 		if !strings.HasPrefix(trimmed, "curl ") && !strings.HasPrefix(trimmed, "brew ") &&
+			!strings.HasPrefix(trimmed, "irm ") &&
 			!strings.Contains(trimmed, "](https://github.com/") {
 			continue
 		}
