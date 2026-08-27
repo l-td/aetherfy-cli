@@ -32,6 +32,7 @@ Quick start:
   afy logs <agent>             # View agent logs
   afy deployments <agent>      # View deployment history
   afy rollback <agent> <ver>   # Roll back to a previous version
+  afy update                   # Replace this binary with the newest release
 
 For more information, visit: https://docs.aetherfy.com`,
 	Version: version.Short(),
@@ -113,6 +114,10 @@ func init() {
 	rootCmd.AddCommand(rollbackCmd)
 	rootCmd.AddCommand(redeployCmd)
 	rootCmd.AddCommand(deploymentsCmd)
+	// Deliberately NOT behind checkAuth(): replacing the CLI binary needs no
+	// Aetherfy account, and a logged-out user is exactly who might be stuck on
+	// an old build.
+	rootCmd.AddCommand(updateCmd)
 
 	// Custom version template
 	rootCmd.SetVersionTemplate(version.Full() + "\n")

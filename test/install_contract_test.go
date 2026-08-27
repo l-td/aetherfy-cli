@@ -1,7 +1,7 @@
 package test
 
-// Pair-gates the asset-name contract between .goreleaser.yaml and
-// scripts/install.sh.
+// Gates the asset-name contract between .goreleaser.yaml, scripts/install.sh
+// and cmd/update.go (via internal/release).
 //
 // These two files agree on a string that neither one states: the release
 // publishes `<project_name>-<os>-<arch>.tar.gz` and the installer downloads
@@ -14,18 +14,27 @@ package test
 // A comment saying "never rename this" was the previous protection. Comments
 // are claims, not gates.
 //
-// This test therefore reads BOTH files and derives the same string from each.
-// It deliberately does not pin either side to a hardcoded literal: two
-// one-sided pins are zero gates wearing the costume of two, since renaming the
-// asset means editing both pins and the test never notices they used to agree.
+// This test therefore reads the files and derives the same string from each.
+// It deliberately does not pin any side to a hardcoded literal: one-sided pins
+// are zero gates wearing the costume of several, since renaming the asset means
+// editing every pin and the test never notices they used to agree.
+//
+// THE THIRD KNOWER. `afy update` (cmd/update.go) downloads the same asset, so
+// there are now three places that construct the name and still none that
+// mention each other. The Go side is real code, so it is checked by CALLING it
+// — a table over every published platform — rather than by scanning its source:
+// a regex over Go would only prove a literal exists somewhere, not that the
+// function returns it.
 
 import (
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/l-td/aetherfy-cli/internal/release"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 // Stand-ins for the per-build values neither file knows at authoring time.
@@ -102,6 +111,114 @@ func templateField(field string) *regexp.Regexp {
 	return regexp.MustCompile(`\{\{\s*\.` + field + `\s*\}\}`)
 }
 
+// archiveExtension maps a goreleaser archive format to the suffix the published
+// file carries. Unknown formats fail loudly rather than defaulting: silently
+// guessing an extension would let the Go side and the release disagree in the
+// one way this file exists to prevent.
+var archiveExtension = map[string]string{
+	"tar.gz": ".tar.gz",
+	"tgz":    ".tgz",
+	"tar":    ".tar",
+	"gz":     ".gz",
+	"zip":    ".zip",
+	"binary": "",
+}
+
+// platform is one goos/goarch the release builds for.
+type platform struct{ goos, goarch string }
+
+func (p platform) String() string { return p.goos + "/" + p.goarch }
+
+// releaseConfig is the slice of .goreleaser.yaml this file reasons about.
+//
+// Parsed as YAML rather than scanned with regexes, unlike the checks above:
+// `format_overrides` and `ignore` are nested lists of maps, and a regex over
+// those would be reading indentation and calling it structure.
+type releaseConfig struct {
+	ProjectName string `yaml:"project_name"`
+	Builds      []struct {
+		Goos   []string `yaml:"goos"`
+		Goarch []string `yaml:"goarch"`
+		Ignore []struct {
+			Goos   string `yaml:"goos"`
+			Goarch string `yaml:"goarch"`
+		} `yaml:"ignore"`
+	} `yaml:"builds"`
+	Archives []struct {
+		Formats         []string `yaml:"formats"`
+		NameTemplate    string   `yaml:"name_template"`
+		FormatOverrides []struct {
+			Goos    string   `yaml:"goos"`
+			Formats []string `yaml:"formats"`
+		} `yaml:"format_overrides"`
+	} `yaml:"archives"`
+}
+
+// parseReleaseConfig reads .goreleaser.yaml, insisting on the shape the rest of
+// this file assumes. Every require here is anti-vacuity: a config that parsed to
+// empty lists would make the comparisons below agree with themselves.
+func parseReleaseConfig(t *testing.T) releaseConfig {
+	t.Helper()
+	var cfg releaseConfig
+	require.NoError(t, yaml.Unmarshal([]byte(readSuggestionSource(t, ".goreleaser.yaml")), &cfg),
+		".goreleaser.yaml does not parse as YAML")
+
+	require.Len(t, cfg.Builds, 1, ".goreleaser.yaml: expected exactly one `builds` entry; teach this test the new shape")
+	require.Len(t, cfg.Archives, 1, ".goreleaser.yaml: expected exactly one `archives` entry; teach this test the new shape")
+	require.NotEmpty(t, cfg.Builds[0].Goos, ".goreleaser.yaml: builds.goos is empty — the scan is dead")
+	require.NotEmpty(t, cfg.Builds[0].Goarch, ".goreleaser.yaml: builds.goarch is empty — the scan is dead")
+	require.NotEmpty(t, cfg.Archives[0].Formats, ".goreleaser.yaml: archives.formats is empty — the scan is dead")
+	require.NotEmpty(t, cfg.ProjectName, ".goreleaser.yaml: project_name is empty — the scan is dead")
+	return cfg
+}
+
+// ignored is the goos/goarch pairs .goreleaser.yaml refuses to build.
+func (c releaseConfig) ignored() map[string]bool {
+	out := map[string]bool{}
+	for _, ig := range c.Builds[0].Ignore {
+		out[platform{ig.Goos, ig.Goarch}.String()] = true
+	}
+	return out
+}
+
+// publishedMatrix is goos x goarch minus the ignore list — exactly the set of
+// platforms a release has an asset for.
+func (c releaseConfig) publishedMatrix(t *testing.T) []platform {
+	t.Helper()
+	skip := c.ignored()
+	var out []platform
+	for _, goos := range c.Builds[0].Goos {
+		for _, goarch := range c.Builds[0].Goarch {
+			p := platform{goos, goarch}
+			if !skip[p.String()] {
+				out = append(out, p)
+			}
+		}
+	}
+	require.NotEmpty(t, out, ".goreleaser.yaml builds nothing at all — every comparison below would be vacuous")
+	return out
+}
+
+// extensionFor is the suffix the published archive carries on goos, honouring
+// archives.format_overrides.
+func (c releaseConfig) extensionFor(t *testing.T, goos string) string {
+	t.Helper()
+	formats := c.Archives[0].Formats
+	for _, override := range c.Archives[0].FormatOverrides {
+		if override.Goos == goos {
+			formats = override.Formats
+			break
+		}
+	}
+	require.Len(t, formats, 1,
+		".goreleaser.yaml publishes %d archive formats for %s; this test compares one extension per platform", len(formats), goos)
+	ext, known := archiveExtension[formats[0]]
+	require.True(t, known,
+		".goreleaser.yaml publishes archive format %q for %s, which this test cannot turn into a file "+
+			"extension — teach it the new format or the comparison below is guessing", formats[0], goos)
+	return ext
+}
+
 func TestInstallScriptAndReleaseConfigAgreeOnTheAssetName(t *testing.T) {
 	cfg := dropComments(readSuggestionSource(t, ".goreleaser.yaml"))
 	script := dropComments(readSuggestionSource(t, "scripts/install.sh"))
@@ -158,6 +275,75 @@ func TestInstallScriptAndReleaseConfigAgreeOnTheAssetName(t *testing.T) {
 			"  scripts/install.sh fetches: %s\n"+
 			"Every install would 404. Change both files or neither.",
 		published, projectName, nameTemplate, downloaded)
+
+	// ---- the third side: what `afy update` downloads ----
+	//
+	// A table over every platform the release publishes, comparing what
+	// internal/release.AssetName RETURNS against the string derived from
+	// .goreleaser.yaml above. This is also the only gate on the extension
+	// split — install.sh is Linux/macOS only, so it never sees the zip that
+	// archives.format_overrides publishes for Windows, and update.go does.
+	spec := parseReleaseConfig(t)
+	matrix := spec.publishedMatrix(t)
+
+	for _, p := range matrix {
+		expand := strings.NewReplacer(osPlaceholder, p.goos, archPlaceholder, p.goarch)
+		ext := spec.extensionFor(t, p.goos)
+
+		assert.Equal(t, ext, release.ArchiveExt(p.goos),
+			"ARCHIVE FORMAT CONTRACT BROKEN for %s.\n"+
+				"  .goreleaser.yaml publishes: %s  (archives.formats + format_overrides)\n"+
+				"  internal/release builds:    %s\n"+
+				"`afy update` would download a URL that 404s, or hand the wrong extractor an archive it "+
+				"cannot open.", p.goos, ext, release.ArchiveExt(p.goos))
+
+		want := expand.Replace(published) + ext
+		got, err := release.AssetName(p.goos, p.goarch)
+		require.NoError(t, err,
+			".goreleaser.yaml publishes an asset for %s, but internal/release.AssetName refuses it: %v.\n"+
+				"`afy update` would tell that platform's users no release exists for them.", p, err)
+
+		assert.Equal(t, want, got,
+			"ASSET-NAME CONTRACT BROKEN for %s.\n"+
+				"  .goreleaser.yaml publishes: %s  (project_name %q + name_template %q)\n"+
+				"  internal/release builds:    %s\n"+
+				"Every `afy update` on that platform would 404. Change both or neither.",
+			p, want, projectName, nameTemplate, got)
+	}
+}
+
+// The platforms `afy update` will build a URL for must be exactly the ones the
+// release publishes an asset for.
+//
+// Both directions matter and they fail differently. A platform in
+// .goreleaser.yaml but not in internal/release means `afy update` tells real
+// users no release exists for them. A platform in internal/release but not in
+// .goreleaser.yaml — windows/arm64 is in goreleaser's `ignore` list today —
+// means it constructs a URL that 404s, and a 404 says nothing about why.
+func TestUpdateKnowsExactlyThePlatformsTheReleasePublishes(t *testing.T) {
+	spec := parseReleaseConfig(t)
+
+	var want []string
+	for _, p := range spec.publishedMatrix(t) {
+		want = append(want, p.String())
+	}
+
+	assert.ElementsMatch(t, want, release.SupportedPlatforms(),
+		"PLATFORM CONTRACT BROKEN.\n"+
+			"  .goreleaser.yaml publishes: %v  (builds.goos x builds.goarch minus builds.ignore)\n"+
+			"  internal/release supports:  %v\n"+
+			"Set these to the same list.", want, release.SupportedPlatforms())
+
+	// And each ignored combination must be refused by name, not by 404.
+	for ignored := range spec.ignored() {
+		parts := strings.SplitN(ignored, "/", 2)
+		require.Len(t, parts, 2, "malformed ignore entry %q in .goreleaser.yaml", ignored)
+
+		asset, err := release.AssetName(parts[0], parts[1])
+		assert.Empty(t, asset, "%s is in builds.ignore, so no asset for it is ever published", ignored)
+		require.Error(t, err, "`afy update` on %s must say so, not build a URL that 404s", ignored)
+		assert.Contains(t, err.Error(), ignored, "the refusal must name the platform: %v", err)
+	}
 }
 
 func TestInstallScriptAndReleaseConfigAgreeOnTheChecksumFile(t *testing.T) {
@@ -179,6 +365,15 @@ func TestInstallScriptAndReleaseConfigAgreeOnTheChecksumFile(t *testing.T) {
 			"  scripts/install.sh fetches: %s\n"+
 			"install.sh verifies before extracting and fails closed, so a wrong name blocks every install.",
 		published, downloaded)
+
+	// cmd/update.go fetches it too, and verifies before extracting for the same
+	// reason. A third knower gets gated here rather than left to rot.
+	assert.Equal(t, published, release.ChecksumsFile,
+		"CHECKSUM FILE CONTRACT BROKEN.\n"+
+			"  .goreleaser.yaml publishes: %s\n"+
+			"  internal/release fetches:   %s\n"+
+			"`afy update` fails closed when it cannot read the checksums, so a wrong name blocks every update.",
+		published, release.ChecksumsFile)
 }
 
 func TestPinnedInstallURLMatchesTheReleaseTagShape(t *testing.T) {

@@ -59,6 +59,37 @@ make install
 `make install` puts `afy` in `$(go env GOPATH)/bin`; make sure that
 directory is on your `PATH`.
 
+## Updating
+
+`afy update` replaces the running binary with the newest published release. It
+needs no Aetherfy account — updating the CLI is not an authenticated operation.
+
+```bash
+# Replace this binary with the newest release
+afy update
+
+# Is anything newer available? Changes nothing.
+afy update --check
+
+# Install a specific version — 0.1.0 and v0.1.0 both work
+afy update --version 0.1.0
+```
+
+The download is checked against the release's `checksums.txt` before anything is
+extracted, and a mismatch refuses to install — the same rule the install script
+follows.
+
+**Builds from source are refused.** If `afy version` reports `dev` or a Go module
+pseudo-version (`v0.0.0-<date>-<sha>`), this binary came from `go install`,
+`make install` or `go build`, not from a release. Overwriting it with a release
+archive would silently discard the build you have, so `afy update` stops and
+tells you how you installed it. Update it the same way you installed it — or
+pass `--force` if replacing it with a release is what you want.
+
+On Windows the running `afy.exe` cannot be deleted while it is running, so it is
+renamed to `afy.exe.old` and the new binary takes its place. That leftover is
+removed on the next update if Windows still had it open at the end of this one.
+
 ## Quick Start
 
 ```bash
@@ -267,6 +298,7 @@ Connect your GitHub account to deploy on every push.
 | Command | Description |
 |---------|-------------|
 | `afy version` | Print version, build date, and commit hash |
+| `afy update` | Replace this binary with the newest release (see [Updating](#updating)) |
 | `afy completion [bash\|zsh\|fish\|powershell]` | Generate shell completion script |
 
 `completion` writes the script to stdout; wire it into your shell:

@@ -78,3 +78,18 @@ jobs:
           bash scripts/install.sh
           "$AETHERFY_INSTALL_DIR/afy" version
           "$AETHERFY_INSTALL_DIR/afy" version | grep -F "${AETHERFY_VERSION#v}"
+          # `afy update --check` must report the release that just published as
+          # already-current. With a single release that is the only end-to-end
+          # assertion available, and it proves the one thing no unit test can:
+          # that github.com/<repo>/releases/latest really redirects to a
+          # /releases/tag/<tag> URL naming this tag.
+          #
+          # Skipped for pre-release tags. goreleaser's `prerelease: auto`
+          # publishes v0.2.0-rc.1 as a pre-release, and /releases/latest points
+          # PAST pre-releases at the newest stable one — so the check would
+          # correctly report a different version and fail the release for being
+          # right.
+          case "$AETHERFY_VERSION" in
+            *-*) echo "pre-release tag $AETHERFY_VERSION: /releases/latest points past it, skipping" ;;
+            *)   "$AETHERFY_INSTALL_DIR/afy" update --check | tee /dev/stderr | grep -F "already on ${AETHERFY_VERSION}" ;;
+          esac

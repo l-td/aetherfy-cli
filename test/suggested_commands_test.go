@@ -46,6 +46,7 @@ var suggestionSources = []string{
 	"cmd/root.go",
 	"cmd/secrets.go",
 	"cmd/spawn.go",
+	"cmd/update.go",
 	"cmd/workspaces.go",
 }
 
