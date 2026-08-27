@@ -329,21 +329,48 @@ func goFilesUnder(t *testing.T, dir string) []string {
 	return out
 }
 
+// The marker the README carries while paths that need a tag are documented but
+// cannot yet work. Its presence is what makes documenting them honest; its
+// absence turns the same prose into a promise the repository cannot keep.
+const removeOnFirstReleaseMarker = "<!-- remove-on-first-release -->"
+
 // Install paths that do not exist must not be advertised as if they did.
 //
-// `curl -fsSL https://aetherfy.com/install.sh | bash` — that URL is a 404;
-// the landing site serves no install.sh. `brew install aetherfy/tap/afy` —
-// there is no tap, and no tagged release for one to carry. Both were printed
-// as ready-to-run commands under "Installation". Build-from-source is the
-// only path today; when a release exists, document these again then.
+// `curl -fsSL https://aetherfy.com/install.sh | bash` — aetherfy.com now 307s
+// that URL to this repository's raw scripts/install.sh, configured in
+// aetherfy-dashboard:landing/next.config.js. The URL resolves; the DOWNLOAD it
+// performs still 404s, because no tag exists for it to fetch. `brew install
+// aetherfy/tap/afy` — there is no tap, and no tagged release for one to carry.
+// All three were once printed as ready-to-run commands under "Installation".
+//
+// The two failure modes are NOT the same, which is what okWithMarker encodes:
+//
+//   - The install script and the release downloads are WIRED AND WAITING. Every
+//     piece exists — the redirect, the script, the release workflow, the asset
+//     names — and they begin working the moment a tag is pushed, with no edit
+//     to anything. Documenting them behind the marker is accurate: the reader
+//     is told, in the same section, that the tag is what is missing.
+//   - Homebrew has NO OTHER END. There is no tap repository, the homebrew_casks
+//     block in .goreleaser.yaml is commented out, and a tag changes none of
+//     that. No marker makes `brew install` true, so none is accepted for it.
+//
+// So this guard is now the release-day checklist rather than a blanket ban: it
+// holds the marker and the documented paths together until the tag lands.
 func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 	readme := readSuggestionSource(t, "README.md")
 
-	unshipped := []struct{ fragment, why string }{
-		{"aetherfy.com/install.sh", "aetherfy.com serves no install.sh — the URL 404s"},
-		{"brew install", "no Homebrew tap exists and there are no releases to package"},
-		{"github.com/l-td/aetherfy-cli/releases", "this repository has no tagged releases"},
+	// okWithMarker: true for paths that a tag alone turns real, and which the
+	// remove-on-first-release marker therefore licenses documenting today.
+	unshipped := []struct {
+		fragment, why string
+		okWithMarker  bool
+	}{
+		{"aetherfy.com/install.sh", "the URL 307s to this repo's scripts/install.sh, but the download it runs has no tagged release to fetch", true},
+		{"brew install", "no Homebrew tap exists and there are no releases to package", false},
+		{"github.com/l-td/aetherfy-cli/releases", "this repository has no tagged releases", true},
 	}
+
+	marked := strings.Contains(readme, removeOnFirstReleaseMarker)
 
 	for i, line := range strings.Split(readme, "\n") {
 		// Only executable-looking lines: a sentence explaining that these are
@@ -354,18 +381,32 @@ func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 			continue
 		}
 		for _, u := range unshipped {
-			if strings.Contains(line, u.fragment) {
-				assert.Fail(t, "README advertises an install path that does not work",
-					"README.md:%d — %s\n\n"+
-						"IF YOU JUST CUT THE FIRST RELEASE: this guard is the thing that is "+
-						"out of date, not your README. The rule it encodes — \"no release "+
-						"exists, so no download path can be documented\" — expires the moment "+
-						"one does. Delete the matching entry from `unshipped` in %s, re-point "+
-						"scripts/install.sh's header at the now-live URL, and restore the "+
-						"homebrew_casks block in .goreleaser.yaml with a tap repository that "+
-						"exists. Do not silence this by rewording the README.",
-					i+1, u.why, "test/suggested_commands_test.go")
+			if !strings.Contains(line, u.fragment) {
+				continue
 			}
+			if u.okWithMarker {
+				assert.True(t, marked,
+					"the README documents an unshipped path and the remove-on-first-release "+
+						"marker is gone.\n\n"+
+						"README.md:%d — %s\n\n"+
+						"Either restore the marker, or — if you just cut the first release — "+
+						"delete these entries from `unshipped` in %s, re-point "+
+						"scripts/install.sh's header, and restore homebrew_casks in "+
+						".goreleaser.yaml with a tap repository that exists.\n\n"+
+						"The marker is %q and belongs on the sentence in the Installation "+
+						"section that names the tag as the missing piece.",
+					i+1, u.why, "test/suggested_commands_test.go", removeOnFirstReleaseMarker)
+				continue
+			}
+			// No marker licenses this one — nothing on the other end exists.
+			assert.Fail(t, "README advertises an install path that does not work",
+				"README.md:%d — %s\n\n"+
+					"The remove-on-first-release marker does NOT cover this path: unlike the "+
+					"install script and the release downloads, it does not start working when "+
+					"a tag is pushed. Restore the homebrew_casks block in .goreleaser.yaml "+
+					"with a tap repository that exists first, then document it. Do not "+
+					"silence this by rewording the README.",
+				i+1, u.why)
 		}
 	}
 }

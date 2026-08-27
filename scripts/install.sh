@@ -2,11 +2,19 @@
 #
 # Aetherfy CLI Installer
 #
-# NOT PUBLISHED YET. aetherfy.com/install.sh is a 404 and this repository has no
-# tagged releases, so the download below has nothing to fetch. Keep it working
-# and correct; the README documents build-from-source only until a release
-# exists. Intended usage once it is hosted:
+# Usage:
 #   curl -fsSL https://aetherfy.com/install.sh | bash
+#
+# THIS FILE IS SERVED AT THAT URL. aetherfy.com/install.sh is a temporary (307)
+# redirect to this file's raw copy on main, configured in the OTHER repository:
+#   aetherfy-dashboard:landing/next.config.js  (redirects(), source '/install.sh')
+# There is no second copy — that redirect points here, so editing this file
+# changes what users curl, on the next push to main and with no deploy. If you
+# need to move or rename it, fix the redirect in the same change.
+#
+# No releases are tagged yet, so the download below has nothing to fetch and
+# fails loudly with the URL it tried. That is deliberate and expires with the
+# first tag; keep this script working and correct in the meantime.
 #
 # Linux and macOS only. Windows is not supported by this script: Git Bash has
 # no sudo and no /usr/local/bin, and an extensionless binary is useless to cmd

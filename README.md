@@ -4,11 +4,45 @@ The official command-line interface for the Aetherfy platform. Deploy, manage, a
 
 ## Installation
 
-Building from source is the only install path today, on every platform.
-There are no tagged releases yet, so anything that downloads a prebuilt
-binary — the `curl | bash` installer, a Homebrew tap, GitHub Releases —
-has nothing to fetch. Those paths will be documented here when the first
-release is cut, and not before.
+<!-- remove-on-first-release -->
+No release is tagged yet, so the install script and the release downloads have
+nothing to fetch — until the first tag, use `go install` or build from source.
+
+### Install script (Linux and macOS)
+
+```bash
+curl -fsSL https://aetherfy.com/install.sh | bash
+```
+
+Windows is not supported by this script — use the release zip below. Two
+environment variables control it:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `AETHERFY_INSTALL_DIR` | `/usr/local/bin` | Where to put the `afy` binary |
+| `AETHERFY_VERSION` | latest | Version to install; takes `0.1.0` or `v0.1.0` |
+
+```bash
+curl -fsSL https://aetherfy.com/install.sh | AETHERFY_INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+### GitHub Releases
+
+Download the archive for your platform from
+[the releases page](https://github.com/l-td/aetherfy-cli/releases), extract it,
+and put `afy` somewhere on your `PATH`. **On Windows this is the supported
+path** — take the `.zip`; the install script above refuses to run there.
+
+### go install
+
+Requires Go 1.21+. This compiles from source, so it needs no release:
+
+```bash
+go install github.com/l-td/aetherfy-cli@latest
+```
+
+That puts `afy` in `$(go env GOPATH)/bin`; make sure that directory is on your
+`PATH`.
 
 ### From Source
 
