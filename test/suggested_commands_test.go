@@ -334,6 +334,11 @@ func goFilesUnder(t *testing.T, dir string) []string {
 // absence turns the same prose into a promise the repository cannot keep.
 const removeOnFirstReleaseMarker = "<!-- remove-on-first-release -->"
 
+// The claim scripts/install.sh's header makes while no tag exists. Once one
+// does, that sentence is false and the header has to say so — see the
+// marker-absent branch in TestReadmeDoesNotAdvertiseUnshippedInstallPaths.
+const noReleasesYetClaim = "No releases are tagged yet"
+
 // Install paths that do not exist must not be advertised as if they did.
 //
 // `curl -fsSL https://aetherfy.com/install.sh | bash` — aetherfy.com now 307s
@@ -371,6 +376,27 @@ func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 	}
 
 	marked := strings.Contains(readme, removeOnFirstReleaseMarker)
+
+	// The other direction, and the reason this is a checklist rather than a
+	// single tripwire. Deleting the marker is step one of release day; on its
+	// own it turns this guard green while scripts/install.sh still tells every
+	// reader that no release exists. Forcing step two here means the checklist
+	// cannot be half-completed silently.
+	//
+	// Homebrew is deliberately NOT forced alongside it. A tap can legitimately
+	// stay deferred long after the first release, and `brew install` already has
+	// its own okWithMarker:false entry above, which blocks documenting it until
+	// the tap exists. Do not "complete" this checklist by adding a
+	// homebrew_casks assertion — that would make a normal state red.
+	if !marked {
+		installer := readSuggestionSource(t, "scripts/install.sh")
+		assert.NotContains(t, installer, noReleasesYetClaim,
+			"the remove-on-first-release marker is gone from the README — so a release has "+
+				"been cut — but scripts/install.sh's header still says %q.\n\n"+
+				"Re-point the header at reality: the download resolves now. That header is "+
+				"the first thing anyone reads when they open the script the README tells them "+
+				"to pipe into bash.", noReleasesYetClaim)
+	}
 
 	for i, line := range strings.Split(readme, "\n") {
 		// Only executable-looking lines: a sentence explaining that these are

@@ -35,18 +35,19 @@ path** — take the `.zip`; the install script above refuses to run there.
 
 ### go install
 
-Requires Go 1.21+. This compiles from source, so it needs no release:
+Requires Go 1.24+. This compiles from source, so it needs no release:
 
 ```bash
-go install github.com/l-td/aetherfy-cli@latest
+go install github.com/l-td/aetherfy-cli/cmd/afy@latest
 ```
 
 That puts `afy` in `$(go env GOPATH)/bin`; make sure that directory is on your
-`PATH`.
+`PATH`. The `/cmd/afy` suffix is what names the binary `afy` — installing the
+module root instead produces one called `aetherfy-cli`.
 
 ### From Source
 
-Requires Go 1.21+ (and, on Windows, Git Bash or WSL for `make` — otherwise
+Requires Go 1.24+ (and, on Windows, Git Bash or WSL for `make` — otherwise
 run the `go build` line the Makefile wraps):
 
 ```bash
@@ -444,7 +445,7 @@ any difference, so the committed snapshot cannot quietly go stale.
 
 ### Requirements
 
-- Go 1.21+
+- Go 1.24+
 - Make (optional)
 
 ## Support

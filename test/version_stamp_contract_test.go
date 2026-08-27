@@ -47,7 +47,7 @@ func buildCLIWithLdflags(t *testing.T, ldflags string) string {
 	}
 	bin := filepath.Join(t.TempDir(), name)
 
-	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, ".")
+	build := exec.Command("go", "build", "-ldflags", ldflags, "-o", bin, "./cmd/afy")
 	build.Dir = ".." // test/ sits one level under the repo root
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, "go build failed:\n%s", out)
@@ -85,10 +85,13 @@ func TestVersionReportsTheEmbeddedBuildStamp(t *testing.T) {
 			"a plain `go build` reports Version %q. The build info the toolchain embeds "+
 				"(info.Main.Version plus the vcs.* settings) is supposed to fill the sentinel — "+
 				"see fillFromBuildInfo in pkg/version/version.go.\n\n"+
-				"IF THIS IS A FRESH FAILURE IN CI: check that the checkout is a real VCS "+
-				"working tree and that -buildvcs is not disabled. With no VCS data the "+
-				"toolchain reports \"(devel)\", which the fallback correctly refuses to use, "+
-				"and there is then no version for it to recover.", reported)
+				"MOST LIKELY CAUSE: the toolchain is older than Go 1.24. `go build` only "+
+				"stamps info.Main.Version with the module pseudo-version from 1.24 onward; "+
+				"before that it is \"(devel)\", which the fallback correctly refuses, so there "+
+				"is nothing left to recover. Check `go version` against go.mod's floor — "+
+				"TestWorkflowGoPinsAgreeWithTheModuleFloor guards that pair.\n\n"+
+				"LESS LIKELY: the build ran outside a VCS working tree, or with -buildvcs=false, "+
+				"which removes the same data by a different route.", reported)
 
 		assert.True(t, strings.HasPrefix(reported, "v"),
 			"a plain `go build` reports Version %q, which is not version-shaped; expected the "+

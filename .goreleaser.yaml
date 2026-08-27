@@ -16,7 +16,7 @@ before:
 builds:
   - id: afy
     binary: afy
-    main: .
+    main: ./cmd/afy
     env:
       - CGO_ENABLED=0
     goos:

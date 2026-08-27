@@ -35,7 +35,7 @@ func buildCLI(t *testing.T) string {
 	}
 	bin := filepath.Join(t.TempDir(), name)
 
-	build := exec.Command("go", "build", "-o", bin, ".")
+	build := exec.Command("go", "build", "-o", bin, "./cmd/afy")
 	build.Dir = ".." // test/ sits one level under the repo root
 	out, err := build.CombinedOutput()
 	require.NoError(t, err, "go build failed:\n%s", out)

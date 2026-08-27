@@ -1,6 +1,9 @@
-# Binaries
-afy
-afy.exe
+# Binaries. Anchored with a leading slash so they match ONLY the built binary
+# at the repository root. Unanchored, `afy` also matched the cmd/afy/ SOURCE
+# directory at any depth — git ignored the package holding main.go, so the
+# commit that introduced it silently carried no source at all.
+/afy
+/afy.exe
 *.exe
 *.exe~
 *.dll

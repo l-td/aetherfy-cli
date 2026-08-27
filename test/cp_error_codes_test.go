@@ -79,6 +79,8 @@ var notControlPlaneCodes = map[string]string{
 	"XDG_CONFIG_HOME":     "env var: XDG base-directory lookup on unix",
 	"AETHERFY_CP_ROOT":    "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
 
+	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
+
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.
 	"AETHERFY_AGENT_ID":        "reserved agent env var, not settable as a secret",
