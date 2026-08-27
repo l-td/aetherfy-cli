@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -97,6 +98,52 @@ func TestUpdateRefusesToReplaceABuildFromSource(t *testing.T) {
 
 	assert.Equal(t, before, hashFile(t, bin),
 		"the refused update replaced the binary anyway — this is the failure the refusal exists to prevent")
+}
+
+// The sentinel path, end to end, WITHOUT this test ever spelling the sentinel.
+//
+// `go build -buildvcs=false` embeds no VCS data, so info.Main.Version is
+// "(devel)", the fallback in pkg/version correctly refuses it, and Version is
+// left holding its actual default. The binary below therefore reports whatever
+// pkg/version defaults to — the real value, not a literal copied into a test —
+// and `afy update` must refuse it.
+//
+// Rename that sentinel and this test follows automatically. A test that pinned
+// the string "dev" would go green through the very rename that breaks the rule.
+func TestUpdateRefusesAnUnstampedBuild(t *testing.T) {
+	name := "afy"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	bin := filepath.Join(t.TempDir(), name)
+
+	build := exec.Command("go", "build", "-buildvcs=false", "-o", bin, "./cmd/afy")
+	build.Dir = ".."
+	out, err := build.CombinedOutput()
+	require.NoError(t, err, "go build failed:\n%s", out)
+
+	// Positive control on the FIXTURE, not on the rule: if -buildvcs=false ever
+	// stops producing an unstamped build, the refusal below would be asserting
+	// something about a pseudo-version instead and would pass for the wrong
+	// reason.
+	stdout, stderr, code := runCLIIn(t, t.TempDir(), bin, []string{"AETHERFY_CONFIG_DIR=" + t.TempDir()}, "version")
+	require.Equal(t, 0, code, "`afy version` must work.\nstdout: %q\nstderr: %q", stdout, stderr)
+	reported := mustMatch(t, stdout, "`afy version` Version field", reportedVersionField)
+	require.NotRegexp(t, `-\d{14}-[0-9a-f]{12}`, reported,
+		"-buildvcs=false produced a pseudo-version (%q), so this test is no longer exercising the "+
+			"unstamped-build path at all", reported)
+
+	before := hashFile(t, bin)
+	stdout, stderr, code = runCLIIn(t, t.TempDir(), bin,
+		[]string{"AETHERFY_CONFIG_DIR=" + t.TempDir()}, "update", "--check")
+
+	assert.Equal(t, 1, code,
+		"a build reporting %q — pkg/version's default, i.e. nothing stamped it — must be refused.\n"+
+			"stdout: %q\nstderr: %q", reported, stdout, stderr)
+	assert.Contains(t, stderr, reported,
+		"the refusal must quote the version it detected")
+	assert.Equal(t, before, hashFile(t, bin),
+		"the refused update replaced the binary anyway")
 }
 
 // --check writes nothing. Asserted against a working directory, a config

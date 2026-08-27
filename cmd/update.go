@@ -128,6 +128,27 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	// (h, hoisted) Where this binary lives, and whether it can be written.
+	// EvalSymlinks so that an afy reached through a symlink updates the binary,
+	// not the link.
+	//
+	// Checked HERE — after --check has returned, before a byte is downloaded.
+	// /usr/local/bin is the installer's default and is not writable by the user
+	// who installed there, so "you need sudo" is the common answer, and making
+	// someone pull ~16 MB before hearing it is a waste of their bandwidth.
+	// It is below the --check return because the probe writes a file, and
+	// --check must not.
+	self, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("could not work out where this afy is installed: %w", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(self); err == nil {
+		self = resolved
+	}
+	if err := release.EnsureReplaceable(self); err != nil {
+		return err
+	}
+
 	// (d) Download the asset and the checksums beside it, into a temp dir that
 	// goes away on every path out of here.
 	tmpDir, err := os.MkdirTemp("", "afy-update-")
@@ -166,18 +187,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// (g) Replace the running binary. EvalSymlinks so that an afy reached
-	// through a symlink updates the binary, not the link.
-	self, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("could not work out where this afy is installed: %w", err)
-	}
-	if resolved, err := filepath.EvalSymlinks(self); err == nil {
-		self = resolved
-	}
-
-	// (h) A permission failure comes back as release.NotWritableError, which
-	// names the directory and says it needs elevated rights.
+	// (g) Replace the running binary, and put the old one back if the new one
+	// does not run. A permission failure that slipped past EnsureReplaceable
+	// above still comes back as release.NotWritableError.
 	if err := release.ReplaceExecutable(self, extracted); err != nil {
 		return err
 	}

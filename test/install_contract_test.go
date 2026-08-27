@@ -152,6 +152,9 @@ type releaseConfig struct {
 			Formats []string `yaml:"formats"`
 		} `yaml:"format_overrides"`
 	} `yaml:"archives"`
+	Snapshot struct {
+		VersionTemplate string `yaml:"version_template"`
+	} `yaml:"snapshot"`
 }
 
 // parseReleaseConfig reads .goreleaser.yaml, insisting on the shape the rest of
@@ -310,6 +313,61 @@ func TestInstallScriptAndReleaseConfigAgreeOnTheAssetName(t *testing.T) {
 				"Every `afy update` on that platform would 404. Change both or neither.",
 			p, want, projectName, nameTemplate, got)
 	}
+}
+
+// The repository is the fourth string this batch made `afy update` a knower of,
+// and it was the one left ungated.
+//
+// scripts/install.sh's GITHUB_REPO is pinned (TestInstallScriptTargetsTheRealRepo)
+// and .goreleaser.yaml's release.github is pinned (TestReleaseConfigTargetsTheRealRepo).
+// internal/release.Repo had nothing, so if the repository ever moved, both of
+// those would red and `afy update` would keep quietly fetching from the old
+// path — which, on GitHub, someone else can then claim.
+func TestUpdateFetchesFromTheRepositoryThatExists(t *testing.T) {
+	owner := strings.TrimPrefix(realRepoURL, "https://github.com/")
+	require.NotEqual(t, realRepoURL, owner,
+		"realRepoURL %q does not start with https://github.com/ — this derivation is dead", realRepoURL)
+
+	assert.Equal(t, owner, release.Repo,
+		"REPOSITORY CONTRACT BROKEN.\n"+
+			"  the repository is:        %s  (git remote origin, per realRepoURL)\n"+
+			"  internal/release fetches: %s\n"+
+			"Every `afy update` would download from the wrong repository.", owner, release.Repo)
+}
+
+// goreleaser's snapshot build is a local dry run of the release pipeline: it
+// stamps a version, but no tag and no assets ever exist for it. It is neither a
+// sentinel nor a pseudo-version, so `afy update` treated it as a release build
+// and would have tried to fetch a release that was never published.
+//
+// The suffix is read out of .goreleaser.yaml rather than written down again
+// here — two copies of one string are zero gates.
+func TestSnapshotBuildsAreNotTreatedAsReleases(t *testing.T) {
+	spec := parseReleaseConfig(t)
+	tmpl := spec.Snapshot.VersionTemplate
+	require.NotEmpty(t, tmpl, ".goreleaser.yaml has no snapshot.version_template — the scan is dead")
+
+	// "{{ incpatch .Version }}-dev" -> "-dev": the literal tail after the last
+	// template expression is what actually lands in the binary.
+	suffix := tmpl[strings.LastIndex(tmpl, "}}")+len("}}"):]
+	require.NotEmpty(t, suffix,
+		"snapshot.version_template %q ends in a template expression, so this test cannot derive "+
+			"the literal suffix a snapshot build carries — teach it the new shape", tmpl)
+	require.NotContains(t, suffix, "{{",
+		"derived snapshot suffix %q is still a template — the extraction is wrong", suffix)
+
+	snapshot := "0.1.1" + suffix
+	assert.False(t, release.IsReleaseBuild(snapshot),
+		"SNAPSHOT CONTRACT BROKEN.\n"+
+			"  .goreleaser.yaml stamps snapshot builds as: %s (snapshot.version_template %q)\n"+
+			"  internal/release calls that a release build.\n"+
+			"`afy update` would try to download a release that was never published.", snapshot, tmpl)
+
+	// The line the rule must not cross. A pre-release tag IS published and
+	// downloadable; refusing it would break every rc.
+	assert.True(t, release.IsReleaseBuild("v0.2.0-rc.1"),
+		"a real pre-release tag is a release — the snapshot rule has over-reached and would "+
+			"refuse to update to or from every rc")
 }
 
 // The platforms `afy update` will build a URL for must be exactly the ones the

@@ -84,12 +84,39 @@ jobs:
           # that github.com/<repo>/releases/latest really redirects to a
           # /releases/tag/<tag> URL naming this tag.
           #
-          # Skipped for pre-release tags. goreleaser's `prerelease: auto`
+          # RETRIED, because /releases/latest is the one endpoint this job cannot
+          # pin to a version: the install above deliberately uses the tag URL to
+          # avoid a redirect race, and this check cannot. GitHub updates the
+          # latest-release pointer a moment after the release publishes, so a
+          # single attempt would red a perfectly correct release. ~30s is far
+          # longer than the lag has ever been and still fails a real break.
+          #
+          # SKIPPED for pre-release tags. goreleaser's `prerelease: auto`
           # publishes v0.2.0-rc.1 as a pre-release, and /releases/latest points
           # PAST pre-releases at the newest stable one — so the check would
           # correctly report a different version and fail the release for being
           # right.
           case "$AETHERFY_VERSION" in
-            *-*) echo "pre-release tag $AETHERFY_VERSION: /releases/latest points past it, skipping" ;;
-            *)   "$AETHERFY_INSTALL_DIR/afy" update --check | tee /dev/stderr | grep -F "already on ${AETHERFY_VERSION}" ;;
+            *-*)
+              echo "pre-release tag $AETHERFY_VERSION: /releases/latest points past it, skipping"
+              ;;
+            *)
+              current=""
+              for attempt in 1 2 3 4 5 6; do
+                out="$("$AETHERFY_INSTALL_DIR/afy" update --check 2>&1 || true)"
+                if printf '%s\n' "$out" | grep -qF "already on ${AETHERFY_VERSION}"; then
+                  current=yes
+                  printf '%s\n' "$out"
+                  break
+                fi
+                echo "attempt ${attempt}/6: /releases/latest has not caught up with ${AETHERFY_VERSION} yet:"
+                printf '%s\n' "$out"
+                sleep 5
+              done
+              if [ -z "$current" ]; then
+                echo "FAILED: 'afy update --check' never reported ${AETHERFY_VERSION} as current."
+                echo "Either /releases/latest does not resolve to this tag, or --check is broken."
+                exit 1
+              fi
+              ;;
           esac

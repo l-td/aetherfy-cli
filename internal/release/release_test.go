@@ -9,10 +9,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
+	"github.com/l-td/aetherfy-cli/pkg/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -64,11 +64,24 @@ func TestUpdateRefusesBuildsThatDidNotComeFromARelease(t *testing.T) {
 			wantRefusal: true,
 		},
 		{
+			// goreleaser's snapshot.version_template stamps this. It is a local
+			// dry run of the release pipeline: no tag, no assets, nothing to
+			// download — and it is neither a sentinel nor a pseudo-version, so
+			// it read as a release build until this case existed.
+			name:         "a goreleaser snapshot build",
+			version:      "0.1.1-dev",
+			wantRefusal:  true,
+			wantSourceOf: "snapshot",
+		},
+		{
 			name:        "a real release tag",
 			version:     "v0.1.0",
 			wantRefusal: false,
 		},
 		{
+			// The line the snapshot rule must NOT cross. A pre-release tag is
+			// published, downloadable, and updating to or from one is normal;
+			// refusing it would break every rc.
 			name:        "a real pre-release tag",
 			version:     "v0.2.0-rc.1",
 			wantRefusal: false,
@@ -104,6 +117,37 @@ func TestUpdateRefusesBuildsThatDidNotComeFromARelease(t *testing.T) {
 	assert.True(t, sawRefuse && sawProceed,
 		"the table must contain both refused and permitted versions, or it cannot tell a working "+
 			"rule from a constant (refuse=%v proceed=%v)", sawRefuse, sawProceed)
+}
+
+// The RELATIONSHIP, not the string.
+//
+// For one commit this package re-spelled "dev" as its own literal. Rename the
+// sentinel in pkg/version and that copy silently stops matching: every
+// unstamped `go build` starts reading as a release build, and `afy update`
+// overwrites exactly the builds the refusal exists to protect. A test written
+// as IsReleaseBuild("dev") == false would have stayed GREEN straight through
+// that rename, because it asserts something about a string nobody uses any more.
+//
+// This asks the question the code actually has to answer: whatever
+// pkg/version defaults Version to, this package must refuse it. There is now
+// one definition, so it holds by construction — and that is the point. Its job
+// is to red the moment a second definition reappears.
+func TestUpdateRefusesWhateverPkgVersionDefaultsTo(t *testing.T) {
+	unstamped := version.UnsetVersion
+	require.NotEmpty(t, unstamped, "pkg/version has no default sentinel — this test cannot ask anything")
+
+	assert.False(t, IsReleaseBuild(unstamped),
+		"pkg/version defaults Version to %q, and this package treats that as a release build. "+
+			"Every `go build` would be overwritten by `afy update`.", unstamped)
+	assert.True(t, MustRefuseUpdate(unstamped, false),
+		"an unstamped build must be refused without --force")
+	assert.False(t, MustRefuseUpdate(unstamped, true),
+		"--force must still override it")
+
+	// The other two values a build can carry with no real version.
+	for _, v := range []string{"", "(devel)"} {
+		assert.False(t, IsReleaseBuild(v), "%q names no version and cannot be a release build", v)
+	}
 }
 
 func TestNormalizeTagAcceptsTheVersionWithOrWithoutTheV(t *testing.T) {
@@ -308,101 +352,11 @@ func TestExtractBinary(t *testing.T) {
 
 // ---------------------------------------------------------------------------
 // (g) replacing the running binary
-// ---------------------------------------------------------------------------
-
-const (
-	oldBytes = "I am the binary being replaced\n"
-	newBytes = "I am the freshly downloaded release\n"
-)
-
-// currentAndReplacement lays out a fake install: the "running" binary and the
-// extracted one that is to take its place.
-func currentAndReplacement(t *testing.T) (target, src string) {
-	t.Helper()
-	installDir := t.TempDir()
-	name := BinaryFileName(runtime.GOOS)
-	target = filepath.Join(installDir, name)
-	require.NoError(t, os.WriteFile(target, []byte(oldBytes), 0o755))
-
-	src = filepath.Join(t.TempDir(), name)
-	require.NoError(t, os.WriteFile(src, []byte(newBytes), 0o755))
-	return target, src
-}
-
-func TestReplaceExecutableSwapsTheBytesInPlace(t *testing.T) {
-	target, src := currentAndReplacement(t)
-
-	require.NoError(t, ReplaceExecutable(target, src))
-
-	got, err := os.ReadFile(target)
-	require.NoError(t, err)
-	assert.Equal(t, newBytes, string(got), "the target still holds the old bytes — nothing was replaced")
-
-	info, err := os.Stat(target)
-	require.NoError(t, err)
-	if runtime.GOOS != "windows" {
-		// os.CreateTemp makes the staged file 0600. Forgetting the chmod
-		// leaves the user with a correct binary they cannot run.
-		assert.NotZero(t, info.Mode().Perm()&0o111,
-			"the replacement is not executable (mode %v)", info.Mode().Perm())
-	}
-
-	// The staging file lives beside the target, so it must not survive.
-	leftovers, err := filepath.Glob(filepath.Join(filepath.Dir(target), ".*"))
-	require.NoError(t, err)
-	assert.Empty(t, leftovers, "a staged temp file was left in the install directory")
-}
-
-// The Windows strategy is exercised directly rather than through
-// ReplaceExecutable's runtime.GOOS branch, so it is covered on Linux CI too.
-func TestRenamingAsideReplacesTheBinaryAndClearsTheBackup(t *testing.T) {
-	target, src := currentAndReplacement(t)
-	staged, err := stageBeside(filepath.Dir(target), filepath.Base(target), src)
-	require.NoError(t, err)
-
-	// A .old left over from a previous update must not block this one.
-	require.NoError(t, os.WriteFile(BackupPath(target), []byte("stale"), 0o644))
-
-	require.NoError(t, replaceByRenamingAside(target, staged))
-
-	got, err := os.ReadFile(target)
-	require.NoError(t, err)
-	assert.Equal(t, newBytes, string(got))
-	assert.NoFileExists(t, BackupPath(target), "the backup should have been cleaned up")
-}
-
-// The tolerance branch. On Windows the .old may still be held open by this very
-// process, so removing it can fail — and an update that has ALREADY SUCCEEDED
-// must not report failure because of a leftover file it will clear next time.
 //
-// removeBackup is a seam because that failure cannot be provoked for real:
-// os.Open takes FILE_SHARE_DELETE, so even a held handle permits the delete.
-func TestRenamingAsideToleratesABackupItCannotRemove(t *testing.T) {
-	target, src := currentAndReplacement(t)
-	staged, err := stageBeside(filepath.Dir(target), filepath.Base(target), src)
-	require.NoError(t, err)
-
-	original := removeBackup
-	t.Cleanup(func() { removeBackup = original })
-	locked := errors.New("the file is being used by another process")
-	called := 0
-	removeBackup = func(string) error {
-		called++
-		return locked
-	}
-
-	err = replaceByRenamingAside(target, staged)
-
-	require.NoError(t, err,
-		"the swap succeeded and only the .old cleanup failed; reporting that as a failed update "+
-			"would send the user chasing a problem that does not exist")
-	assert.Equal(t, 1, called, "the seam was never reached — this test proved nothing")
-
-	got, readErr := os.ReadFile(target)
-	require.NoError(t, readErr)
-	assert.Equal(t, newBytes, string(got), "the update must have landed even though the cleanup did not")
-	assert.FileExists(t, BackupPath(target), "the .old is left for the next run to clear")
-}
+// Lives in replace_running_test.go: every assertion there needs a REAL
+// executable, because ReplaceExecutable now runs the replacement before
+// committing to it.
+// ---------------------------------------------------------------------------
 
 func TestNotWritableErrorNamesThePathAndTheFix(t *testing.T) {
 	err := &NotWritableError{Dir: "/usr/local/bin", Err: os.ErrPermission}

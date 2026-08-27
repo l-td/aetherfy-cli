@@ -3,18 +3,22 @@ package release
 import (
 	"regexp"
 	"strings"
+
+	"github.com/l-td/aetherfy-cli/pkg/version"
 )
 
-// The sentinels pkg/version leaves in place when nothing stamped the build and
-// the toolchain embedded nothing to recover. Duplicated as literals rather than
-// imported because pkg/version keeps them unexported, and exporting them to be
-// read here would widen that package's surface for one caller.
-var buildSentinels = map[string]bool{
-	"":        true,
-	"dev":     true,
-	"unknown": true,
-	"(devel)": true,
-}
+// snapshotSuffix is what .goreleaser.yaml's snapshot.version_template appends
+// ("{{ incpatch .Version }}-dev" -> 0.1.1-dev). A snapshot is a local dry run
+// of the release pipeline, not a published one: no tag, no assets, nothing to
+// download. Without this it read as a release build, because it is neither a
+// sentinel nor a pseudo-version.
+//
+// It matches on the SUFFIX and nothing else, so a genuine pre-release tag like
+// v0.2.0-rc.1 stays a release — those are published, downloadable, and updating
+// to or from one is legitimate.
+// TestSnapshotBuildsAreNotReleaseBuilds derives this string from
+// .goreleaser.yaml rather than trusting the copy here.
+const snapshotSuffix = "-dev"
 
 // pseudoVersion matches the tail every Go module pseudo-version carries — a
 // 14-digit UTC timestamp and a 12-character revision. All three shapes end that
@@ -38,7 +42,13 @@ var pseudoVersion = regexp.MustCompile(`[-.]\d{14}-[0-9a-f]{12}`)
 // the user has.
 func IsReleaseBuild(v string) bool {
 	v = strings.TrimSpace(v)
-	if buildSentinels[v] {
+	// version.Unset is the ONE definition of "no version". Re-spelling "dev"
+	// here would mean a rename in pkg/version silently stops matching, and this
+	// function would then wave through the very builds it exists to protect.
+	if version.Unset(v) {
+		return false
+	}
+	if strings.HasSuffix(v, snapshotSuffix) {
 		return false
 	}
 	return !pseudoVersion.MatchString(v)
@@ -63,6 +73,10 @@ func InstalledFrom(v string) string {
 	if pseudoVersion.MatchString(strings.TrimSpace(v)) {
 		return "a Go module pseudo-version, which is what `go install`, `make install` " +
 			"and `go build` stamp into a binary built from a working tree"
+	}
+	if strings.HasSuffix(strings.TrimSpace(v), snapshotSuffix) {
+		return "a goreleaser snapshot version, which is a local dry run of the release " +
+			"pipeline — no such release was ever published"
 	}
 	return "the unstamped-build sentinel, which is what `go build` produces when the " +
 		"toolchain has no version to embed"
