@@ -32,7 +32,7 @@ The deployment process:
   2. Creates a ZIP archive of your code
   3. Uploads to Aetherfy
   4. Builds a Docker image
-  5. Deploys to Fly.io
+  5. Deploys it and prints the agent's URL
 
 By default the command waits for the deployment to complete and streams
 status updates. Use --detach to return immediately after upload.
@@ -447,6 +447,28 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// printAgentURL prints where to send requests, after a deploy that succeeded.
+//
+// THE COMMAND USED TO END WITHOUT SAYING THIS. It printed a status and a
+// "Run 'afy logs …'" line and stopped, leaving the one question a successful
+// deploy creates — where do I send the request? — answered nowhere in the CLI.
+//
+// Re-fetches the agent rather than threading one down: the URL is minted
+// SERVER-SIDE on the first successful deploy, so on the very deploy that
+// creates it, any copy this process is already holding predates it.
+//
+// Fail-soft and silent. A deploy that worked must not print a warning because a
+// follow-up read did not; its result is already on screen above.
+func printAgentURL(client *api.Client, agentID string) {
+	agent, err := client.GetAgent(agentID)
+	if err != nil || agent == nil || agent.URL == "" {
+		return
+	}
+	output.Println("")
+	output.KeyValue("URL", agent.URL)
+	output.Dim.Printf("  curl -X POST %s -H 'Content-Type: application/json' -d '{}'\n", agent.URL)
+}
+
 // runDeployFromGitHub clones a public GitHub repo and feeds it into the standard deploy pipeline.
 // repoRef has the form "owner/repo" or "owner/repo@ref".
 func runDeployFromGitHub(repoRef string) error {
@@ -645,6 +667,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 				} else {
 					output.PrintSuccess("Deployment completed!")
 				}
+				printAgentURL(client, agentID)
 				return
 			case "failed", "error":
 				output.PrintError("Deployment failed")

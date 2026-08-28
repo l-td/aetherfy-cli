@@ -16,6 +16,16 @@ type Agent struct {
 	Runtime       string    `json:"runtime,omitempty"`
 	WorkspaceName string    `json:"workspace_name,omitempty"`
 	SpawnEnabled  bool      `json:"spawn_enabled"`
+	// The agent's public URL, from the server's AgentResponse. Empty until the
+	// agent has deployed — and that emptiness IS the deployed predicate on the
+	// server side, so an empty URL means "no live app", not "the server forgot".
+	//
+	// This is the only address a client may print. The server used to send
+	// `fly_app_name` and clients built `<app>.<provider>` from it; that put a
+	// vendor's namespace in a customer contract and published a fragment of the
+	// owner's account id in every agent URL. The provider handle is now internal
+	// and no response carries it.
+	URL           string    `json:"url,omitempty"`
 	// AllowedWorkers / ParentAgentID pull through from the server's
 	// AgentResponse (no new server work). AllowedWorkers lists the JOB
 	// names a SERVICE may spawn; ParentAgentID is the SERVICE that spawned

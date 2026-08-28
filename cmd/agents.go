@@ -69,10 +69,26 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Table output
+	// The URL column appears only when at least one agent has deployed — an
+	// account of drafts keeps the narrower layout rather than growing a column
+	// of dashes.
+	anyURL := false
+	for i := range agents {
+		if agents[i].URL != "" {
+			anyURL = true
+			break
+		}
+	}
+
+	// Table output. URL sits next to Status because "is it up" and "where do I
+	// send the request" are the two questions this command exists to answer,
+	// and the second had no answer anywhere in the CLI.
 	headers := []string{"Name", "Type", "Status", "Regions", "ID"}
 	if anyScheduled {
 		headers = []string{"Name", "Type", "Status", "Regions", "Schedule", "Next Run", "Last Run", "ID"}
+	}
+	if anyURL {
+		headers = append([]string{"Name", "Type", "Status", "URL"}, headers[3:]...)
 	}
 	table := output.Table(headers)
 	for i := range agents {
@@ -85,6 +101,11 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		if tag := formatDegradedTag(a.IsDegraded, a.RegionsReady, a.RegionsTotal); tag != "" {
 			status += " " + tag
 		}
+		row := []string{a.Name, a.AgentType, status}
+		if anyURL {
+			row = append(row, formatAgentURL(a.URL))
+		}
+		row = append(row, formatRegions(a.Regions))
 		if anyScheduled {
 			schedCell, nextCell, lastCell := "", "", ""
 			if a.CronSchedule != "" {
@@ -96,10 +117,10 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 				}
 				lastCell = formatLastRun(a)
 			}
-			table.Append([]string{a.Name, a.AgentType, status, formatRegions(a.Regions), schedCell, nextCell, lastCell, a.ID})
-		} else {
-			table.Append([]string{a.Name, a.AgentType, status, formatRegions(a.Regions), a.ID})
+			row = append(row, schedCell, nextCell, lastCell)
 		}
+		row = append(row, a.ID)
+		table.Append(row)
 	}
 	table.Render()
 
@@ -257,7 +278,7 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 var agentsStopCmd = &cobra.Command{
 	Use:   "stop <name>",
 	Short: "Pause an agent",
-	Long: `Pause an agent: stop every machine and prevent the Fly.io proxy from
+	Long: `Pause an agent: stop every machine and prevent the platform from
 re-waking it on incoming traffic. Reversible via 'afy agents start <name>'.
 
 Distinct from a billing-driven STOPPED state.`,
@@ -277,10 +298,10 @@ var agentsStartCmd = &cobra.Command{
 var agentsArchiveCmd = &cobra.Command{
 	Use:   "archive <name>",
 	Short: "Archive an agent, freeing its plan slot",
-	Long: `Archive an agent: destroy its Fly.io app to free the plan quota slot,
+	Long: `Archive an agent: tear down its running app to free the plan quota slot,
 while preserving all of its configuration and the stored code bundle.
 
-Distinct from 'afy agents stop' (pause/resume), which keeps the Fly app
+Distinct from 'afy agents stop' (pause/resume), which keeps the app
 provisioned. Archiving releases the slot so you can create or restore
 another agent; the agent shows up as 'archived' in 'afy agents list'.
 
@@ -294,7 +315,7 @@ var agentsRestoreCmd = &cobra.Command{
 	Use:   "restore <name>",
 	Short: "Restore an archived agent",
 	Long: `Restore an agent that was archived with 'afy agents archive': re-provision
-its Fly.io app from the preserved code bundle and redeploy it.
+its app from the preserved code bundle and redeploy it.
 
 Restoring consumes a plan quota slot, so it is re-checked at restore time —
 if you are at your plan limit the restore is rejected until you free a slot
@@ -540,6 +561,11 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
+	// Where to send a request. Deployed agents only — a hostname that resolves
+	// to nothing is worse than no line at all.
+	if agent.URL != "" {
+		output.KeyValue("URL", agent.URL)
+	}
 	// Degraded = a partial multi-region deploy still converging (derived from
 	// the current deployment, control-plane REVIEW_FAQ §63). Shown only when
 	// degraded — a status command that hides this is a contract violation by
@@ -1296,6 +1322,16 @@ func formatRegions(regions []string) string {
 		return "—"
 	}
 	return strings.Join(regions, ", ")
+}
+
+// formatAgentURL renders the URL column: the bare host, since every agent URL
+// is https and the scheme costs eight characters of a table that is already
+// wide. `afy agents status` prints the full URL — that is the one to copy.
+func formatAgentURL(url string) string {
+	if url == "" {
+		return "—"
+	}
+	return strings.TrimPrefix(url, "https://")
 }
 
 // formatDeploymentState renders the State column value for the rollback
