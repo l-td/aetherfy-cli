@@ -137,6 +137,16 @@ func formatDeployState(state string) string {
 		return "⟳ deploying"
 	case "rolled_back":
 		return output.Dim.Sprint("↩ rolled_back")
+	case "completed":
+		// Terminal end-state of an ephemeral JOB run (CP migration 093). Absent
+		// here since that migration shipped, so it fell to `default` and printed
+		// undecorated among decorated siblings.
+		return output.Dim.Sprint("✓ completed")
+	case "archived":
+		// The agent was archived, which destroys its app (CP migration 107), so
+		// this version stopped serving. Dim like every other terminal state: it
+		// is history, not a failure.
+		return output.Dim.Sprint("○ archived")
 	default:
 		return state
 	}
