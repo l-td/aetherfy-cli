@@ -940,8 +940,10 @@ var agentsRenameCmd = &cobra.Command{
 	Short: "Rename an agent",
 	Long: `Rename an agent to a new name.
 
-The agent URL will remain unchanged to preserve existing integrations.
-Only the name will be updated.`,
+An agent's address is fixed when it is FIRST DEPLOYED, and renaming does not
+move it. The practical rule: rename before your first deploy and the address
+follows the new name; rename after and it stays as it was, so existing
+integrations, links and webhooks keep working.`,
 	Args: cobra.ExactArgs(2),
 	RunE: runAgentsRename,
 }
@@ -1024,10 +1026,7 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 	output.KeyValue("New Name", updatedAgent.Name)
 	output.KeyValue("ID", updatedAgent.ID)
 
-	// Show URL preservation message
-	output.Println("")
-	output.Info.Println("ℹ Note: The agent URL remains unchanged to preserve existing integrations.")
-	output.Dim.Printf("  You can access the agent using either the new name or ID.\n")
+	printRenameNote(updatedAgent)
 
 	return nil
 }
@@ -1322,6 +1321,29 @@ func formatRegions(regions []string) string {
 		return "—"
 	}
 	return strings.Join(regions, ", ")
+}
+
+// printRenameNote says what a rename did to the address, and says nothing
+// when there is no address.
+//
+// CONDITIONAL, and that is the point. The note printed on EVERY rename,
+// including agents that have never deployed and so have no address to
+// preserve. Telling someone their URL is unchanged when they have no URL is
+// noise at best; at worst it implies one exists and they go looking.
+//
+// The label is minted at FIRST DEPLOY from the name as it stands then, so
+// there is a rule to teach rather than a caveat to bury: rename before the
+// first deploy and the address follows; rename after and it is frozen.
+// Printing the actual address makes the drift visible in the same breath as
+// the rename, instead of leaving it to be discovered later.
+func printRenameNote(a *api.Agent) {
+	if a == nil || a.URL == "" {
+		return
+	}
+	output.Println("")
+	output.Info.Printf("ℹ This agent stays at %s\n", a.URL)
+	output.Dim.Printf("  Renaming does not move it. The address was fixed at first deploy,\n")
+	output.Dim.Printf("  so existing integrations, links and webhooks keep working.\n")
 }
 
 // formatAgentURL renders the URL column: the bare host, since every agent URL
