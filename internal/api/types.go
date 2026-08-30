@@ -16,15 +16,21 @@ type Agent struct {
 	Runtime       string    `json:"runtime,omitempty"`
 	WorkspaceName string    `json:"workspace_name,omitempty"`
 	SpawnEnabled  bool      `json:"spawn_enabled"`
-	// The agent's public URL, from the server's AgentResponse. Empty until the
-	// agent has deployed — and that emptiness IS the deployed predicate on the
-	// server side, so an empty URL means "no live app", not "the server forgot".
+	// TWO FIELDS, TWO QUESTIONS (server AgentResponse).
 	//
-	// This is the only address a client may print. The server used to send
-	// `fly_app_name` and clients built `<app>.<provider>` from it; that put a
-	// vendor's namespace in a customer contract and published a fragment of the
-	// owner's account id in every agent URL. The provider handle is now internal
-	// and no response carries it.
+	// Deployed — does this agent hold a live app? True for a scheduled task,
+	// which deploys and serves nothing. This is what "is it up" gates on.
+	//
+	// URL — where to send a request. Empty for a scheduled task, and empty for
+	// every agent until the edge serving *.aetherfy.dev is live. The SERVER
+	// decides; the CLI prints what it is given and adds no rule of its own,
+	// because a second copy of "does this agent have an endpoint" is a second
+	// answer waiting to disagree.
+	//
+	// Both replaced `fly_app_name`, which clients used to build
+	// `<app>.<provider>` from — a vendor's namespace in a customer contract,
+	// carrying a fragment of the owner's account id.
+	Deployed      bool      `json:"deployed"`
 	URL           string    `json:"url,omitempty"`
 	// AllowedWorkers / ParentAgentID pull through from the server's
 	// AgentResponse (no new server work). AllowedWorkers lists the JOB

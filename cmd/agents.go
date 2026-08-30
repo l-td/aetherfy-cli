@@ -69,9 +69,10 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// The URL column appears only when at least one agent has deployed — an
-	// account of drafts keeps the narrower layout rather than growing a column
-	// of dashes.
+	// The URL column appears only when at least one agent HAS a URL — an account
+	// of drafts, or of scheduled tasks, keeps the narrower layout rather than
+	// growing a column of dashes. The server decides which agents have one; this
+	// only asks whether any do.
 	anyURL := false
 	for i := range agents {
 		if agents[i].URL != "" {
@@ -561,8 +562,7 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
-	// Where to send a request. Deployed agents only — a hostname that resolves
-	// to nothing is worse than no line at all.
+	// Where to send a request, when the server says there is one.
 	if agent.URL != "" {
 		output.KeyValue("URL", agent.URL)
 	}
@@ -1327,6 +1327,10 @@ func formatRegions(regions []string) string {
 // formatAgentURL renders the URL column: the bare host, since every agent URL
 // is https and the scheme costs eight characters of a table that is already
 // wide. `afy agents status` prints the full URL — that is the one to copy.
+//
+// "—" means the server gave no address: a draft, a scheduled task (which serves
+// nothing), or any agent before the edge is live. The rule lives there, not
+// here.
 func formatAgentURL(url string) string {
 	if url == "" {
 		return "—"

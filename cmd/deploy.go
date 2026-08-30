@@ -457,6 +457,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 // SERVER-SIDE on the first successful deploy, so on the very deploy that
 // creates it, any copy this process is already holding predates it.
 //
+// Prints only when the SERVER says there is an address. No agent_type check
+// here any more: the server already returns an empty URL for a scheduled task
+// (its image is not a web server) and for every agent until the edge is live,
+// so re-deciding it here would be a second rule that can disagree with the
+// first.
+//
 // Fail-soft and silent. A deploy that worked must not print a warning because a
 // follow-up read did not; its result is already on screen above.
 func printAgentURL(client *api.Client, agentID string) {
@@ -466,7 +472,7 @@ func printAgentURL(client *api.Client, agentID string) {
 	}
 	output.Println("")
 	output.KeyValue("URL", agent.URL)
-	output.Dim.Printf("  curl -X POST %s -H 'Content-Type: application/json' -d '{}'\n", agent.URL)
+	output.Dim.Printf("  curl %s\n", agent.URL)
 }
 
 // runDeployFromGitHub clones a public GitHub repo and feeds it into the standard deploy pipeline.
