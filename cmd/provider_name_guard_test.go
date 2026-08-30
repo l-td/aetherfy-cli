@@ -232,6 +232,54 @@ func TestStringLiteralScannerSeesLiteralsAndNotComments(t *testing.T) {
 	}
 }
 
+// countMentions counts how many times `text` appears among these literals,
+// using the same matcher as the ban itself so the exemption and the rule can
+// never disagree about what counts as a mention.
+func countMentions(lits map[int][]string, text string) int {
+	n := 0
+	for _, values := range lits {
+		for _, v := range values {
+			for _, hit := range providerHits(v) {
+				if strings.EqualFold(hit, text) {
+					n++
+				}
+			}
+		}
+	}
+	return n
+}
+
+// TestTheExemptionCheckCanActuallyFail exists because the check it guards
+// cannot fail on its own.
+//
+// providerExemptions is empty, and keeping it empty is the goal - no string
+// literal in this binary names the provider. But an empty list makes
+// TestProviderExemptionsAreLoadBearing VACUOUS: it ranges over nothing, its
+// comparison never executes, and it reports PASS. That is the shape this
+// whole workstream keeps finding - a check that reads as coverage while
+// executing never - and it does not stop being that shape because the reason
+// is a good one.
+//
+// So the comparison is exercised here on synthetic literals instead, in both
+// directions: it must count what is present, and must not count what is not.
+// One without the other is half a test - a counter stuck at zero passes the
+// first check, and one stuck at the expected number passes the second.
+func TestTheExemptionCheckCanActuallyFail(t *testing.T) {
+	lits := map[int][]string{
+		10: {`"deploying to fly.dev now"`},
+		20: {`"see fly.dev for details"`},
+	}
+
+	if got := countMentions(lits, "fly.dev"); got != 2 {
+		t.Errorf("counted %d mentions of a term that appears twice, want 2 - a "+
+			"drifting exemption would go unnoticed", got)
+	}
+	if got := countMentions(lits, "flyctl"); got != 0 {
+		t.Errorf("counted %d mentions of a term that never appears, want 0 - the "+
+			"rot check would red on a healthy exemption", got)
+	}
+}
+
 func TestProviderExemptionsAreLoadBearing(t *testing.T) {
 	// An exemption whose site is gone silently widens the guard for whoever next
 	// writes that word in that file.
@@ -241,16 +289,7 @@ func TestProviderExemptionsAreLoadBearing(t *testing.T) {
 			t.Errorf("exemption for %s: %v (file gone? drop the entry). It claimed: %s", e.file, err, e.why)
 			continue
 		}
-		actual := 0
-		for _, values := range lits {
-			for _, v := range values {
-				for _, hit := range providerHits(v) {
-					if strings.EqualFold(hit, e.text) {
-						actual++
-					}
-				}
-			}
-		}
+		actual := countMentions(lits, e.text)
 		if actual != e.count {
 			t.Errorf("%s: %q exempted %dx, found %dx — a shrinking count means the exemption outlived its site. It claimed: %s",
 				e.file, e.text, e.count, actual, e.why)
