@@ -238,7 +238,7 @@ func TestProviderExemptionsAreLoadBearing(t *testing.T) {
 	for _, e := range providerExemptions {
 		lits, err := stringLiterals(e.file)
 		if err != nil {
-			t.Errorf("exemption for %s: %v (file gone? drop the entry)", e.file, err)
+			t.Errorf("exemption for %s: %v (file gone? drop the entry). It claimed: %s", e.file, err, e.why)
 			continue
 		}
 		actual := 0
@@ -252,8 +252,8 @@ func TestProviderExemptionsAreLoadBearing(t *testing.T) {
 			}
 		}
 		if actual != e.count {
-			t.Errorf("%s: %q exempted %dx, found %dx — a shrinking count means the exemption outlived its site",
-				e.file, e.text, e.count, actual)
+			t.Errorf("%s: %q exempted %dx, found %dx — a shrinking count means the exemption outlived its site. It claimed: %s",
+				e.file, e.text, e.count, actual, e.why)
 		}
 	}
 }
