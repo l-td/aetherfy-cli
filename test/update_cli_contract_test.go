@@ -1,6 +1,6 @@
 package test
 
-// Pins `afy update` at the binary level: the two things no in-process test can
+// Pins `afy upgrade` at the binary level: the two things no in-process test can
 // see, which are the exit code and whether anything was written to disk.
 //
 // --check is the flag people reach for precisely because they do not want to be
@@ -74,7 +74,7 @@ func entryNames(t *testing.T, dir string) []string {
 }
 
 // The refusal, end to end. A test binary is built by `go build`, so it reports
-// a module pseudo-version — the exact population `afy update` must refuse,
+// a module pseudo-version — the exact population `afy upgrade` must refuse,
 // because replacing it with a release archive discards a build nobody can get
 // back.
 func TestUpdateRefusesToReplaceABuildFromSource(t *testing.T) {
@@ -85,7 +85,7 @@ func TestUpdateRefusesToReplaceABuildFromSource(t *testing.T) {
 	before := hashFile(t, bin)
 
 	stdout, stderr, code := runCLIIn(t, workDir, bin,
-		[]string{"AETHERFY_CONFIG_DIR=" + configDir}, "update", "--check")
+		[]string{"AETHERFY_CONFIG_DIR=" + configDir}, "upgrade", "--check")
 
 	assert.Equal(t, 1, code,
 		"a refused update must exit non-zero so a script notices.\nstdout: %q\nstderr: %q", stdout, stderr)
@@ -106,7 +106,7 @@ func TestUpdateRefusesToReplaceABuildFromSource(t *testing.T) {
 // "(devel)", the fallback in pkg/version correctly refuses it, and Version is
 // left holding its actual default. The binary below therefore reports whatever
 // pkg/version defaults to — the real value, not a literal copied into a test —
-// and `afy update` must refuse it.
+// and `afy upgrade` must refuse it.
 //
 // Rename that sentinel and this test follows automatically. A test that pinned
 // the string "dev" would go green through the very rename that breaks the rule.
@@ -135,7 +135,7 @@ func TestUpdateRefusesAnUnstampedBuild(t *testing.T) {
 
 	before := hashFile(t, bin)
 	stdout, stderr, code = runCLIIn(t, t.TempDir(), bin,
-		[]string{"AETHERFY_CONFIG_DIR=" + t.TempDir()}, "update", "--check")
+		[]string{"AETHERFY_CONFIG_DIR=" + t.TempDir()}, "upgrade", "--check")
 
 	assert.Equal(t, 1, code,
 		"a build reporting %q — pkg/version's default, i.e. nothing stamped it — must be refused.\n"+
@@ -160,14 +160,14 @@ func TestUpdateCheckWritesNothing(t *testing.T) {
 	}{
 		{
 			name: "on this build, which is refused before any network call",
-			args: []string{"update", "--check"},
+			args: []string{"upgrade", "--check"},
 		},
 		{
 			// --force gets past the refusal and reaches the network, which is
 			// the branch that downloads. Whether it finds a release or fails to
 			// is not asserted — the point is that neither outcome writes.
 			name: "with --force, which reaches the resolve-latest path",
-			args: []string{"update", "--check", "--force"},
+			args: []string{"upgrade", "--check", "--force"},
 		},
 	}
 	require.NotEmpty(t, cases, "the table is empty — this test asserts nothing")
@@ -207,16 +207,16 @@ func TestUpdateCommandIsWiredIntoTheCLI(t *testing.T) {
 	bin := buildCLI(t)
 
 	stdout, stderr, code := runCLIIn(t, t.TempDir(), bin,
-		[]string{"AETHERFY_CONFIG_DIR=" + t.TempDir()}, "update", "--help")
+		[]string{"AETHERFY_CONFIG_DIR=" + t.TempDir()}, "upgrade", "--help")
 
-	require.Equal(t, 0, code, "`afy update --help` must work.\nstdout: %q\nstderr: %q", stdout, stderr)
+	require.Equal(t, 0, code, "`afy upgrade --help` must work.\nstdout: %q\nstderr: %q", stdout, stderr)
 	for _, flag := range []string{"--check", "--force", "--version"} {
-		assert.Contains(t, stdout, flag, "`afy update` must offer %s", flag)
+		assert.Contains(t, stdout, flag, "`afy upgrade` must offer %s", flag)
 	}
 
 	// It must not be behind checkAuth(): updating the CLI needs no account, and
 	// a logged-out user on an old build is exactly who needs it. checkAuth
 	// exits 3 with this line.
 	assert.NotContains(t, stderr, notLoggedInHint,
-		"`afy update` asked for credentials; replacing the binary requires no Aetherfy account")
+		"`afy upgrade` asked for credentials; replacing the binary requires no Aetherfy account")
 }

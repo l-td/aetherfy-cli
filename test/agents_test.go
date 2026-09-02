@@ -215,7 +215,7 @@ func TestUpdateAgentDescriptionSerializesString(t *testing.T) {
 }
 
 func TestUpdateAgentDescriptionEmptyStringSerializes(t *testing.T) {
-	// `afy agents update <name> --description ""` → the empty string must
+	// `afy update <name> --description ""` → the empty string must
 	// reach the wire (the server sanitizes "" to a cleared description).
 	empty := ""
 	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Description: &empty})

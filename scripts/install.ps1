@@ -194,7 +194,7 @@ function Install-AetherfyCli {
         Write-Host ''
         Write-Host 'Get started:' -ForegroundColor Cyan
         Write-Host '  afy login              # Authenticate with your API key'
-        Write-Host '  afy agents list        # List your agents'
+        Write-Host '  afy list        # List your agents'
         Write-Host '  afy deploy             # Deploy your agent'
         Write-Host ''
         if ($pathWasAdded) {

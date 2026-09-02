@@ -55,7 +55,7 @@ func IsReleaseBuild(v string) bool {
 }
 
 // MustRefuseUpdate is the whole refuse-a-source-build rule, in one place:
-// `afy update` replaces the running binary, and doing that to a build nobody
+// `afy upgrade` replaces the running binary, and doing that to a build nobody
 // can re-download destroys it. --force is the only override.
 //
 // It exists as a function rather than as `!force && !IsReleaseBuild(v)` inline

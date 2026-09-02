@@ -8,7 +8,7 @@ import (
 )
 
 // formatDegradedTag is the single source for the inline DEGRADED marker shown
-// in `afy agents list` and `afy deployments` (REVIEW_FAQ §63). It must stay
+// in `afy list` and `afy deployments` (REVIEW_FAQ §63). It must stay
 // empty unless degraded (no spurious marker), and carry both the DEGRADED term
 // and the N/M region readiness when degraded.
 func TestFormatDegradedTag(t *testing.T) {
@@ -43,11 +43,12 @@ func TestFormatStatusArchived(t *testing.T) {
 	}
 }
 
-// Command wiring: archive/restore are registered under `agents`, take exactly
-// one arg, and do not collide with stop/start (which stay pause/resume).
+// Command wiring: archive/restore are registered at the ROOT (agents are the
+// default noun, so a bare verb is an agent verb -- see cmd/root.go), take
+// exactly one arg, and do not collide with stop/start (which stay pause/resume).
 func TestArchiveRestoreCommandsWired(t *testing.T) {
 	var archive, restore, stop, start *cobra.Command
-	for _, c := range agentsCmd.Commands() {
+	for _, c := range rootCmd.Commands() {
 		switch c.Name() {
 		case "archive":
 			archive = c
@@ -90,8 +91,8 @@ func TestArchiveRestoreCommandsWired(t *testing.T) {
 	}
 }
 
-// formatRegions is the ONE renderer behind both the `afy agents list` Regions
-// column and the `Regions:` line on `afy agents status`, so the two surfaces
+// formatRegions is the ONE renderer behind both the `afy list` Regions
+// column and the `Regions:` line on `afy status`, so the two surfaces
 // cannot drift. It replaced a singular `Region` field the server never sent,
 // which rendered as a permanently blank column on every agent.
 func TestFormatRegions(t *testing.T) {

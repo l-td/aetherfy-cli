@@ -183,7 +183,7 @@ func TestYesWithCreateFlagStillCreates(t *testing.T) {
 
 // A manifest with no 'type:' cannot be described, so creation is refused on
 // BOTH consent paths rather than defaulting to service behind the user's back.
-// (`afy agents create` defaults --type to SERVICE; here the value is not the
+// (`afy create` defaults --type to SERVICE; here the value is not the
 // user's to omit, because the prompt has to print it.)
 func TestManifestWithoutTypeRefusesToCreate(t *testing.T) {
 	noType := "name: hello-agent\nruntime: python3.12\n"
@@ -213,7 +213,7 @@ func TestManifestWithoutTypeRefusesToCreate(t *testing.T) {
 }
 
 // A type outside the SERVICE|JOB enum is refused with the same validation
-// `afy agents create -t` applies — the deploy path accepts no less.
+// `afy create -t` applies — the deploy path accepts no less.
 func TestManifestWithInvalidTypeRefusesToCreate(t *testing.T) {
 	got := decideCreateOnDeploy(createOnDeployInput{
 		AgentName: "hello-agent", AllowCreate: true,
@@ -403,7 +403,7 @@ func notFound() *api.APIError {
 	}
 }
 
-// The consented create goes out as the SAME POST /agents `afy agents create`
+// The consented create goes out as the SAME POST /agents `afy create`
 // sends, carrying the manifest's type and runtime, and the deploy is then
 // re-sent with the archive already in hand.
 func TestCreateOnDeploySendsTheSharedCreateCallThenRedeploys(t *testing.T) {

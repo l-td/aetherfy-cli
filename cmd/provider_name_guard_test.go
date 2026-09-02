@@ -17,7 +17,7 @@ import (
 // nobody meant to sign. It started with the agent URL — `<app>.fly.dev`, a
 // permanent public address in someone else's namespace — but the URL was only
 // the loudest instance. `afy deploy --help` listed "Deploys to Fly.io" as step
-// five of the deployment process; `afy agents stop --help` explained the pause
+// five of the deployment process; `afy stop --help` explained the pause
 // in terms of "the Fly.io proxy"; `archive`/`restore` described what they do to
 // "its Fly.io app". Every one of those teaches a user something about our
 // infrastructure that they will reasonably expect to keep being true.

@@ -53,5 +53,6 @@ PowerShell:
 }
 
 func init() {
+	completionCmd.GroupID = groupAccount
 	rootCmd.AddCommand(completionCmd)
 }

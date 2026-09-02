@@ -6,7 +6,7 @@ package test
 // because they are `output.Println` strings on success/empty paths that no test
 // asserts against:
 //
-//   - `afy agents create my-agent --workspace X`  (workspaces create success)
+//   - `afy create my-agent --workspace X`  (workspaces create success)
 //   - `afy deploy --workspace X`                  (workspaces agents, empty)
 //     Neither command has a --workspace flag. A user following either gets
 //     "unknown flag".
@@ -78,8 +78,8 @@ func TestSuggestionsUseTheRealBinaryName(t *testing.T) {
 // Regression pin: flags that do not exist on the command they were suggested for.
 func TestSuggestionsDoNotNamePhantomFlags(t *testing.T) {
 	phantom := []struct{ fragment, why string }{
-		{"afy agents create my-agent --workspace", "`agents create` has no --workspace flag; use `agents update --workspace`"},
-		{"afy agents create <agent> --workspace", "same as above"},
+		{"afy create my-agent --workspace", "`agents create` has no --workspace flag; use `agents update --workspace`"},
+		{"afy create <agent> --workspace", "same as above"},
 		{"afy deploy --workspace", "`deploy` has no --workspace flag; set `workspace:` in aetherfy.yaml or use `agents update`"},
 	}
 
@@ -113,7 +113,7 @@ func TestSuggestionSourcesAreActuallyScanned(t *testing.T) {
 	// Real suggestions that must still be present. If these vanish, the scan is
 	// looking at the wrong files and the absence assertions mean nothing.
 	for _, canary := range []string{
-		"afy agents update my-agent --workspace ",
+		"afy update my-agent --workspace ",
 		"afy secrets set --workspace ",
 		"Run 'afy deploy' to try again.",
 	} {

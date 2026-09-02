@@ -78,7 +78,7 @@ jobs:
           bash scripts/install.sh
           "$AETHERFY_INSTALL_DIR/afy" version
           "$AETHERFY_INSTALL_DIR/afy" version | grep -F "${AETHERFY_VERSION#v}"
-          # `afy update --check` must report the release that just published as
+          # `afy upgrade --check` must report the release that just published as
           # already-current. With a single release that is the only end-to-end
           # assertion available, and it proves the one thing no unit test can:
           # that github.com/<repo>/releases/latest really redirects to a
@@ -114,7 +114,7 @@ jobs:
                 sleep 5
               done
               if [ -z "$current" ]; then
-                echo "FAILED: 'afy update --check' never reported ${AETHERFY_VERSION} as current."
+                echo "FAILED: 'afy upgrade --check' never reported ${AETHERFY_VERSION} as current."
                 echo "Either /releases/latest does not resolve to this tag, or --check is broken."
                 exit 1
               fi

@@ -85,18 +85,18 @@ directory is on your `PATH`.
 
 ## Updating
 
-`afy update` replaces the running binary with the newest published release. It
+`afy upgrade` replaces the running binary with the newest published release. It
 needs no Aetherfy account — updating the CLI is not an authenticated operation.
 
 ```bash
 # Replace this binary with the newest release
-afy update
+afy upgrade
 
 # Is anything newer available? Changes nothing.
-afy update --check
+afy upgrade --check
 
 # Install a specific version — 0.1.0 and v0.1.0 both work
-afy update --version 0.1.0
+afy upgrade --version 0.1.0
 ```
 
 The download is checked against the release's `checksums.txt` before anything is
@@ -106,7 +106,7 @@ follows.
 **Builds from source are refused.** If `afy version` reports `dev` or a Go module
 pseudo-version (`v0.0.0-<date>-<sha>`), this binary came from `go install`,
 `make install` or `go build`, not from a release. Overwriting it with a release
-archive would silently discard the build you have, so `afy update` stops and
+archive would silently discard the build you have, so `afy upgrade` stops and
 tells you how you installed it. Update it the same way you installed it — or
 pass `--force` if replacing it with a release is what you want.
 
@@ -134,8 +134,8 @@ afy deployments my-agent
 afy rollback my-agent 3
 
 # Run a job agent on demand and inspect its run history
-afy agents run my-job --wait
-afy agents runs my-job
+afy run my-job --wait
+afy runs my-job
 ```
 
 ## Commands
@@ -169,13 +169,13 @@ afy init --name nightly-report --type job --schedule "0 3 * * *"
 
 | Command | Description |
 |---------|-------------|
-| `afy agents list` | List all agents |
-| `afy agents create <name>` | Create a new agent (`--type service\|job`, `--runtime`, `--spawn-enabled`, `--description`) |
-| `afy agents delete <name>` | Delete an agent and all its deployments |
-| `afy agents status <name>` | Show detailed agent status |
-| `afy agents stop <name>` | Pause a running agent |
-| `afy agents start <name>` | Resume a paused agent |
-| `afy agents rename <current> <new>` | Rename an agent (URL stays the same) |
+| `afy list` | List all agents |
+| `afy create <name>` | Create a new agent (`--type service\|job`, `--runtime`, `--spawn-enabled`, `--description`) |
+| `afy delete <name>` | Delete an agent and all its deployments |
+| `afy status <name>` | Show detailed agent status |
+| `afy stop <name>` | Pause a running agent |
+| `afy start <name>` | Resume a paused agent |
+| `afy rename <current> <new>` | Rename an agent (URL stays the same) |
 
 ### Runs & Schedules
 
@@ -184,28 +184,28 @@ execution of the job: it starts, does its work, and terminates.
 
 | Command | Description |
 |---------|-------------|
-| `afy agents run <name>` | Trigger a one-off run now, independent of any schedule |
-| `afy agents run <name> --payload '{...}'` | Pass an inline JSON payload to the run |
-| `afy agents run <name> --payload-file <file>` | Read the JSON payload from a file |
-| `afy agents run <name> --wait` | Block until the run finishes (exit `0` completed, `1` failed) |
-| `afy agents runs <name>` | Show run history, newest first (scheduled + manual) |
-| `afy agents runs <name> --limit N` | Limit the run history (default 20, max 100) |
-| `afy agents schedule pause <name>` | Stop scheduled runs from firing (manual runs still work) |
-| `afy agents schedule resume <name>` | Resume a paused schedule |
+| `afy run <name>` | Trigger a one-off run now, independent of any schedule |
+| `afy run <name> --payload '{...}'` | Pass an inline JSON payload to the run |
+| `afy run <name> --payload-file <file>` | Read the JSON payload from a file |
+| `afy run <name> --wait` | Block until the run finishes (exit `0` completed, `1` failed) |
+| `afy runs <name>` | Show run history, newest first (scheduled + manual) |
+| `afy runs <name> --limit N` | Limit the run history (default 20, max 100) |
+| `afy schedule pause <name>` | Stop scheduled runs from firing (manual runs still work) |
+| `afy schedule resume <name>` | Resume a paused schedule |
 
 ```bash
 # Fire a run and come back later
-afy agents run nightly-report
+afy run nightly-report
 
 # Run with input and gate a CI job on the result
-afy agents run nightly-report --payload '{"date":"2026-07-17"}' --wait
+afy run nightly-report --payload '{"date":"2026-07-17"}' --wait
 
 # What ran recently, and how did it go?
-afy agents runs nightly-report --limit 5
+afy runs nightly-report --limit 5
 
 # Hold the schedule while you investigate, then let it run again
-afy agents schedule pause nightly-report
-afy agents schedule resume nightly-report
+afy schedule pause nightly-report
+afy schedule resume nightly-report
 ```
 
 `--payload` and `--payload-file` are mutually exclusive. `--wait` polls to a
@@ -215,8 +215,8 @@ makes it usable as a CI gate.
 Pausing is idempotent, and resuming recomputes the next run from now —
 occurrences that elapsed while paused are skipped, never backfilled.
 
-Once an agent has a schedule, `afy agents list` grows `SCHEDULE`, `NEXT RUN`,
-and `LAST RUN` columns, and `afy agents status <name>` shows the same three
+Once an agent has a schedule, `afy list` grows `SCHEDULE`, `NEXT RUN`,
+and `LAST RUN` columns, and `afy status <name>` shows the same three
 fields. Times are UTC. `NEXT RUN` reads `(paused)` while the schedule is
 paused; `LAST RUN` shows the last outcome (`fired`, `skipped`, `missed`) with
 a relative timestamp, or `never`. Accounts with no scheduled agents keep the
@@ -260,7 +260,7 @@ Workspaces group related agents so they can share secrets and vector collections
 
 ```bash
 # Grab a run id from the history, then read just that run's output
-afy agents runs nightly-report
+afy runs nightly-report
 afy logs nightly-report --run <run-id>
 ```
 
@@ -298,8 +298,8 @@ they are different entry points:
 - `afy spawn <parent> <child>` is the parent-to-worker path: a SERVICE agent
   dispatches work to one of its declared workers. It requires a parent, and
   the resulting runs belong to the parent's history.
-- `afy agents run <name>` is a manual **root** run of a job agent — no parent
-  involved. These runs appear in `afy agents runs <name>` alongside the
+- `afy run <name>` is a manual **root** run of a job agent — no parent
+  involved. These runs appear in `afy runs <name>` alongside the
   scheduled ones.
 
 Note the flags differ: `spawn` accepts `--stdin`, `agents run` does not;
@@ -322,7 +322,7 @@ Connect your GitHub account to deploy on every push.
 | Command | Description |
 |---------|-------------|
 | `afy version` | Print version, build date, and commit hash |
-| `afy update` | Replace this binary with the newest release (see [Updating](#updating)) |
+| `afy upgrade` | Replace this binary with the newest release (see [Updating](#updating)) |
 | `afy completion [bash\|zsh\|fish\|powershell]` | Generate shell completion script |
 
 `completion` writes the script to stdout; wire it into your shell:

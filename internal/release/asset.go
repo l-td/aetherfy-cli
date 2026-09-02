@@ -1,5 +1,5 @@
 // Package release knows how the published release artifacts are named, where
-// they live, and how to put one in place of the running binary. `afy update`
+// they live, and how to put one in place of the running binary. `afy upgrade`
 // (cmd/update.go) is its only consumer.
 //
 // It is a package rather than a handful of helpers inside cmd/ for one reason:
@@ -112,7 +112,7 @@ func CurrentAssetName() (string, error) {
 //
 // Deliberately not api.github.com. The anonymous API allows 60 requests per
 // hour per IP and everyone behind one corporate NAT shares that budget, so
-// `afy update` would start failing for a reason that has nothing to do with
+// `afy upgrade` would start failing for a reason that has nothing to do with
 // the user or the release. This endpoint costs no token, no JSON parse and no
 // rate limit. scripts/install.sh's resolve_release() takes the same route for
 // the same reason; the two comments describe one decision.

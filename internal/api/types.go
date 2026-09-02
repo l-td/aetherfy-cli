@@ -44,7 +44,7 @@ type Agent struct {
 	// REVIEW_FAQ §63) — computed from the agent's CURRENT deployment, not a
 	// stored status. IsDegraded = a partial multi-region deploy still
 	// converging; DegradedReason is a human summary. Surfaced on
-	// `afy agents list` / `afy agents status`. No omitempty on IsDegraded:
+	// `afy list` / `afy status`. No omitempty on IsDegraded:
 	// health must serialize explicitly so `-o json` health-check scripts can
 	// read it. (No is_serving — agent.Status answers "is it up"; the server
 	// keeps is_serving on the deployment, where it's well-defined.)
@@ -56,7 +56,7 @@ type Agent struct {
 	// `regions` (the full target list) and `pending_regions` (the subset still
 	// converging). This replaces a singular `Region` field that the server has
 	// never sent: it unmarshalled to "" and printed as a permanently blank
-	// REGION column on `afy agents list` and a blank `Region:` on status.
+	// REGION column on `afy list` and a blank `Region:` on status.
 	// Declaring a field the API does not send is how that survived — it fails
 	// as an empty value, never as an error.
 	Regions        []string `json:"regions,omitempty"`

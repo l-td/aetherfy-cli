@@ -51,7 +51,7 @@ func init() {
 	logsCmd.Flags().StringVar(&logsSince, "since", "", "Show logs since duration (e.g., 1h, 30m)")
 	logsCmd.Flags().StringVar(&logsLevel, "level", "", "Filter by level(s), comma-separated (e.g., ERROR,WARN)")
 	logsCmd.Flags().StringVar(&logsStream, "stream", "", "Filter by stream(s), comma-separated (stdout,stderr,system)")
-	logsCmd.Flags().StringVar(&logsRun, "run", "", "Scope logs to a single run ID (from 'afy agents runs')")
+	logsCmd.Flags().StringVar(&logsRun, "run", "", "Scope logs to a single run ID (from 'afy runs')")
 }
 
 func runLogs(cmd *cobra.Command, args []string) error {

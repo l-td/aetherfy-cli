@@ -135,7 +135,7 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	output.KeyValue("Spawn ID", resp.SpawnID)
 	// Stays "Deployment ID", NOT "Run ID": the vocabulary line is "Run ID = an
-	// id you can look up in 'afy agents runs'", and spawned runs are excluded
+	// id you can look up in 'afy runs'", and spawned runs are excluded
 	// from that surface by design (they belong to the parent's history). Do not
 	// flip this in a consistency pass without changing that exclusion first.
 	output.KeyValue("Deployment ID", resp.DeploymentID)

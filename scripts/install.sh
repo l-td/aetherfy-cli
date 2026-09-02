@@ -196,7 +196,7 @@ verify() {
     echo ""
     echo -e "${BLUE}Get started:${NC}"
     echo "  afy login              # Authenticate with your API key"
-    echo "  afy agents list        # List your agents"
+    echo "  afy list        # List your agents"
     echo "  afy deploy             # Deploy your agent"
     echo ""
     echo -e "${BLUE}Documentation: https://docs.aetherfy.com${NC}"

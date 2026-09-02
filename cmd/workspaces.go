@@ -79,7 +79,7 @@ func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
 	// flag that does not exist. Assignment is a separate step (or the
 	// `workspace:` key in aetherfy.yaml).
 	output.Println("  • Put an agent in this workspace:")
-	output.Println("    afy agents update my-agent --workspace " + workspace.Name)
+	output.Println("    afy update my-agent --workspace " + workspace.Name)
 	output.Println("  • Add shared secrets:")
 	output.Println("    afy secrets set --workspace " + workspace.Name + " MY_SECRET=value")
 
@@ -378,7 +378,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 		// `deploy` has no --workspace flag either. An agent joins a workspace
 		// through its own config or `agents update`, then deploys normally.
 		output.Println("Add an agent to this workspace with:")
-		output.Println("  afy agents update <agent> --workspace " + workspaceName)
+		output.Println("  afy update <agent> --workspace " + workspaceName)
 		output.Println("or set 'workspace: " + workspaceName + "' in its aetherfy.yaml, then deploy.")
 		return nil
 	}

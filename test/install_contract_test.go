@@ -19,7 +19,7 @@ package test
 // are zero gates wearing the costume of several, since renaming the asset means
 // editing every pin and the test never notices they used to agree.
 //
-// THE THIRD KNOWER. `afy update` (cmd/update.go) downloads the same asset, so
+// THE THIRD KNOWER. `afy upgrade` (cmd/update.go) downloads the same asset, so
 // there are now three places that construct the name and still none that
 // mention each other. The Go side is real code, so it is checked by CALLING it
 // — a table over every published platform — rather than by scanning its source:
@@ -279,7 +279,7 @@ func TestInstallScriptAndReleaseConfigAgreeOnTheAssetName(t *testing.T) {
 			"Every install would 404. Change both files or neither.",
 		published, projectName, nameTemplate, downloaded)
 
-	// ---- the third side: what `afy update` downloads ----
+	// ---- the third side: what `afy upgrade` downloads ----
 	//
 	// A table over every platform the release publishes, comparing what
 	// internal/release.AssetName RETURNS against the string derived from
@@ -297,31 +297,31 @@ func TestInstallScriptAndReleaseConfigAgreeOnTheAssetName(t *testing.T) {
 			"ARCHIVE FORMAT CONTRACT BROKEN for %s.\n"+
 				"  .goreleaser.yaml publishes: %s  (archives.formats + format_overrides)\n"+
 				"  internal/release builds:    %s\n"+
-				"`afy update` would download a URL that 404s, or hand the wrong extractor an archive it "+
+				"`afy upgrade` would download a URL that 404s, or hand the wrong extractor an archive it "+
 				"cannot open.", p.goos, ext, release.ArchiveExt(p.goos))
 
 		want := expand.Replace(published) + ext
 		got, err := release.AssetName(p.goos, p.goarch)
 		require.NoError(t, err,
 			".goreleaser.yaml publishes an asset for %s, but internal/release.AssetName refuses it: %v.\n"+
-				"`afy update` would tell that platform's users no release exists for them.", p, err)
+				"`afy upgrade` would tell that platform's users no release exists for them.", p, err)
 
 		assert.Equal(t, want, got,
 			"ASSET-NAME CONTRACT BROKEN for %s.\n"+
 				"  .goreleaser.yaml publishes: %s  (project_name %q + name_template %q)\n"+
 				"  internal/release builds:    %s\n"+
-				"Every `afy update` on that platform would 404. Change both or neither.",
+				"Every `afy upgrade` on that platform would 404. Change both or neither.",
 			p, want, projectName, nameTemplate, got)
 	}
 }
 
-// The repository is the fourth string this batch made `afy update` a knower of,
+// The repository is the fourth string this batch made `afy upgrade` a knower of,
 // and it was the one left ungated.
 //
 // scripts/install.sh's GITHUB_REPO is pinned (TestInstallScriptTargetsTheRealRepo)
 // and .goreleaser.yaml's release.github is pinned (TestReleaseConfigTargetsTheRealRepo).
 // internal/release.Repo had nothing, so if the repository ever moved, both of
-// those would red and `afy update` would keep quietly fetching from the old
+// those would red and `afy upgrade` would keep quietly fetching from the old
 // path — which, on GitHub, someone else can then claim.
 func TestUpdateFetchesFromTheRepositoryThatExists(t *testing.T) {
 	owner := strings.TrimPrefix(realRepoURL, "https://github.com/")
@@ -332,12 +332,12 @@ func TestUpdateFetchesFromTheRepositoryThatExists(t *testing.T) {
 		"REPOSITORY CONTRACT BROKEN.\n"+
 			"  the repository is:        %s  (git remote origin, per realRepoURL)\n"+
 			"  internal/release fetches: %s\n"+
-			"Every `afy update` would download from the wrong repository.", owner, release.Repo)
+			"Every `afy upgrade` would download from the wrong repository.", owner, release.Repo)
 }
 
 // goreleaser's snapshot build is a local dry run of the release pipeline: it
 // stamps a version, but no tag and no assets ever exist for it. It is neither a
-// sentinel nor a pseudo-version, so `afy update` treated it as a release build
+// sentinel nor a pseudo-version, so `afy upgrade` treated it as a release build
 // and would have tried to fetch a release that was never published.
 //
 // The suffix is read out of .goreleaser.yaml rather than written down again
@@ -361,7 +361,7 @@ func TestSnapshotBuildsAreNotTreatedAsReleases(t *testing.T) {
 		"SNAPSHOT CONTRACT BROKEN.\n"+
 			"  .goreleaser.yaml stamps snapshot builds as: %s (snapshot.version_template %q)\n"+
 			"  internal/release calls that a release build.\n"+
-			"`afy update` would try to download a release that was never published.", snapshot, tmpl)
+			"`afy upgrade` would try to download a release that was never published.", snapshot, tmpl)
 
 	// The line the rule must not cross. A pre-release tag IS published and
 	// downloadable; refusing it would break every rc.
@@ -370,11 +370,11 @@ func TestSnapshotBuildsAreNotTreatedAsReleases(t *testing.T) {
 			"refuse to update to or from every rc")
 }
 
-// The platforms `afy update` will build a URL for must be exactly the ones the
+// The platforms `afy upgrade` will build a URL for must be exactly the ones the
 // release publishes an asset for.
 //
 // Both directions matter and they fail differently. A platform in
-// .goreleaser.yaml but not in internal/release means `afy update` tells real
+// .goreleaser.yaml but not in internal/release means `afy upgrade` tells real
 // users no release exists for them. A platform in internal/release but not in
 // .goreleaser.yaml — windows/arm64 is in goreleaser's `ignore` list today —
 // means it constructs a URL that 404s, and a 404 says nothing about why.
@@ -399,7 +399,7 @@ func TestUpdateKnowsExactlyThePlatformsTheReleasePublishes(t *testing.T) {
 
 		asset, err := release.AssetName(parts[0], parts[1])
 		assert.Empty(t, asset, "%s is in builds.ignore, so no asset for it is ever published", ignored)
-		require.Error(t, err, "`afy update` on %s must say so, not build a URL that 404s", ignored)
+		require.Error(t, err, "`afy upgrade` on %s must say so, not build a URL that 404s", ignored)
 		assert.Contains(t, err.Error(), ignored, "the refusal must name the platform: %v", err)
 	}
 }
@@ -430,7 +430,7 @@ func TestInstallScriptAndReleaseConfigAgreeOnTheChecksumFile(t *testing.T) {
 		"CHECKSUM FILE CONTRACT BROKEN.\n"+
 			"  .goreleaser.yaml publishes: %s\n"+
 			"  internal/release fetches:   %s\n"+
-			"`afy update` fails closed when it cannot read the checksums, so a wrong name blocks every update.",
+			"`afy upgrade` fails closed when it cannot read the checksums, so a wrong name blocks every update.",
 		published, release.ChecksumsFile)
 }
 
@@ -479,7 +479,7 @@ func TestReleaseAssetNameIsThePublishedContract(t *testing.T) {
 // The FOURTH knower: scripts/install.ps1.
 //
 // install.sh is Linux/macOS only, so the Windows half of the asset contract had
-// exactly one consumer (internal/release, via `afy update`) until install.ps1
+// exactly one consumer (internal/release, via `afy upgrade`) until install.ps1
 // existed. Now a PowerShell script builds the same string a fourth way, and an
 // ungated fourth copy is the drift this whole gate exists to prevent — with the
 // extra sharpness that NOTHING ELSE reads the .zip path: install.sh cannot see

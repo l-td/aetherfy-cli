@@ -15,7 +15,7 @@ import (
 // a `go build` binary with a release archive discards something nobody can
 // re-download. It re-spelled "dev" as its own literal for one commit, which is
 // two definitions of one rule — rename this constant and that copy silently
-// stops matching, so `afy update` would overwrite exactly the builds it exists
+// stops matching, so `afy upgrade` would overwrite exactly the builds it exists
 // to protect. There is now one definition and Unset below is how it is asked.
 const (
 	UnsetVersion = "dev"

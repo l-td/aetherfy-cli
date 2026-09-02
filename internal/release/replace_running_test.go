@@ -157,7 +157,7 @@ func TestReplaceExecutableReplacesAnExecutableThatIsRunning(t *testing.T) {
 	require.Contains(t, line, "original")
 
 	require.NoError(t, ReplaceExecutable(target, replacement),
-		"replacing a RUNNING executable is the only case `afy update` ever has; if this fails, "+
+		"replacing a RUNNING executable is the only case `afy upgrade` ever has; if this fails, "+
 			"the command cannot update anything")
 
 	assert.Equal(t, "replacement", whichBuildIsInPlace(t, target))

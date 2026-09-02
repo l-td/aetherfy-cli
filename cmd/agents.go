@@ -10,19 +10,13 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/archive"
 	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/yamldiff"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
-
-var agentsCmd = &cobra.Command{
-	Use:     "agents",
-	Aliases: []string{"agent", "a"},
-	Short:   "Manage agents",
-	Long:    "Create, list, delete, and manage your Aetherfy agents.",
-}
 
 // --- LIST ---
 var agentsListCmd = &cobra.Command{
@@ -55,7 +49,7 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(agents) == 0 {
-		output.PrintInfo("No agents found. Create one with 'afy agents create <name>'")
+		output.PrintInfo("No agents found. Create one with 'afy create <name>'")
 		return nil
 	}
 
@@ -171,7 +165,7 @@ func normalizeAgentType(raw string) (string, error) {
 }
 
 // createAgentRecord issues the POST /agents that creates an agent. Both
-// `afy agents create` and the consented create inside `afy deploy` go through
+// `afy create` and the consented create inside `afy deploy` go through
 // here rather than building their own request body, so the two can't drift.
 // agentType must already be normalized (lowercase, backend form).
 func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool) (*api.Agent, error) {
@@ -280,7 +274,7 @@ var agentsStopCmd = &cobra.Command{
 	Use:   "stop <name>",
 	Short: "Pause an agent",
 	Long: `Pause an agent: stop every machine and prevent the platform from
-re-waking it on incoming traffic. Reversible via 'afy agents start <name>'.
+re-waking it on incoming traffic. Reversible via 'afy start <name>'.
 
 Distinct from a billing-driven STOPPED state.`,
 	Args: cobra.ExactArgs(1),
@@ -290,7 +284,7 @@ Distinct from a billing-driven STOPPED state.`,
 var agentsStartCmd = &cobra.Command{
 	Use:   "start <name>",
 	Short: "Resume a paused agent",
-	Long:  "Resume an agent that was paused with 'afy agents stop'.",
+	Long:  "Resume an agent that was paused with 'afy stop'.",
 	Args:  cobra.ExactArgs(1),
 	RunE:  runAgentsStart,
 }
@@ -302,11 +296,11 @@ var agentsArchiveCmd = &cobra.Command{
 	Long: `Archive an agent: tear down its running app to free the plan quota slot,
 while preserving all of its configuration and the stored code bundle.
 
-Distinct from 'afy agents stop' (pause/resume), which keeps the app
+Distinct from 'afy stop' (pause/resume), which keeps the app
 provisioned. Archiving releases the slot so you can create or restore
-another agent; the agent shows up as 'archived' in 'afy agents list'.
+another agent; the agent shows up as 'archived' in 'afy list'.
 
-Reversible via 'afy agents restore <name>', which re-provisions it from the
+Reversible via 'afy restore <name>', which re-provisions it from the
 preserved bundle (subject to a plan-quota re-check).`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsArchive,
@@ -315,13 +309,13 @@ preserved bundle (subject to a plan-quota re-check).`,
 var agentsRestoreCmd = &cobra.Command{
 	Use:   "restore <name>",
 	Short: "Restore an archived agent",
-	Long: `Restore an agent that was archived with 'afy agents archive': re-provision
+	Long: `Restore an agent that was archived with 'afy archive': re-provision
 its app from the preserved code bundle and redeploy it.
 
 Restoring consumes a plan quota slot, so it is re-checked at restore time —
 if you are at your plan limit the restore is rejected until you free a slot
 (delete or archive another agent) or upgrade your plan. The deploy then runs
-asynchronously; track progress with 'afy agents list'.`,
+asynchronously; track progress with 'afy list'.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsRestore,
 }
@@ -349,9 +343,9 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 	// the control plane commits status=paused and closes the billing interval
 	// before answering — while the Fly machines take a few more seconds to wind
 	// down, converged by a background job. Saying only "paused" would hide that;
-	// saying the agent is "stopping" would contradict `afy agents status`, which
+	// saying the agent is "stopping" would contradict `afy status`, which
 	// reports paused immediately.
-	output.PrintSuccess("Agent '%s' paused; its machines are stopping. Resume with 'afy agents start %s'.", idOrName, idOrName)
+	output.PrintSuccess("Agent '%s' paused; its machines are stopping. Resume with 'afy start %s'.", idOrName, idOrName)
 	output.PrintInfo("Stopped agents keep billing at the base rate; archive to stop billing.")
 	return nil
 }
@@ -375,7 +369,7 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' is starting. Use 'afy agents status %s' to monitor.", idOrName, idOrName)
+	output.PrintSuccess("Agent '%s' is starting. Use 'afy status %s' to monitor.", idOrName, idOrName)
 	return nil
 }
 
@@ -400,7 +394,7 @@ func runAgentsArchive(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' archived. Its config is preserved; run 'afy agents restore %s' to redeploy it.", idOrName, idOrName)
+	output.PrintSuccess("Agent '%s' archived. Its config is preserved; run 'afy restore %s' to redeploy it.", idOrName, idOrName)
 	return nil
 }
 
@@ -431,7 +425,7 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Track status via 'afy agents list'.", idOrName)
+	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Track status via 'afy list'.", idOrName)
 	return nil
 }
 
@@ -516,7 +510,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 		output.PrintInfo(
 			"Cancellation requested for deployment v%d (state: %s). "+
 				"Worker will clean up at its next checkpoint. "+
-				"Run 'afy agents status %s' to confirm completion.",
+				"Run 'afy status %s' to confirm completion.",
 			result.Version, result.Status, idOrName,
 		)
 	}
@@ -569,7 +563,7 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	// Degraded = a partial multi-region deploy still converging (derived from
 	// the current deployment, control-plane REVIEW_FAQ §63). Shown only when
 	// degraded — a status command that hides this is a contract violation by
-	// name. Same DEGRADED term as the dashboard + `afy agents list`.
+	// name. Same DEGRADED term as the dashboard + `afy list`.
 	if agent.IsDegraded {
 		output.KeyValue("Health", output.Warning.Sprintf("DEGRADED (%d/%d regions ready)", agent.RegionsReady, agent.RegionsTotal))
 		if agent.DegradedReason != "" {
@@ -656,10 +650,10 @@ cron schedule. Only deployed 'type: job' agents can be run.
 Pass input with --payload (inline JSON) or --payload-file. Use --wait to block
 until the run finishes — the command then exits 0 on success, 1 on failure.`,
 	Example: `  # Run a job agent and return immediately
-  afy agents run nightly-report
+  afy run nightly-report
 
   # Run with a JSON payload and wait for the result
-  afy agents run nightly-report --payload '{"date":"2026-07-17"}' --wait`,
+  afy run nightly-report --payload '{"date":"2026-07-17"}' --wait`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsRun,
 }
@@ -746,7 +740,7 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 // transitions. A JOB run converges to COMPLETED (success) or FAILED (the
 // machine exited non-zero / OOM). Mirrors watchDeployment's ticker but only
 // terminates on the run-terminal states and sets the process exit code so
-// `afy agents run --wait` is usable as a CI gate.
+// `afy run --wait` is usable as a CI gate.
 func watchRun(client *api.Client, agentName, deploymentID string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
@@ -856,7 +850,7 @@ var agentsSchedulePauseCmd = &cobra.Command{
 	Use:   "pause <name>",
 	Short: "Pause a job agent's cron schedule",
 	Long: `Pause a job agent's cron schedule: no scheduled runs fire until you resume.
-Manual runs ('afy agents run') are unaffected. Idempotent.`,
+Manual runs ('afy run') are unaffected. Idempotent.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsSchedulePause,
 }
@@ -943,7 +937,15 @@ var agentsRenameCmd = &cobra.Command{
 An agent's address is fixed when it is FIRST DEPLOYED, and renaming does not
 move it. The practical rule: rename before your first deploy and the address
 follows the new name; rename after and it stays as it was, so existing
-integrations, links and webhooks keep working.`,
+integrations, links and webhooks keep working.
+
+THE LOCAL FILE IS UPDATED TOO. 'afy deploy' finds its target through the
+'name:' in aetherfy.yaml, so a rename leaves that file naming an agent that no
+longer exists. If the aetherfy.yaml in the current directory declares the OLD
+name, this rewrites that one field and tells you it did. If it declares a
+different agent, or there is no file here, nothing is touched and you are told
+which file to update -- a file naming a different agent belongs to a different
+project, and rewriting it would retarget that project's deploys.`,
 	Args: cobra.ExactArgs(2),
 	RunE: runAgentsRename,
 }
@@ -952,24 +954,55 @@ var forceRename bool
 
 func init() {
 	agentsRenameCmd.Flags().BoolVarP(&forceRename, "force", "f", false, "Skip confirmation prompt")
-	agentsCmd.AddCommand(agentsListCmd)
-	agentsCmd.AddCommand(agentsCreateCmd)
-	agentsCmd.AddCommand(agentsDeleteCmd)
-	agentsCmd.AddCommand(agentsStopCmd)
-	agentsCmd.AddCommand(agentsStartCmd)
-	agentsCmd.AddCommand(agentsArchiveCmd)
-	agentsCmd.AddCommand(agentsRestoreCmd)
-	agentsCmd.AddCommand(agentsCancelCmd)
-	agentsCmd.AddCommand(agentsStatusCmd)
-	agentsCmd.AddCommand(agentsRenameCmd)
-	agentsCmd.AddCommand(agentsUpdateCmd)
-	agentsCmd.AddCommand(agentsPullCmd)
-	agentsCmd.AddCommand(agentsDiffCmd)
-	agentsCmd.AddCommand(agentsRunCmd)
-	agentsCmd.AddCommand(agentsRunsCmd)
+	// AGENTS ARE THE DEFAULT NOUN — these register at the ROOT, not under an
+	// `agents` group. See the note above the registrations in cmd/root.go.
+	//
+	// Grouped only for `afy --help`: with ~twenty top-level verbs an ungrouped
+	// list is a wall. GroupID is presentation and nothing branches on it.
+	for _, c := range []*cobra.Command{
+		agentsCreateCmd, agentsDeleteCmd, agentsStopCmd, agentsStartCmd,
+		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd, agentsRenameCmd,
+		agentsUpdateCmd,
+	} {
+		c.GroupID = groupAgentLifecycle
+	}
+	for _, c := range []*cobra.Command{
+		agentsListCmd, agentsStatusCmd, agentsPullCmd, agentsDiffCmd,
+		agentsRunCmd, agentsRunsCmd, agentsScheduleCmd,
+	} {
+		c.GroupID = groupAgentOps
+	}
+
+	// ONE AddCommand PER LINE, AND DO NOT "TIDY" THESE INTO THE LOOPS ABOVE.
+	// aetherfy-dashboard/docs-site parses this file STATICALLY to extract the
+	// published CLI surface (scripts/lib/cli-surface.mjs matches
+	// `x.AddCommand(y)` and follows the variable y). Registered from a loop the
+	// call reads `rootCmd.AddCommand(c)`, `c` is not a command variable it can
+	// follow, and the command becomes invisible to the docs guard — measured at
+	// 2 extracted command paths instead of ~30, with no error from the
+	// extractor. The grouping loops are fine because GroupID is not parsed.
+	rootCmd.AddCommand(agentsListCmd)
+	rootCmd.AddCommand(agentsCreateCmd)
+	rootCmd.AddCommand(agentsDeleteCmd)
+	rootCmd.AddCommand(agentsStopCmd)
+	rootCmd.AddCommand(agentsStartCmd)
+	rootCmd.AddCommand(agentsArchiveCmd)
+	rootCmd.AddCommand(agentsRestoreCmd)
+	rootCmd.AddCommand(agentsCancelCmd)
+	rootCmd.AddCommand(agentsStatusCmd)
+	rootCmd.AddCommand(agentsRenameCmd)
+	rootCmd.AddCommand(agentsUpdateCmd)
+	rootCmd.AddCommand(agentsPullCmd)
+	rootCmd.AddCommand(agentsDiffCmd)
+	rootCmd.AddCommand(agentsRunCmd)
+	rootCmd.AddCommand(agentsRunsCmd)
+	rootCmd.AddCommand(agentsScheduleCmd)
+
+	// `schedule` KEEPS ITS SUBCOMMANDS. Flattening removes the group around the
+	// DEFAULT noun; it does not flatten every group. pause/resume are two verbs
+	// on one object and `afy pause` would mean the agent, not its schedule.
 	agentsScheduleCmd.AddCommand(agentsSchedulePauseCmd)
 	agentsScheduleCmd.AddCommand(agentsScheduleResumeCmd)
-	agentsCmd.AddCommand(agentsScheduleCmd)
 }
 
 func runAgentsRename(cmd *cobra.Command, args []string) error {
@@ -1027,8 +1060,57 @@ func runAgentsRename(cmd *cobra.Command, args []string) error {
 	output.KeyValue("ID", updatedAgent.ID)
 
 	printRenameNote(updatedAgent)
+	reportLocalManifestRename(currentName, newName)
 
 	return nil
+}
+
+// reportLocalManifestRename keeps the working directory pointing at the agent
+// that was just renamed, and says out loud what it did or did not do.
+//
+// SAYING SO IS HALF THE FEATURE. The failure this prevents is silent and
+// convincing: `afy deploy` resolves its target by the `name:` in aetherfy.yaml,
+// so after a rename that file names an agent that no longer exists, the deploy
+// gets AGENT_NOT_FOUND, and the prompt that follows offers to CREATE one under
+// the old name. That offer reads like the fix. Taking it leaves the user with
+// two agents and no error to explain it.
+//
+// EVERY BRANCH PRINTS. A silent no-op is indistinguishable from a rewrite that
+// worked, and the case it would hide -- the file lives one directory up -- is
+// the common one.
+func reportLocalManifestRename(oldName, newName string) {
+	dir, err := os.Getwd()
+	if err != nil {
+		output.Println("")
+		output.Dim.Printf("  Could not check this directory for an aetherfy.yaml (%v).\n", err)
+		output.Dim.Printf("  Set 'name: %s' in the aetherfy.yaml you deploy this agent from.\n", newName)
+		return
+	}
+
+	outcome, path, writeErr := archive.RewriteAgentName(dir, oldName, newName)
+	output.Println("")
+	switch outcome {
+	case archive.RewriteDone:
+		output.Info.Printf("i Updated 'name:' in %s\n", path)
+		output.Dim.Printf("  `afy deploy` from this directory still targets this agent.\n")
+	case archive.RewriteNameMismatch:
+		output.Warning.Printf("! %s names a different agent - left untouched.\n", path)
+		output.Dim.Printf("  Set 'name: %s' in whichever aetherfy.yaml declares '%s',\n", newName, oldName)
+		output.Dim.Printf("  or `afy deploy` from that directory will not find this agent.\n")
+	case archive.RewriteNoNameField:
+		output.Dim.Printf("  %s declares no 'name:' - nothing to update here.\n", path)
+	case archive.RewriteUnreadable:
+		if writeErr != nil {
+			output.Warning.Printf("! Could not update %s: %v\n", path, writeErr)
+		} else {
+			output.Warning.Printf("! Could not read %s - left untouched.\n", path)
+		}
+		output.Dim.Printf("  Set 'name: %s' there by hand before your next deploy.\n", newName)
+	default: // RewriteNoFile
+		output.Dim.Printf("  No aetherfy.yaml in this directory.\n")
+		output.Dim.Printf("  Set 'name: %s' in whichever aetherfy.yaml declares '%s',\n", newName, oldName)
+		output.Dim.Printf("  or `afy deploy` from that directory will not find this agent.\n")
+	}
 }
 
 // --- UPDATE ---
@@ -1042,13 +1124,13 @@ make it workspaceless (the two are mutually exclusive). Use --description
 to set the agent's description. At least one flag is required; flags that
 aren't given are left unchanged.`,
 	Example: `  # Assign the agent to a workspace
-  afy agents update my-agent --workspace invoice-pipeline
+  afy update my-agent --workspace invoice-pipeline
 
   # Make the agent workspaceless (clear its workspace)
-  afy agents update my-agent --no-workspace
+  afy update my-agent --no-workspace
 
   # Set the description (leaves the workspace untouched)
-  afy agents update my-agent --description "Parses inbound invoices"`,
+  afy update my-agent --description "Parses inbound invoices"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsUpdate,
 }
@@ -1148,7 +1230,7 @@ var agentsPullCmd = &cobra.Command{
 Use this to re-sync a local aetherfy.yaml after editing the agent via the
 dashboard or API. Prints to stdout by default (so you can redirect it):
 
-  afy agents pull my-agent > aetherfy.yaml
+  afy pull my-agent > aetherfy.yaml
 
 Or write to a file directly with -o. The YAML is the declarative subset only
 (server-derived fields like id/status are excluded) and re-deploying it is a
@@ -1185,7 +1267,7 @@ func runAgentsPull(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Raw to stdout — no spinner/color/decoration, so `afy agents pull foo >
+	// Raw to stdout — no spinner/color/decoration, so `afy pull foo >
 	// foo.yaml` produces a clean file.
 	fmt.Print(string(data))
 	return nil
@@ -1348,7 +1430,7 @@ func printRenameNote(a *api.Agent) {
 
 // formatAgentURL renders the URL column: the bare host, since every agent URL
 // is https and the scheme costs eight characters of a table that is already
-// wide. `afy agents status` prints the full URL — that is the one to copy.
+// wide. `afy status` prints the full URL — that is the one to copy.
 //
 // "—" means the server gave no address: a draft, a scheduled task (which serves
 // nothing), or any agent before the edge is live. The rule lives there, not

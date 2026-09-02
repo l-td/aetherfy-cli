@@ -26,24 +26,38 @@ var (
 	updateForce     bool
 )
 
+// THE SELF-UPDATER IS `afy upgrade`, NOT `afy upgrade`.
+//
+// It was `afy upgrade` until agents became the default noun. `afy update
+// <name>` is agent config, and flattening the agents group put both at the same
+// spelling — one of them had to move. This one did, because "update <name>"
+// reads as an object being updated and the CLI updating ITSELF is the odder
+// meaning of the two. `afy upgrade <name>` is now agent config and nothing else.
+//
+// No alias is left behind. One spelling per command is the rule the flatten was
+// done under, and an alias that silently does something else entirely is worse
+// than an unknown-command error: `afy upgrade my-agent` under an alias would have
+// tried to install a release named "my-agent".
 var updateCmd = &cobra.Command{
-	Use:   "update",
-	Short: "Update afy to the newest release",
+	Use:   "upgrade",
+	Short: "Upgrade afy to the newest release",
 	Long: `Replace the running afy binary with the newest published release.
 
-Needs no Aetherfy account: updating the CLI is not an authenticated operation.
+Needs no Aetherfy account: upgrading the CLI is not an authenticated operation.
 
 A binary that did not come from a release — a go install, make install or
 go build build — is refused, because replacing it with a release archive would
-silently discard the build you have. Pass --force to do it anyway.`,
-	Example: `  # Update to the newest release
-  afy update
+silently discard the build you have. Pass --force to do it anyway.
+
+To change an AGENT's configuration, use 'afy upgrade <name>'.`,
+	Example: `  # Upgrade to the newest release
+  afy upgrade
 
   # Ask whether anything newer exists; change nothing
-  afy update --check
+  afy upgrade --check
 
   # Install a specific version
-  afy update --version 0.1.0`,
+  afy upgrade --version 0.1.0`,
 	Args: cobra.NoArgs,
 	RunE: runUpdate,
 }
@@ -60,7 +74,7 @@ func sourceBuildRefusal(current string) error {
   running version: %s
   which is %s
 
-`+"`afy update`"+` replaces the running binary with a published release archive — that
+`+"`afy upgrade`"+` replaces the running binary with a published release archive — that
 would silently discard the build you have. Update it the way you installed it:
   go install github.com/%s/cmd/%s@latest
   or, in a clone: git pull && make install
@@ -120,10 +134,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			// no version comparison of our own is needed, or would be more
 			// authoritative if we had one.
 			output.PrintInfo("A newer release is available: %s (running %s)", target, current)
-			output.Println("Run 'afy update' to install it.")
+			output.Println("Run 'afy upgrade' to install it.")
 		} else {
 			output.PrintInfo("Requested %s; running %s", target, current)
-			output.Printf("Run 'afy update --version %s' to switch.\n", updateToVersion)
+			output.Printf("Run 'afy upgrade --version %s' to switch.\n", updateToVersion)
 		}
 		return nil
 	}

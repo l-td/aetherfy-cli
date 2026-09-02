@@ -107,7 +107,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 	output.Println("")
 	output.Println("You can now use afy commands to manage your agents.")
-	output.Println("Try 'afy agents list' to see your agents.")
+	output.Println("Try 'afy list' to see your agents.")
 
 	return nil
 }

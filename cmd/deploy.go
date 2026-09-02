@@ -166,7 +166,7 @@ func decideCreateOnDeploy(in createOnDeployInput) createOnDeployOutcome {
 	if uuidPattern.MatchString(in.AgentName) {
 		return createOnDeployOutcome{
 			Warn: fmt.Sprintf("'%s' is an agent ID, not a name — refusing to create an agent named after it. "+
-				"Target the agent by name (--agent <name>) or create it with 'afy agents create <name>'.", in.AgentName),
+				"Target the agent by name (--agent <name>) or create it with 'afy create <name>'.", in.AgentName),
 		}
 	}
 
@@ -262,7 +262,7 @@ func handleDeployResult(client *api.Client, agentID string, cfg *archive.Aetherf
 			output.PrintInfo("%s", outcome.Announce)
 		}
 
-		// The same POST /agents `afy agents create` issues, with the type and
+		// The same POST /agents `afy create` issues, with the type and
 		// runtime that were just printed — no other create path exists.
 		sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", agentID))
 		sp.Start()
@@ -669,7 +669,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 				if deployment.IsDegraded {
 					output.PrintWarning("Deployment is serving but DEGRADED — %d/%d regions ready.",
 						deployment.RegionsReady, deployment.RegionsTotal)
-					output.Println("Remaining regions converge in the background; check 'afy agents status'.")
+					output.Println("Remaining regions converge in the background; check 'afy status'.")
 				} else {
 					output.PrintSuccess("Deployment completed!")
 				}

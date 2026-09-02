@@ -10,7 +10,7 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
-// CancelDeployment is the API-client primitive; the `afy agents cancel`
+// CancelDeployment is the API-client primitive; the `afy cancel`
 // command composes ListDeployments → CancelDeployment. These tests cover
 // the client-side primitive only; the command-level "find pending deploy"
 // logic is composition of well-tested primitives.

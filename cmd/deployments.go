@@ -68,7 +68,7 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		// A degraded deploy stays state=active and converges in the background
 		// (control-plane REVIEW_FAQ §63); flag it inline with the N/M region
 		// readiness as a separate trailing marker (state value is unchanged).
-		// Same DEGRADED term as the dashboard + `afy agents`.
+		// Same DEGRADED term as the dashboard + `afy list`.
 		stateCell := formatDeployState(d.Status)
 		if tag := formatDegradedTag(d.IsDegraded, d.RegionsReady, d.RegionsTotal); tag != "" {
 			stateCell += " " + tag

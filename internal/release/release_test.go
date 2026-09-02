@@ -21,7 +21,7 @@ import (
 // (a) refusing a build that did not come from a release
 // ---------------------------------------------------------------------------
 
-// `afy update` replaces the running binary. Doing that to a `go install` or
+// `afy upgrade` replaces the running binary. Doing that to a `go install` or
 // `make install` build destroys something nobody can re-download, so the rule
 // is: refuse unless --force. Getting the --force half backwards is the failure
 // that matters — it would silently overwrite every source build.
@@ -123,7 +123,7 @@ func TestUpdateRefusesBuildsThatDidNotComeFromARelease(t *testing.T) {
 //
 // For one commit this package re-spelled "dev" as its own literal. Rename the
 // sentinel in pkg/version and that copy silently stops matching: every
-// unstamped `go build` starts reading as a release build, and `afy update`
+// unstamped `go build` starts reading as a release build, and `afy upgrade`
 // overwrites exactly the builds the refusal exists to protect. A test written
 // as IsReleaseBuild("dev") == false would have stayed GREEN straight through
 // that rename, because it asserts something about a string nobody uses any more.
@@ -138,7 +138,7 @@ func TestUpdateRefusesWhateverPkgVersionDefaultsTo(t *testing.T) {
 
 	assert.False(t, IsReleaseBuild(unstamped),
 		"pkg/version defaults Version to %q, and this package treats that as a release build. "+
-			"Every `go build` would be overwritten by `afy update`.", unstamped)
+			"Every `go build` would be overwritten by `afy upgrade`.", unstamped)
 	assert.True(t, MustRefuseUpdate(unstamped, false),
 		"an unstamped build must be refused without --force")
 	assert.False(t, MustRefuseUpdate(unstamped, true),
