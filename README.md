@@ -88,6 +88,19 @@ directory is on your `PATH`.
 `afy upgrade` replaces the running binary with the newest published release. It
 needs no Aetherfy account — updating the CLI is not an authenticated operation.
 
+**Coming from an older build, the command is still `afy update`.** The
+self-updater was renamed when agents became the default noun: every agent verb
+moved to the top level, so `afy agents update <name>` became `afy update <name>`
+and the self-updater had to move out of the way. Run `afy update` once on an
+older binary to reach this version; after that it is `afy upgrade`, and
+`afy update <name>` changes an agent's workspace or description. This is the
+only command whose name changed rather than shortening, and the only upgrade
+step that is not automatic.
+
+The rest of the change is a release-ordering matter rather than a user one:
+this CLI ships first, then the control plane (whose error messages name the new
+spellings), then the dashboard and the documentation.
+
 ```bash
 # Replace this binary with the newest release
 afy upgrade

@@ -977,10 +977,14 @@ func init() {
 	// aetherfy-dashboard/docs-site parses this file STATICALLY to extract the
 	// published CLI surface (scripts/lib/cli-surface.mjs matches
 	// `x.AddCommand(y)` and follows the variable y). Registered from a loop the
-	// call reads `rootCmd.AddCommand(c)`, `c` is not a command variable it can
-	// follow, and the command becomes invisible to the docs guard — measured at
-	// 2 extracted command paths instead of ~30, with no error from the
-	// extractor. The grouping loops are fine because GroupID is not parsed.
+	// call passes the loop VARIABLE rather than a named command, the extractor
+	// cannot follow it, and the command becomes invisible to the docs guard —
+	// measured at 2 extracted command paths instead of 48, with no error from
+	// the extractor. The grouping loops are fine because GroupID is not parsed.
+	//
+	// The loop form is deliberately not spelled out here. This package's own
+	// guard counts literal registration calls, and a comment quoting one would
+	// be counted as a registration; it cost a red run to find that out.
 	rootCmd.AddCommand(agentsListCmd)
 	rootCmd.AddCommand(agentsCreateCmd)
 	rootCmd.AddCommand(agentsDeleteCmd)

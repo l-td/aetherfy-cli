@@ -38,46 +38,7 @@ func readCmdSources(t *testing.T) string {
 	if count < 5 {
 		t.Fatalf("only read %d source files from cmd/ — the scan is not reaching the package", count)
 	}
-	return stripComments(b.String())
-}
-
-// stripComments removes Go comments, because the rule below is about CODE.
-//
-// Written after this test failed on its own explanatory comment: the note in
-// cmd/agents.go quotes `rootCmd.AddCommand(c)` to say why a loop is wrong, and
-// a raw count read that as a thirty-third registration. A guard that a comment
-// about the guard can break is a guard nobody will keep.
-//
-// Line-based and deliberately simple. A `//` inside a string literal would
-// truncate that line, which cannot hide a registration: every one of them is on
-// a line of its own.
-func stripComments(src string) string {
-	var out strings.Builder
-	inBlock := false
-	for _, line := range strings.Split(src, "\n") {
-		for inBlock {
-			if i := strings.Index(line, "*/"); i >= 0 {
-				line, inBlock = line[i+2:], false
-			} else {
-				line = ""
-				break
-			}
-		}
-		if i := strings.Index(line, "/*"); i >= 0 {
-			rest := line[i+2:]
-			if j := strings.Index(rest, "*/"); j >= 0 {
-				line = line[:i] + rest[j+2:]
-			} else {
-				line, inBlock = line[:i], true
-			}
-		}
-		if i := strings.Index(line, "//"); i >= 0 {
-			line = line[:i]
-		}
-		out.WriteString(line)
-		out.WriteString("\n")
-	}
-	return out.String()
+	return b.String()
 }
 
 func regexpAll(src, pattern string) []string {
@@ -225,11 +186,16 @@ func TestEveryTopLevelCommandIsRegisteredWithALiteralAddCommand(t *testing.T) {
 	// aetherfy-dashboard/docs-site extracts the published CLI surface by
 	// parsing this package STATICALLY: scripts/lib/cli-surface.mjs matches
 	// `x.AddCommand(y)` and follows the variable y. Register from a loop and
-	// the call reads `rootCmd.AddCommand(c)` — c is not a command variable it
-	// can follow — so the command vanishes from the extracted surface with no
-	// error anywhere. Measured during the flatten: 2 extracted command paths
-	// instead of 48, and the only symptom was the docs guard rejecting
-	// commands that plainly exist.
+	// the call passes the loop VARIABLE instead of a named command, which the
+	// extractor cannot follow, so the command vanishes from the extracted
+	// surface with no error anywhere. Measured during the flatten: 2 extracted
+	// command paths instead of 48, and the only symptom was the docs guard
+	// rejecting commands that plainly exist.
+	//
+	// The loop form is deliberately not quoted anywhere in this package: the
+	// count below is textual, so a comment showing the wrong shape would be
+	// counted as a registration. That is why there is no comment stripper here
+	// — the rule is simply not to write the pattern down.
 	//
 	// Counting is enough and reimplementing their parser would be worse: this
 	// reds the moment a registration stops being a literal call, which is the
