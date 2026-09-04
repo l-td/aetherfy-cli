@@ -304,6 +304,10 @@ type GitHubStatus struct {
 	Connected      bool       `json:"connected"`
 	InstallationID *int64     `json:"installation_id,omitempty"`
 	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
+	// ManageURL is where the user changes which repositories Aetherfy can
+	// see. Built server-side, because it needs the App's name and the CLI
+	// has no way to know it. Empty when the server has no App configured.
+	ManageURL string `json:"manage_url,omitempty"`
 }
 
 // GitHubInstallURL is the answer from GET /auth/github: where to send a
@@ -312,6 +316,11 @@ type GitHubStatus struct {
 // the endpoint itself answers 401 MISSING_API_KEY.
 type GitHubInstallURL struct {
 	InstallURL string `json:"install_url"`
+	// ExpiresAt is when InstallURL stops being accepted. It comes from the
+	// server rather than being assumed here on purpose: the callback rejects
+	// the state token at exactly this instant, so a local copy of the
+	// lifetime would drift from the only clock that decides the outcome.
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // GitHubLinkRequest is the request body for linking an agent to a GitHub repo.

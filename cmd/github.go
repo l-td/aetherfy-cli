@@ -1,9 +1,12 @@
 package cmd
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"strings"
 	"time"
@@ -55,33 +58,165 @@ var githubConnectCmd = &cobra.Command{
 The CLI will attempt to open the installation URL in your default browser.
 If that fails, copy and paste the URL manually.
 
-After installing the App on GitHub, you are redirected back to Aetherfy.
+After installing the App on GitHub, the command waits for the connection and
+reports it. The installation link is valid for a limited time; if it expires
+before anything is recorded, run the command again for a fresh one. If your
+account is already connected, the command says so and exits without opening
+a browser.
+
 One App installation covers all repos you grant access to.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
 			return err
 		}
-
-		client := api.NewClient()
-		url, err := client.GitHubConnectURL()
-		if err != nil {
-			return err
+		if code := runGitHubConnect(api.NewClient(), githubConnectPollInterval); code != 0 {
+			os.Exit(code)
 		}
-
-		output.Println("Open this URL in your browser to connect GitHub:")
-		output.Println("")
-		output.Bold.Println("  " + url)
-		output.Println("")
-
-		// Best-effort browser open
-		if err := openBrowser(url); err == nil {
-			output.PrintInfo("Opening browser...")
-		} else {
-			output.PrintInfo("Copy and paste the URL above into your browser.")
-		}
-
 		return nil
 	},
+}
+
+// How often the connect flow asks whether the installation has landed. The
+// wait is bounded by the install link's own expiry, never by a tick count.
+const githubConnectPollInterval = 5 * time.Second
+
+// Exit codes runGitHubConnect reports back to RunE. Kept as values rather than
+// os.Exit calls inside the flow so the whole thing is drivable from a test.
+const (
+	githubConnectOK        = 0
+	githubConnectFailed    = 1
+	githubConnectInterrupt = 130
+)
+
+// Indirection so a test can run the flow without a browser window opening.
+var githubOpenBrowser = openBrowser
+
+// runGitHubConnect drives the whole connect flow and returns a process exit
+// code.
+//
+// Reading status BEFORE starting is not an optimisation. A poll that begins
+// from an already-connected baseline would report success on its first tick
+// without GitHub having been touched at all, so "connected" would stop meaning
+// anything. Starting only from a disconnected baseline is what makes the
+// eventual `connected: true` evidence that this attempt worked.
+func runGitHubConnect(client *api.Client, tick time.Duration) int {
+	baseline, err := client.GitHubStatus()
+	if err != nil {
+		output.PrintError("Failed to get GitHub status: %v", err)
+		return githubConnectFailed
+	}
+
+	if baseline.Connected {
+		printGitHubConnection(baseline, "GitHub already connected")
+		output.Println("")
+		if baseline.ManageURL != "" {
+			output.Printf("To change which repositories Aetherfy can see: %s\n", baseline.ManageURL)
+		}
+		output.Println("To start over: afy github disconnect, then afy github connect.")
+		return githubConnectOK
+	}
+
+	url, expiresAt, err := client.GitHubConnectURL()
+	if err != nil {
+		output.PrintError("Failed to begin the GitHub connection: %v", err)
+		return githubConnectFailed
+	}
+
+	output.Println("Open this URL in your browser to connect GitHub:")
+	output.Println("")
+	output.Bold.Println("  " + url)
+	output.Println("")
+
+	// Best-effort browser open
+	if err := githubOpenBrowser(url); err == nil {
+		output.PrintInfo("Opening browser...")
+	} else {
+		output.PrintInfo("Copy and paste the URL above into your browser.")
+	}
+
+	output.PrintInfo("Waiting for you to finish on GitHub. This link is valid until %s.",
+		expiresAt.Local().Format(time.RFC1123))
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer stop()
+
+	return waitForGitHubConnection(ctx, client, expiresAt, tick)
+}
+
+// waitForGitHubConnection polls until the account is connected or the install
+// link dies.
+//
+// The deadline is the link's own expiry, not a guess. A fixed timeout would
+// have to say something about a user who is simply still reading GitHub's
+// consent page, and there is nothing true to say. Past expiry there is: the
+// callback refuses the state token, so the attempt genuinely cannot succeed
+// any more, and the message can state that as fact.
+func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt time.Time, tick time.Duration) int {
+	ctx, cancel := context.WithDeadline(ctx, expiresAt)
+	defer cancel()
+
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
+
+	lastWarning := ""
+	for {
+		select {
+		case <-ctx.Done():
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				// Deliberately not the word "failed": nothing failed. The link
+				// ran out, which is a thing that happens to people who take
+				// their time, and the only action is a fresh one.
+				output.PrintError("This link has expired without a connection being recorded. Run 'afy github connect' for a fresh link.")
+				return githubConnectFailed
+			}
+			output.Printf("Stopped waiting. The link stays valid until %s; finishing on GitHub still connects. Check with 'afy github status'.\n",
+				expiresAt.Local().Format(time.RFC1123))
+			return githubConnectInterrupt
+
+		case <-ticker.C:
+			status, err := client.GitHubStatus()
+			if err != nil {
+				if apiErr, ok := err.(*api.APIError); ok && apiErr.IsRateLimited() {
+					// The server said how long to wait. Ignoring it would
+					// spend the rest of the link's life being refused.
+					delay := time.Second
+					if apiErr.RetryAfterSeconds != nil && *apiErr.RetryAfterSeconds > 1 {
+						delay = time.Duration(*apiErr.RetryAfterSeconds) * time.Second
+					}
+					select {
+					case <-ctx.Done():
+					case <-time.After(delay):
+					}
+					continue
+				}
+				// Transient. Say it once per distinct message rather than once
+				// per tick, and keep waiting — the deadline is the bound.
+				if msg := err.Error(); msg != lastWarning {
+					output.PrintWarning("Still waiting: %v", err)
+					lastWarning = msg
+				}
+				continue
+			}
+
+			if status.Connected {
+				printGitHubConnection(status, "GitHub connected")
+				return githubConnectOK
+			}
+		}
+	}
+}
+
+// printGitHubConnection renders a connected account. Shared by `status` and by
+// both of connect's success paths so the three cannot describe one account
+// three different ways.
+func printGitHubConnection(status *api.GitHubStatus, headline string) {
+	output.PrintSuccess(headline)
+	if status.InstallationID != nil {
+		output.KeyValue("Installation ID", fmt.Sprintf("%d", *status.InstallationID))
+	}
+	if status.ConnectedAt != nil {
+		output.KeyValue("Connected at", status.ConnectedAt.Local().Format(time.RFC1123))
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -140,13 +275,7 @@ var githubStatusCmd = &cobra.Command{
 			return nil
 		}
 
-		output.PrintSuccess("GitHub connected")
-		if status.InstallationID != nil {
-			output.KeyValue("Installation ID", fmt.Sprintf("%d", *status.InstallationID))
-		}
-		if status.ConnectedAt != nil {
-			output.KeyValue("Connected at", status.ConnectedAt.Local().Format(time.RFC1123))
-		}
+		printGitHubConnection(status, "GitHub connected")
 		return nil
 	},
 }

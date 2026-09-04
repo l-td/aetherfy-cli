@@ -45,6 +45,12 @@ type APIError struct {
 	// D2 Part 6 OVERAGE_CONFIRM_REQUIRED (402) envelope so `deploy` can show the
 	// "+$X/mo, continue?" prompt. nil for every other error.
 	AdditionalMonthlyUSD *float64 `json:"-"`
+	// RetryAfterSeconds carries the `retry_after_seconds` extra from the 429
+	// RATE_LIMIT_EXCEEDED envelope. Read from the BODY, not the Retry-After
+	// header, because the header does not survive this type. A caller that
+	// polls (github connect) must honour it or it spends the rest of its
+	// budget being refused. nil for every other error.
+	RetryAfterSeconds *int `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -105,6 +111,12 @@ func parseAPIError(resp *resty.Response) error {
 				// float64 through interface{}.
 				if amt, ok := v["additional_monthly_usd"].(float64); ok {
 					apiErr.AdditionalMonthlyUSD = &amt
+				}
+				// Same shape, same reason: the 429 envelope says how long to
+				// wait, and only the body carries it through this type.
+				if secs, ok := v["retry_after_seconds"].(float64); ok {
+					n := int(secs)
+					apiErr.RetryAfterSeconds = &n
 				}
 			default:
 				// Unexpected shape — serialize whatever we got so it isn't

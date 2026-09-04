@@ -124,17 +124,81 @@ func TestGitHubConnectURL(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"install_url": "https://github.com/apps/aetherfy-bot/installations/new?state=abc",
+			"expires_at":  "2031-07-01T09:00:00Z",
 		})
 	}))
 	defer srv.Close()
 
 	client := api.NewClientWithURL(srv.URL, "test-key")
-	url, err := client.GitHubConnectURL()
+	url, expiresAt, err := client.GitHubConnectURL()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if url != "https://github.com/apps/aetherfy-bot/installations/new?state=abc" {
 		t.Errorf("unexpected connect URL: %s", url)
+	}
+	// The deadline is the server's, not one the CLI made up. Two copies of
+	// one lifetime drift, and the drift is invisible until a user is told to
+	// keep waiting on a token the callback has already refused.
+	if want := time.Date(2031, 7, 1, 9, 0, 0, 0, time.UTC); !expiresAt.Equal(want) {
+		t.Errorf("expires_at: want %s, got %s", want, expiresAt)
+	}
+}
+
+// A 429 mid-poll must be honoured, and only the BODY carries the delay through
+// APIError — the header does not survive the type.
+func TestAPIErrorCarriesRetryAfterSecondsFromTheBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"detail": map[string]interface{}{
+				"code":                "RATE_LIMIT_EXCEEDED",
+				"message":             "Rate limit exceeded.",
+				"limit":               100,
+				"retry_after_seconds": 7,
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := api.NewClientWithURL(srv.URL, "test-key")
+	_, err := client.GitHubStatus()
+	apiErr, ok := err.(*api.APIError)
+	if !ok {
+		t.Fatalf("want *api.APIError, got %T (%v)", err, err)
+	}
+	if !apiErr.IsRateLimited() {
+		t.Errorf("want a rate-limited error, got status %d", apiErr.StatusCode)
+	}
+	if apiErr.RetryAfterSeconds == nil {
+		t.Fatal("retry_after_seconds was dropped; a poller would hammer the 429")
+	}
+	if *apiErr.RetryAfterSeconds != 7 {
+		t.Errorf("retry_after_seconds: want 7, got %d", *apiErr.RetryAfterSeconds)
+	}
+}
+
+// Every other error must leave it nil, or a caller cannot tell "the server
+// told me how long to wait" from "I invented a number".
+func TestAPIErrorRetryAfterIsNilWhenAbsent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"detail": map[string]string{"code": "INTERNAL", "message": "boom"},
+		})
+	}))
+	defer srv.Close()
+
+	client := api.NewClientWithURL(srv.URL, "test-key")
+	_, err := client.GitHubStatus()
+	apiErr, ok := err.(*api.APIError)
+	if !ok {
+		t.Fatalf("want *api.APIError, got %T", err)
+	}
+	if apiErr.RetryAfterSeconds != nil {
+		t.Errorf("want nil, got %d", *apiErr.RetryAfterSeconds)
 	}
 }
 
@@ -152,7 +216,7 @@ func TestGitHubConnectURL_ServerError(t *testing.T) {
 	defer srv.Close()
 
 	client := api.NewClientWithURL(srv.URL, "test-key")
-	if _, err := client.GitHubConnectURL(); err == nil {
+	if _, _, err := client.GitHubConnectURL(); err == nil {
 		t.Error("expected an error when the server refuses to begin the install")
 	}
 }
