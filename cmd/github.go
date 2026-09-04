@@ -63,7 +63,10 @@ One App installation covers all repos you grant access to.`,
 		}
 
 		client := api.NewClient()
-		url := client.GitHubConnectURL()
+		url, err := client.GitHubConnectURL()
+		if err != nil {
+			return err
+		}
 
 		output.Println("Open this URL in your browser to connect GitHub:")
 		output.Println("")

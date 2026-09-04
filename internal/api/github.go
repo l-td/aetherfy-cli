@@ -2,10 +2,16 @@ package api
 
 import "fmt"
 
-// GitHubConnectURL returns the URL the user should open in a browser to connect GitHub.
-// The server generates a CSRF state token on GET, so the user must visit this URL directly.
-func (c *Client) GitHubConnectURL() string {
-	return c.baseURL + "/auth/github"
+// GitHubConnectURL begins the App install and returns the github.com URL the
+// user should open. The call is authenticated: the server mints a CSRF state
+// token and builds the install URL. The user must NOT be sent to the control
+// plane endpoint itself — a browser carries no API key there.
+func (c *Client) GitHubConnectURL() (string, error) {
+	var resp GitHubInstallURL
+	if err := c.Get("/auth/github", &resp); err != nil {
+		return "", err
+	}
+	return resp.InstallURL, nil
 }
 
 // GitHubStatus returns the current GitHub connection status for the authenticated user.

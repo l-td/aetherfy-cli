@@ -306,6 +306,14 @@ type GitHubStatus struct {
 	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
 }
 
+// GitHubInstallURL is the answer from GET /auth/github: where to send a
+// browser to install the App. The route is API-key authenticated, so the URL
+// must be fetched with the key and only then opened — pointing a browser at
+// the endpoint itself answers 401 MISSING_API_KEY.
+type GitHubInstallURL struct {
+	InstallURL string `json:"install_url"`
+}
+
 // GitHubLinkRequest is the request body for linking an agent to a GitHub repo.
 // RootDir is the repo-relative folder holding this agent's code and
 // aetherfy.yaml; omitted means the repository root.

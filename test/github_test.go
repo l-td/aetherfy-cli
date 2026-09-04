@@ -109,11 +109,51 @@ func TestGitHubLinkResponse(t *testing.T) {
 // API client — GitHub methods (against a local httptest server)
 // ---------------------------------------------------------------------------
 
+// The connect URL is FETCHED with the API key, not constructed. Handing a
+// browser the control-plane endpoint answers 401 MISSING_API_KEY, so the URL
+// the user opens must be the github.com one the server returns.
 func TestGitHubConnectURL(t *testing.T) {
-	client := api.NewClientWithURL("https://agents.aetherfy.com/api/v1", "test-key")
-	url := client.GitHubConnectURL()
-	if url != "https://agents.aetherfy.com/api/v1/auth/github" {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/auth/github" || r.Method != http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") == "" {
+			t.Error("connect URL was fetched without an Authorization header")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"install_url": "https://github.com/apps/aetherfy-bot/installations/new?state=abc",
+		})
+	}))
+	defer srv.Close()
+
+	client := api.NewClientWithURL(srv.URL, "test-key")
+	url, err := client.GitHubConnectURL()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if url != "https://github.com/apps/aetherfy-bot/installations/new?state=abc" {
 		t.Errorf("unexpected connect URL: %s", url)
+	}
+}
+
+func TestGitHubConnectURL_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotImplemented)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"detail": map[string]string{
+				"code":    "GITHUB_APP_NOT_CONFIGURED",
+				"message": "GitHub App is not configured on this server.",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := api.NewClientWithURL(srv.URL, "test-key")
+	if _, err := client.GitHubConnectURL(); err == nil {
+		t.Error("expected an error when the server refuses to begin the install")
 	}
 }
 
