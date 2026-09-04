@@ -471,7 +471,14 @@ func printAgentURL(client *api.Client, agentID string) {
 		return
 	}
 	output.Println("")
-	output.KeyValue("URL", agent.URL)
+	// NOT output.KeyValue: its 15-wide label column exists to align a BLOCK of
+	// keys, and there is no block here. This runs at the tail of the deploy
+	// watch, whose neighbours are "Status: x" lines and a ✓ — none of them in
+	// that column. Padded to 15 the address landed eight columns right of the
+	// curl line directly beneath it, which reads as a typo. The 6 is the width
+	// that puts both addresses in the same column as the one after "  curl ".
+	output.Bold.Printf("%-6s", "URL:")
+	output.Printf(" %s\n", agent.URL)
 	output.Dim.Printf("  curl %s\n", agent.URL)
 }
 
