@@ -1422,6 +1422,45 @@ func formatRegions(regions []string) string {
 // first deploy and the address follows; rename after and it is frozen.
 // Printing the actual address makes the drift visible in the same breath as
 // the rename, instead of leaving it to be discovered later.
+// KNOWN GAP — this note's reassurance stopped being complete on 2026-09-03,
+// and the half it is missing is the half a renamer acts on.
+//
+// What it says is true: the PUBLIC address is fixed at first deploy
+// (public_label, control-plane shared/agent_names.py) and a rename does not
+// move it, so integrations and webhooks keep working. That was the whole story
+// while an agent had exactly one address.
+//
+// It has two now. The dashboard addresses each agent BY NAME —
+// /dashboard/agents/{name}, with its deployments at the root and its logs
+// beneath — so a rename DOES move that one. Every open tab on the old address,
+// every bookmark, and every link pasted into a ticket lands on the dashboard's
+// "NO SUCH AGENT" panel. That panel is honest (the read succeeded; the name is
+// gone) but nothing connects it to the rename, and this note is the only place
+// a renamer is told anything about addresses at all.
+//
+// So the sentence below now reads as a broader promise than it can keep:
+// "existing integrations, links and webhooks keep working" is exactly what
+// someone checks before sharing a dashboard link, and dashboard links are the
+// one kind that do not.
+//
+// AND IT SAYS NOTHING AT ALL FOR SOME AGENTS. The early return is correct for
+// what this note currently covers — no public URL, nothing to reassure anyone
+// about — but a scheduled task serves nothing and never has a URL, while it
+// still has a dashboard record whose address a rename moves. Those renames
+// print no address guidance whatever.
+//
+// OWNER: aetherfy-cli. TRIGGER: the first report of an agent that
+// "disappeared" from the dashboard after a rename, or the next edit to this
+// note.
+// FIX SHAPE: split the note in two rather than widening this sentence. Keep
+// this arm, URL-gated, saying the public address is unchanged; add a second,
+// UNGATED arm naming the dashboard address the rename moved to, built from
+// newName so it needs no lookup. cmd/rename_note_test.go is where both get
+// pinned — it already captures both writers this package prints through, and
+// its existing case asserts the "does not move it" half, so the new case is a
+// sibling rather than a new harness.
+// NOT FIXED HERE because the change that created the gap is in another
+// repository, and user-facing copy is the owner's call rather than a drive-by.
 func printRenameNote(a *api.Agent) {
 	if a == nil || a.URL == "" {
 		return
