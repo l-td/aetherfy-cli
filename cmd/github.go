@@ -122,6 +122,20 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 		return githubConnectFailed
 	}
 
+	// A response with no expires_at decodes to the zero time, which as a
+	// deadline is already long past — the wait would end instantly and report
+	// that the link had expired, on a link that is perfectly good. That is a
+	// lie in the one direction this command must never lie, so say what is
+	// actually wrong instead and do not poll. Refusing here is NOT tolerance
+	// for an older server: it is a malformed answer, and the browser flow it
+	// describes is unaffected either way.
+	if expiresAt.IsZero() {
+		output.PrintError("The server did not say when this installation link expires, so there is nothing to wait for.")
+		output.Println("")
+		output.Println("The link above still works — finish on GitHub, then check with 'afy github status'.")
+		return githubConnectFailed
+	}
+
 	output.Println("Open this URL in your browser to connect GitHub:")
 	output.Println("")
 	output.Bold.Println("  " + url)
@@ -276,6 +290,10 @@ var githubStatusCmd = &cobra.Command{
 		}
 
 		printGitHubConnection(status, "GitHub connected")
+		if status.ManageURL != "" {
+			output.Println("")
+			output.Printf("To change which repositories Aetherfy can see: %s\n", status.ManageURL)
+		}
 		return nil
 	},
 }

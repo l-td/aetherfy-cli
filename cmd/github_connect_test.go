@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -277,5 +281,152 @@ func TestWaitIsBoundedByTheServersExpiry(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("wait ran well past a 120ms expiry; it is not bound by expires_at")
+	}
+}
+
+// A begin response with no expires_at is a MALFORMED answer, not an expired
+// link. Decoded, it is the zero time; used as a deadline it is already long
+// past, so the wait would end on its first turn and announce that the link had
+// expired — on a link that is perfectly good and a browser that is already on
+// GitHub. The command must not poll and must not claim an expiry that did not
+// happen.
+func TestConnectRefusesAResponseWithNoExpiry(t *testing.T) {
+	statusHits := 0
+	beginHits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/auth/github/status":
+			statusHits++
+			_ = json.NewEncoder(w).Encode(notConnected())
+		case "/auth/github":
+			beginHits++
+			// No expires_at, deliberately.
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"install_url": "https://github.com/apps/aetherfy-bot/installations/new?state=abc",
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	stubBrowser(t)
+
+	// THE MESSAGE IS THE ASSERTION, not the exit code. Without the guard this
+	// flow ALSO exits 1 and ALSO polls exactly once — the zero deadline fires
+	// on the first turn of the select — so an exit-code check passes whether
+	// the guard is there or not. What separates them is what the user is told:
+	// a true statement about a malformed response, or a false one about an
+	// expiry that never happened.
+	var code int
+	stderr := captureStderr(t, func() {
+		done := make(chan int, 1)
+		go func() {
+			done <- runGitHubConnect(api.NewClientWithURL(srv.URL, "afy_test_key"), time.Millisecond)
+		}()
+		select {
+		case code = <-done:
+		case <-time.After(5 * time.Second):
+			t.Error("connect neither refused nor returned on a response with no expiry")
+		}
+	})
+
+	if code != githubConnectFailed {
+		t.Fatalf("exit code: want %d, got %d", githubConnectFailed, code)
+	}
+	if !strings.Contains(stderr, "did not say when this installation link expires") {
+		t.Errorf("the user was not told the response was malformed; stderr was: %q", stderr)
+	}
+	if strings.Contains(stderr, "expired") && !strings.Contains(stderr, "did not say when") {
+		t.Errorf("the user was told the link expired, which is false; stderr was: %q", stderr)
+	}
+	if strings.Contains(stderr, "has expired without a connection being recorded") {
+		t.Errorf("the expiry message fired on a link that never had an expiry; stderr was: %q", stderr)
+	}
+
+	if beginHits != 1 {
+		t.Errorf("begin endpoint hits: want exactly 1, got %d", beginHits)
+	}
+	// Exactly the baseline read. Polling against a deadline we do not have
+	// would be waiting for something with no end.
+	if statusHits != 1 {
+		t.Errorf("status was requested %d time(s); with no expiry there is "+
+			"nothing to poll until, so only the baseline read may happen", statusHits)
+	}
+}
+
+// captureStderr swaps os.Stderr for a pipe while fn runs. output.PrintError
+// resolves os.Stderr at call time, so this sees what the user would.
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe: %v", err)
+	}
+	prev := os.Stderr
+	os.Stderr = w
+
+	collected := make(chan string, 1)
+	go func() {
+		var buf bytes.Buffer
+		_, _ = io.Copy(&buf, r)
+		collected <- buf.String()
+	}()
+
+	fn()
+
+	os.Stderr = prev
+	_ = w.Close()
+	out := <-collected
+	_ = r.Close()
+	return out
+}
+
+// `status` prints where to change repository access. The CLI cannot build that
+// URL — it does not know the App's name — so it either shows the server's or
+// shows nothing, and showing nothing leaves a connected user with no route to
+// the one thing they are most likely to want next.
+func TestStatusShowsWhereToManageRepositoryAccess(t *testing.T) {
+	const manageURL = "https://github.com/apps/aetherfy-bot/installations/new"
+
+	var body map[string]interface{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	defer srv.Close()
+	client := api.NewClientWithURL(srv.URL, "afy_test_key")
+
+	body = connected()
+	status, err := client.GitHubStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.ManageURL != manageURL {
+		t.Errorf("manage_url: want %s, got %q", manageURL, status.ManageURL)
+	}
+
+	// Absent on a server with no GitHub App configured. Empty, so the caller
+	// can tell "nowhere to send them" from a URL and print neither a blank
+	// line nor a broken link.
+	body = map[string]interface{}{"connected": true, "installation_id": 4242}
+	status, err = client.GitHubStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.ManageURL != "" {
+		t.Errorf("manage_url: want empty, got %q", status.ManageURL)
+	}
+}
+
+// The command gates the line on a non-empty value rather than printing it
+// unconditionally, so an unconfigured server produces no dangling sentence.
+func TestStatusGatesTheManageLineOnAValue(t *testing.T) {
+	src, err := os.ReadFile("github.go")
+	if err != nil {
+		t.Fatalf("cannot read github.go: %v", err)
+	}
+	if !strings.Contains(string(src), `if status.ManageURL != "" {`) {
+		t.Error("status must print the manage line only when the server sent one")
 	}
 }
