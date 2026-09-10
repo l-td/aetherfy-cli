@@ -89,6 +89,11 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 	if len(deployments) > 0 && deployments[0].Status == "failed" {
 		output.Println("")
 		output.PrintWarning("Latest deployment failed.")
+		// The ERROR column is truncated to fit the table, and the mapped
+		// sentence it truncates is the same for every build failure anyway.
+		// This is the only place `afy deployments` can say which step failed,
+		// and someone reading a failed row is asking exactly that.
+		printBuildFailureDetail(deployments[0].BuildFailureDetail)
 		if len(deployments) > 1 {
 			// Find the most recent version with a usable image
 			for _, d := range deployments[1:] {

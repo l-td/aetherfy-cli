@@ -7,15 +7,15 @@ import (
 
 // Agent represents an agent in the system
 type Agent struct {
-	ID            string    `json:"id"`
-	UserID        string    `json:"user_id"`
-	Name          string    `json:"name"`
-	Description   string    `json:"description,omitempty"`
-	Status        string    `json:"status"`
-	AgentType     string    `json:"agent_type"`
-	Runtime       string    `json:"runtime,omitempty"`
-	WorkspaceName string    `json:"workspace_name,omitempty"`
-	SpawnEnabled  bool      `json:"spawn_enabled"`
+	ID            string `json:"id"`
+	UserID        string `json:"user_id"`
+	Name          string `json:"name"`
+	Description   string `json:"description,omitempty"`
+	Status        string `json:"status"`
+	AgentType     string `json:"agent_type"`
+	Runtime       string `json:"runtime,omitempty"`
+	WorkspaceName string `json:"workspace_name,omitempty"`
+	SpawnEnabled  bool   `json:"spawn_enabled"`
 	// TWO FIELDS, TWO QUESTIONS (server AgentResponse).
 	//
 	// Deployed — does this agent hold a live app? True for a scheduled task,
@@ -30,16 +30,16 @@ type Agent struct {
 	// Both replaced `fly_app_name`, which clients used to build
 	// `<app>.<provider>` from — a vendor's namespace in a customer contract,
 	// carrying a fragment of the owner's account id.
-	Deployed      bool      `json:"deployed"`
-	URL           string    `json:"url,omitempty"`
+	Deployed bool   `json:"deployed"`
+	URL      string `json:"url,omitempty"`
 	// AllowedWorkers / ParentAgentID pull through from the server's
 	// AgentResponse (no new server work). AllowedWorkers lists the JOB
 	// names a SERVICE may spawn; ParentAgentID is the SERVICE that spawned
 	// this JOB instance (nil for non-spawned / standalone agents).
-	AllowedWorkers []string `json:"allowed_workers,omitempty"`
-	ParentAgentID  *string  `json:"parent_agent_id,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	AllowedWorkers []string  `json:"allowed_workers,omitempty"`
+	ParentAgentID  *string   `json:"parent_agent_id,omitempty"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 	// Derived resource health from the server's AgentResponse (control-plane
 	// REVIEW_FAQ §63) — computed from the agent's CURRENT deployment, not a
 	// stored status. IsDegraded = a partial multi-region deploy still
@@ -104,14 +104,20 @@ type AgentUpdateRequest struct {
 
 // Deployment represents a deployment
 type Deployment struct {
-	ID           string    `json:"id"`
-	AgentID      string    `json:"agent_id"`
-	Version      int       `json:"version"`
-	Status       string    `json:"state"`
-	Regions      []string  `json:"regions,omitempty"`
-	ErrorMessage string    `json:"error_message,omitempty"`
-	CreatedAt    time.Time `json:"created_at"`
-	DeployedAt   *time.Time `json:"deployed_at,omitempty"`
+	ID           string   `json:"id"`
+	AgentID      string   `json:"agent_id"`
+	Version      int      `json:"version"`
+	Status       string   `json:"state"`
+	Regions      []string `json:"regions,omitempty"`
+	ErrorMessage string   `json:"error_message,omitempty"`
+	// WHICH BUILD STEP FAILED, and what it printed. ErrorMessage above is the
+	// server's mapped headline; one sentence covers a pip resolution failure, a
+	// missing lockfile and a step that ran out of memory, so on its own it
+	// cannot tell a customer whether the problem was even theirs. Empty unless
+	// the deployment failed in the build stage.
+	BuildFailureDetail string     `json:"build_failure_detail,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	DeployedAt         *time.Time `json:"deployed_at,omitempty"`
 	// True for spawn invocations (one Deployment row per spawn() call).
 	// CLI cancel filters these out — only user-initiated deploys
 	// (is_ephemeral=false) are user-cancellable.
@@ -151,11 +157,11 @@ type DeployRequest struct {
 
 // DeployResponse is the response from a deploy request (maps to DeploymentResponse on the server).
 type DeployResponse struct {
-	DeploymentID string `json:"id"`
-	AgentID      string `json:"agent_id"`
-	Version      int    `json:"version"`
-	Status       string `json:"state"`
-	QueuePosition *int  `json:"queue_position,omitempty"`
+	DeploymentID  string `json:"id"`
+	AgentID       string `json:"agent_id"`
+	Version       int    `json:"version"`
+	Status        string `json:"state"`
+	QueuePosition *int   `json:"queue_position,omitempty"`
 }
 
 // RollbackResponse is the response from a rollback request (same shape as DeploymentResponse).
@@ -264,12 +270,12 @@ type LogEntry struct {
 
 // Workspace represents a workspace namespace for multi-agent coordination
 type Workspace struct {
-	ID                  string    `json:"id"`
-	Name                string    `json:"name"`
-	Description         string    `json:"description,omitempty"`
-	AgentCount          int       `json:"agent_count"`
-	CreatedAt           time.Time `json:"created_at"`
-	UpdatedAt           time.Time `json:"updated_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	AgentCount  int       `json:"agent_count"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // WorkspaceCreateRequest is the request body for creating a workspace

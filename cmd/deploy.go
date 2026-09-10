@@ -482,6 +482,28 @@ func printAgentURL(client *api.Client, agentID string) {
 	output.Dim.Printf("  curl %s\n", agent.URL)
 }
 
+// printBuildFailureDetail prints the build output a failed deployment failed on.
+//
+// SILENT WHEN THERE IS NOTHING, and that is not the same as printing an empty
+// section. A deployment that failed AFTER the build — a region that never came
+// up, a cancellation — carries no build output, and a "Build output:" heading
+// over nothing would read as "the build printed nothing", which is a different
+// and untrue claim.
+//
+// Indented, not boxed. The server already capped and redacted it; the CLI's job
+// is to make it obvious where the quoted output starts and stops.
+func printBuildFailureDetail(detail string) {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return
+	}
+	output.Println("")
+	output.Println("Build output:")
+	for _, line := range strings.Split(detail, "\n") {
+		output.Dim.Printf("  %s\n", line)
+	}
+}
+
 // runDeployFromGitHub clones a public GitHub repo and feeds it into the standard deploy pipeline.
 // repoRef has the form "owner/repo" or "owner/repo@ref".
 func runDeployFromGitHub(repoRef string) error {
@@ -687,6 +709,14 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 				if deployment.ErrorMessage != "" {
 					output.Printf("Reason: %s\n", deployment.ErrorMessage)
 				}
+				// THE STEP THAT FAILED, when the server sent it. "Reason" above
+				// is a mapped sentence — the same one for a pip resolution
+				// failure and for a step that ran out of memory — and this
+				// command is where someone is standing when they first need to
+				// know which they had. Printed BEFORE the runtime logs below,
+				// which belong to the previous version that is still running and
+				// have nothing to do with why this build failed.
+				printBuildFailureDetail(deployment.BuildFailureDetail)
 				// Try to get logs
 				logs, err := client.GetDeploymentLogs(agentID, 20)
 				if err == nil && len(logs) > 0 {
