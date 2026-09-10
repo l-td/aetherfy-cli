@@ -103,7 +103,7 @@ jobs:
             *)
               current=""
               for attempt in 1 2 3 4 5 6; do
-                out="$("$AETHERFY_INSTALL_DIR/afy" update --check 2>&1 || true)"
+                out="$("$AETHERFY_INSTALL_DIR/afy" upgrade --check 2>&1 || true)"
                 if printf '%s\n' "$out" | grep -qF "already on ${AETHERFY_VERSION}"; then
                   current=yes
                   printf '%s\n' "$out"

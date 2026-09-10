@@ -26,17 +26,17 @@ var (
 	updateForce     bool
 )
 
-// THE SELF-UPDATER IS `afy upgrade`, NOT `afy upgrade`.
+// THE SELF-UPDATER IS `afy upgrade`, NOT `afy update`.
 //
-// It was `afy upgrade` until agents became the default noun. `afy update
+// It was `afy update` until agents became the default noun. `afy update
 // <name>` is agent config, and flattening the agents group put both at the same
 // spelling — one of them had to move. This one did, because "update <name>"
 // reads as an object being updated and the CLI updating ITSELF is the odder
-// meaning of the two. `afy upgrade <name>` is now agent config and nothing else.
+// meaning of the two. `afy update <name>` is now agent config and nothing else.
 //
 // No alias is left behind. One spelling per command is the rule the flatten was
 // done under, and an alias that silently does something else entirely is worse
-// than an unknown-command error: `afy upgrade my-agent` under an alias would have
+// than an unknown-command error: `afy update my-agent` under an alias would have
 // tried to install a release named "my-agent".
 var updateCmd = &cobra.Command{
 	Use:   "upgrade",
@@ -49,7 +49,7 @@ A binary that did not come from a release — a go install, make install or
 go build build — is refused, because replacing it with a release archive would
 silently discard the build you have. Pass --force to do it anyway.
 
-To change an AGENT's configuration, use 'afy upgrade <name>'.`,
+To change an AGENT's configuration, use 'afy update <name>'.`,
 	Example: `  # Upgrade to the newest release
   afy upgrade
 
