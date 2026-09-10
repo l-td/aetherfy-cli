@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 121
+      "count": 124
     },
     {
       "path": "api/routes/regions.py",
@@ -53,6 +53,10 @@
       "tier": "top-level"
     },
     "AGENT_HAS_WORKER_DEPENDENTS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_KEEP_ALIVE_NOT_ON_JOB": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -300,6 +304,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "DEPLOYMENT_WAIT_TIMEOUT_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "DEPLOY_REGIONS_NOT_IN_COLLECTION_SCOPE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -429,6 +437,10 @@
       "tier": "top-level"
     },
     "RUNTIME_IMMUTABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "RUN_PAYLOAD_TOO_LARGE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

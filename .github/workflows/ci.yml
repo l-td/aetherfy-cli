@@ -36,6 +36,33 @@ jobs:
           files: ./coverage.out
           fail_ci_if_error: false
 
+  # THE GOOS-SPECIFIC HALF. internal/release/replace.go branches on
+  # runtime.GOOS == "windows" — the backup file Windows keeps locked, and the
+  # not-writable message that says Administrator rather than sudo. The Test
+  # job above is ubuntu-only and no build tag targets Windows, so until this
+  # job existed those branches ran nowhere: not in CI, and not in the release
+  # smoke, which only invokes the built binary.
+  #
+  # NO -race HERE, and that is not an oversight. The race detector needs cgo
+  # and a C toolchain; the ubuntu leg above runs it, and a data race is not
+  # OS-specific enough to be worth a second toolchain. What this leg is for is
+  # the code that only compiles and runs on Windows.
+  test-windows:
+    name: Test (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Run tests
+        run: go test -v ./...
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

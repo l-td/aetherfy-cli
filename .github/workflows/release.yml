@@ -157,3 +157,31 @@ jobs:
           if ($got -notlike "*$want*") {
             throw "installed afy reports:`n$got`nexpected it to contain $want"
           }
+
+          # The same end-to-end assertion the Linux smoke makes, absent here
+          # until v0.1.0 showed what that costs: Linux caught the smoke
+          # invoking a pre-rename command name, and this job passed the very
+          # same release because it never ran the command at all.
+          #
+          # Retried and pre-release-skipped exactly as the Linux half is, for
+          # the identical reasons: /releases/latest lags the publish by a
+          # moment, and it points PAST a pre-release at the newest stable tag.
+          if ($env:AETHERFY_VERSION -like "*-*") {
+            Write-Host "pre-release tag $env:AETHERFY_VERSION: /releases/latest points past it, skipping"
+          } else {
+            $current = $false
+            foreach ($attempt in 1..6) {
+              $out = (& $afy upgrade --check 2>&1 | Out-String)
+              if ($out -like "*already on $env:AETHERFY_VERSION*") {
+                $current = $true
+                Write-Host $out
+                break
+              }
+              Write-Host "attempt $attempt/6: /releases/latest has not caught up with $env:AETHERFY_VERSION yet:"
+              Write-Host $out
+              Start-Sleep -Seconds 5
+            }
+            if (-not $current) {
+              throw "'afy upgrade --check' never reported $env:AETHERFY_VERSION as current. Either /releases/latest does not resolve to this tag, or --check is broken."
+            }
+          }
