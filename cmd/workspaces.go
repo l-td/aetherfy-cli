@@ -277,10 +277,9 @@ var workspacesUpdateCmd = &cobra.Command{
 	Use:   "update <name>",
 	Short: "Update a workspace's description",
 	Long: `Update mutable fields on an existing workspace. Currently only the
-description is mutable — workspace names are immutable post-creation
-because three String columns reference them without FK cascade (see
-docs/REVIEW_FAQ.md §53 in the control-plane repo). To "rename" a
-workspace, delete and recreate it.`,
+description is mutable. A workspace name is fixed once created, because
+other resources reference it by name and nothing rewrites those
+references. To "rename" a workspace, delete and recreate it.`,
 	Example: `  # Update the description
   afy workspaces update invoice-pipeline --description "Updated invoice processing agents"
 
