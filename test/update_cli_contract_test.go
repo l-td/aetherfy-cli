@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/l-td/aetherfy-cli/internal/release"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -73,12 +74,38 @@ func entryNames(t *testing.T, dir string) []string {
 	return names
 }
 
-// The refusal, end to end. A test binary is built by `go build`, so it reports
-// a module pseudo-version — the exact population `afy upgrade` must refuse,
-// because replacing it with a release archive discards a build nobody can get
-// back.
+// The pseudo-version this test's probe binary reports. Shaped like the one the
+// toolchain embeds into a build from a working tree: v0.0.0, a UTC timestamp, a
+// twelve-character commit.
+//
+// WHY IT IS STAMPED RATHER THAN INHERITED. This test used to build with plain
+// `go build` and assert whatever version came out, on the reasoning that a
+// source build always reports a pseudo-version. That holds only while HEAD
+// carries no tag. From Go 1.24 the toolchain fills info.Main.Version from the
+// VCS, so on a TAGGED commit the same `go build` reports the tag, the binary
+// is indistinguishable from a release, and `afy upgrade` correctly declines to
+// refuse it. release.yml runs `go test ./...` ON the tag, so the test could
+// never pass there and the first release is where that surfaced.
+//
+// The rule under test is about the version a binary REPORTS. So the test says
+// what that version is instead of borrowing the checkout's.
+const sourceBuildTestVersion = "v0.0.0-20260101120000-0123456789ab"
+
+// The refusal, end to end: `afy upgrade` must not replace a binary that was
+// built rather than downloaded, because a release archive cannot put it back.
 func TestUpdateRefusesToReplaceABuildFromSource(t *testing.T) {
-	bin := buildCLI(t)
+	// The fixture really is in the population the rule targets, checked with the
+	// product's own predicate. A literal that drifted into looking like a release
+	// would otherwise leave this asserting only that `afy upgrade` reaches for
+	// the network.
+	require.False(t, release.IsReleaseBuild(sourceBuildTestVersion),
+		"%s must be a version afy upgrade refuses, or this test says nothing about the refusal",
+		sourceBuildTestVersion)
+
+	// Stamped through the symbol .goreleaser.yaml uses, resolved from that file:
+	// -X against a symbol that does not exist is ignored by the linker, so a
+	// hardcoded path would silently build an UNSTAMPED binary.
+	bin := buildCLIWithLdflags(t, "-X "+releaseVersionSymbol(t)+"="+sourceBuildTestVersion)
 	workDir := t.TempDir()
 	configDir := t.TempDir()
 
@@ -93,8 +120,10 @@ func TestUpdateRefusesToReplaceABuildFromSource(t *testing.T) {
 	// The message has to be actionable, not just a no: it names the version it
 	// found, how that version got there, and the override.
 	assert.Contains(t, stderr, "--force", "the refusal must name the override")
-	assert.Regexp(t, `v0\.0\.0-\d{14}-[0-9a-f]{12}`, stderr,
-		"the refusal must quote the version it detected, or the user cannot tell which build it is talking about")
+	assert.Contains(t, stderr, sourceBuildTestVersion,
+		"the refusal must quote the version it detected, or the user cannot tell which "+
+			"build it is talking about. Seeing a DIFFERENT version here also means the -X "+
+			"stamp above did not take, so the binary under test is not the one intended.")
 
 	assert.Equal(t, before, hashFile(t, bin),
 		"the refused update replaced the binary anyway — this is the failure the refusal exists to prevent")
