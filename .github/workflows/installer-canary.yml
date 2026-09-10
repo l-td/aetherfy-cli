@@ -1,0 +1,100 @@
+name: Installer canary
+
+# THE ONE PATH NOTHING ELSE EXERCISES.
+#
+# release.yml's smoke jobs run `bash scripts/install.sh` FROM THE CHECKOUT. That
+# proves the script works. It does not prove that the thing a user is told to
+# run works, because a user runs neither the script nor the checkout:
+#
+#   curl -fsSL https://aetherfy.com/install.sh | bash
+#   irm https://aetherfy.com/install.ps1 | iex
+#
+# Those go through a 307 in ANOTHER repository (aetherfy-dashboard's landing
+# next.config.js) to a raw copy on this repo's main branch, and then to
+# /releases/latest/download. Three moving parts, none of them this repo's
+# working tree, and every one of them can rot without a single test going red.
+#
+# WHAT IT CATCHES: the redirect disappearing, a landing deploy that drops the
+# entry, /releases/latest no longer resolving, a renamed or deleted release
+# asset, a checksums.txt that stops matching, GitHub changing redirect
+# behaviour. None of those are visible from a checkout.
+#
+# THERE IS DELIBERATELY NO actions/checkout HERE. A checkout would put a local
+# scripts/install.sh next to the runner, and the first person to "simplify" this
+# job by calling it would turn the canary into a copy of the smoke job while it
+# stayed green. Nothing in this file may come from this repository.
+#
+# WHY IT DID NOT EXIST BEFORE: until v0.1.0 there were no releases, so it would
+# have failed every day since the day it was written, and a permanently red
+# scheduled job trains you to ignore failures.
+
+on:
+  schedule:
+    # Daily, at an unremarkable time that collides with nothing else here.
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  posix:
+    name: Hosted one-liner (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install the way the docs say to
+        run: |
+          set -euo pipefail
+          export AETHERFY_INSTALL_DIR="${RUNNER_TEMP}/afybin"
+          mkdir -p "$AETHERFY_INSTALL_DIR"
+
+          # The published one-liner, verbatim. If this line ever needs editing
+          # to pass, the docs need editing too - that is the finding.
+          curl -fsSL https://aetherfy.com/install.sh | bash
+
+          "$AETHERFY_INSTALL_DIR/afy" version
+
+      - name: It installed a real release, not a source build
+        run: |
+          set -euo pipefail
+          afy="${RUNNER_TEMP}/afybin/afy"
+          version="$("$afy" version | sed -n 's/^Version:[[:space:]]*//p' | tr -d '[:space:]')"
+
+          # A plain X.Y.Z can only have come from a release archive. "dev" is
+          # the unstamped sentinel and a pseudo-version carries a hyphen, so
+          # either would mean the installer fetched something it should not
+          # have, or that ldflags stopped being applied at release time.
+          if ! printf '%s\n' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "FAILED: the hosted installer produced a binary reporting version '${version}'."
+            echo "Expected a plain X.Y.Z from a published release archive."
+            exit 1
+          fi
+          echo "hosted install.sh -> afy ${version}"
+
+  windows:
+    name: Hosted one-liner (Windows)
+    runs-on: windows-latest
+    steps:
+      - name: Install the way the docs say to
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:AETHERFY_INSTALL_DIR = Join-Path $env:RUNNER_TEMP 'afybin'
+
+          # The published one-liner, verbatim.
+          irm https://aetherfy.com/install.ps1 | iex
+
+          $afy = Join-Path $env:AETHERFY_INSTALL_DIR 'afy.exe'
+          & $afy version
+
+      - name: It installed a real release, not a source build
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $afy = Join-Path (Join-Path $env:RUNNER_TEMP 'afybin') 'afy.exe'
+          $out = (& $afy version | Out-String)
+
+          if ($out -notmatch '(?m)^Version:\s+(\d+\.\d+\.\d+)\s*$') {
+            throw "FAILED: the hosted installer produced a binary whose version is not a plain X.Y.Z. Full output:`n$out"
+          }
+          Write-Host "hosted install.ps1 -> afy $($Matches[1])"
