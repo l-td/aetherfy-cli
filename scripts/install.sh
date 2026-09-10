@@ -12,10 +12,6 @@
 # changes what users curl, on the next push to main and with no deploy. If you
 # need to move or rename it, fix the redirect in the same change.
 #
-# No releases are tagged yet, so the download below has nothing to fetch and
-# fails loudly with the URL it tried. That is deliberate and expires with the
-# first tag; keep this script working and correct in the meantime.
-#
 # Linux and macOS only. Windows is not supported by this script: Git Bash has
 # no sudo and no /usr/local/bin, and an extensionless binary is useless to cmd
 # or PowerShell. On Windows, download the release zip from

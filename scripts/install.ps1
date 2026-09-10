@@ -14,10 +14,6 @@
 # the Windows half of the same contract -- same asset names, same
 # /releases/latest/download URLs, same fail-closed checksum rule.
 #
-# No releases are tagged yet, so the download below has nothing to fetch and
-# fails loudly with the URL it tried. That is deliberate and expires with the
-# first tag.
-#
 # Environment variables:
 #   AETHERFY_INSTALL_DIR - Installation directory
 #                          (default: %LOCALAPPDATA%\Programs\afy)

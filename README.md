@@ -4,10 +4,6 @@ The official command-line interface for the Aetherfy platform. Deploy, manage, a
 
 ## Installation
 
-<!-- remove-on-first-release -->
-No release is tagged yet, so the install scripts and the release downloads have
-nothing to fetch — until the first tag, use `go install` or build from source.
-
 ### Install script — Linux and macOS
 
 ```bash

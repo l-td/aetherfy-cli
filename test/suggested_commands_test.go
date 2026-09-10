@@ -342,39 +342,35 @@ const noReleasesYetClaim = "No releases are tagged yet"
 
 // Install paths that do not exist must not be advertised as if they did.
 //
-// `curl -fsSL https://aetherfy.com/install.sh | bash` — aetherfy.com now 307s
-// that URL to this repository's raw scripts/install.sh, configured in
-// aetherfy-dashboard:landing/next.config.js. The URL resolves; the DOWNLOAD it
-// performs still 404s, because no tag exists for it to fetch. `brew install
-// aetherfy/tap/afy` — there is no tap, and no tagged release for one to carry.
-// All three were once printed as ready-to-run commands under "Installation".
+// WHY THIS LIST IS NOW ONE ENTRY. The install scripts and the release
+// downloads used to sit here behind okWithMarker, because every piece of them
+// already existed — the redirect, the scripts, the release workflow, the asset
+// names — and they began working the moment the first tag was pushed. That tag
+// exists, so those are shipped paths and their entries are gone. Deleting them
+// on release day is what this guard's own failure message instructs.
 //
-// The two failure modes are NOT the same, which is what okWithMarker encodes:
+// HOMEBREW STAYS, and a release does not retire it. It has NO OTHER END: there
+// is no tap repository, the homebrew_casks block in .goreleaser.yaml is
+// commented out, and a tag changes neither. No marker makes `brew install`
+// true, which is why its entry carries okWithMarker:false.
 //
-//   - The install script and the release downloads are WIRED AND WAITING. Every
-//     piece exists — the redirect, the script, the release workflow, the asset
-//     names — and they begin working the moment a tag is pushed, with no edit
-//     to anything. Documenting them behind the marker is accurate: the reader
-//     is told, in the same section, that the tag is what is missing.
-//   - Homebrew has NO OTHER END. There is no tap repository, the homebrew_casks
-//     block in .goreleaser.yaml is commented out, and a tag changes none of
-//     that. No marker makes `brew install` true, so none is accepted for it.
-//
-// So this guard is now the release-day checklist rather than a blanket ban: it
-// holds the marker and the documented paths together until the tag lands.
+// okWithMarker STAYS TOO, dormant rather than dead. It is the shape any future
+// path takes while it is wired and waiting on something already in motion. And
+// the marker-absent branch below is now a PERMANENT assertion rather than a
+// release-day one: the README no longer carries the marker, so
+// scripts/install.sh can never re-acquire the "no releases are tagged yet"
+// claim without going red.
 func TestReadmeDoesNotAdvertiseUnshippedInstallPaths(t *testing.T) {
 	readme := readSuggestionSource(t, "README.md")
 
-	// okWithMarker: true for paths that a tag alone turns real, and which the
-	// remove-on-first-release marker therefore licenses documenting today.
+	// okWithMarker: true for a path a tag alone would turn real, which the
+	// remove-on-first-release marker then licenses documenting early. Nothing
+	// qualifies any more; the block above says why the list is down to one.
 	unshipped := []struct {
 		fragment, why string
 		okWithMarker  bool
 	}{
-		{"aetherfy.com/install.sh", "the URL 307s to this repo's scripts/install.sh, but the download it runs has no tagged release to fetch", true},
-		{"aetherfy.com/install.ps1", "the URL 307s to this repo's scripts/install.ps1, but the download it runs has no tagged release to fetch", true},
 		{"brew install", "no Homebrew tap exists and there are no releases to package", false},
-		{"github.com/l-td/aetherfy-cli/releases", "this repository has no tagged releases", true},
 	}
 
 	marked := strings.Contains(readme, removeOnFirstReleaseMarker)
