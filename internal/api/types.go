@@ -316,6 +316,30 @@ type GitHubStatus struct {
 	ManageURL string `json:"manage_url,omitempty"`
 }
 
+// GitHubRepoChoice is one repository the account's App installation can reach.
+//
+// FullName is what GitHubLinkAgent wants, so nothing composes it from parts.
+// DefaultBranch travels because "main" as a fixed default is wrong for every
+// repository whose default is something else, and wrong silently: the link
+// succeeds and no push ever deploys.
+type GitHubRepoChoice struct {
+	FullName      string `json:"full_name"`
+	Private       bool   `json:"private"`
+	DefaultBranch string `json:"default_branch"`
+}
+
+// GitHubRepoList is the answer from GET /auth/github/repositories.
+//
+// Account is WHOSE these are: the login the App is installed on, which is an
+// organisation as often as a person and need not be the caller's own. That is
+// the half of `owner/repo` a user has no reliable way to know, and the reason
+// a mistyped owner and a repository the App was never granted come back as one
+// indistinguishable 404.
+type GitHubRepoList struct {
+	Account      string             `json:"account"`
+	Repositories []GitHubRepoChoice `json:"repositories"`
+}
+
 // GitHubInstallURL is the answer from GET /auth/github: where to send a
 // browser to install the App. The route is API-key authenticated, so the URL
 // must be fetched with the key and only then opened — pointing a browser at

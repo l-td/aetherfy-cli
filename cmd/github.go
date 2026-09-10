@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -386,6 +387,19 @@ the new link is live.`,
 					output.Println("  afy github connect")
 				}
 			}
+			// A 404 HERE MEANS THREE DIFFERENT THINGS and says which of them
+			// it is: a mistyped repo, a mistyped OWNER, or a repository the
+			// App was never granted. The owner is the one a person cannot
+			// check -- it is the account the App is installed on, not their
+			// username -- so the answer is to show what they can actually
+			// link rather than to word the failure better.
+			//
+			// Fail-soft: this runs AFTER the link already failed and its
+			// error is on screen. A second failure here must not replace the
+			// first one's message with its own.
+			if apiErr, ok := err.(*api.APIError); ok && apiErr.StatusCode == 404 {
+				printLinkableRepos(client, repo)
+			}
 			os.Exit(1)
 		}
 
@@ -401,7 +415,15 @@ the new link is live.`,
 		if resp.WebhookSecret != "" {
 			output.KeyValue("Webhook secret", resp.WebhookSecret)
 			output.Println("")
-			output.Println("Copy the webhook secret now — it is not retrievable later.")
+			// WHAT IT IS FOR, not just that it is precious. Telling someone to
+			// copy a secret and never saying why reads as "auto-deploy needs
+			// this", which is the one thing it does not mean: Aetherfy
+			// registered it on the hook and GitHub signs each delivery with
+			// it. The dashboard's banner says the same, for the same reason.
+			output.Println("You do not need the webhook secret for auto-deploy — it is already")
+			output.Println("registered on the hook, and GitHub signs every push delivery with it.")
+			output.Println("Keep it only to verify deliveries yourself or to sign a test push;")
+			output.Println("it is shown once, and re-linking mints a new one.")
 		}
 		output.Println("")
 		if resp.RootDir != "" {
@@ -409,6 +431,78 @@ the new link is live.`,
 		} else {
 			output.Println("Pushes to " + resp.Branch + " will now trigger automatic deployments.")
 		}
+		return nil
+	},
+}
+
+// ---------------------------------------------------------------------------
+// github repos
+// ---------------------------------------------------------------------------
+
+var githubReposCmd = &cobra.Command{
+	Use:   "repos",
+	Short: "List the repositories Aetherfy can link",
+	Long: `List the repositories your GitHub App installation can reach.
+
+These are the only repositories 'afy github link' accepts. Linking registers a
+webhook ON the repository, so a repository the App cannot reach cannot be
+linked, whoever owns it.
+
+The account shown is the one the App is installed on. It is an organisation as
+often as a person, and it is NOT necessarily your GitHub username -- which is
+the half of owner/repo there is otherwise no way to look up.
+
+Change which repositories the App can see from the URL in 'afy github status'.`,
+	Example: `  # Everything you can link
+  afy github repos
+
+  # Then link one of them
+  afy github link my-agent acme/my-repo`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if err := checkAuth(); err != nil {
+			return err
+		}
+
+		client := api.NewClient()
+		list, err := client.GitHubRepositories()
+		if err != nil {
+			output.PrintError("Failed to list repositories: %v", err)
+			if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "GITHUB_NOT_CONNECTED" {
+				output.Println("")
+				output.Println("Connect your GitHub account first:")
+				output.Println("  afy github connect")
+			}
+			os.Exit(1)
+		}
+
+		if config.Get().OutputFormat == "json" {
+			return output.JSON(list)
+		}
+
+		if len(list.Repositories) == 0 {
+			// NOT AN ERROR, and not an empty table either. The App is
+			// connected and has been granted nothing, which is a state with a
+			// specific fix that neither of those would name.
+			output.PrintWarning("The Aetherfy GitHub App can reach no repositories.")
+			output.Println("Grant it access from the URL in 'afy github status', then try again.")
+			return nil
+		}
+
+		if list.Account != "" {
+			output.Printf("Repositories on %s that Aetherfy can link:\n\n", list.Account)
+		}
+		for _, r := range list.Repositories {
+			if r.Private {
+				output.Printf("  %s", r.FullName)
+				output.Dim.Printf("  private, default branch %s\n", r.DefaultBranch)
+				continue
+			}
+			output.Printf("  %s", r.FullName)
+			output.Dim.Printf("  default branch %s\n", r.DefaultBranch)
+		}
+		output.Println("")
+		output.Dim.Printf("%d repository(ies).\n", len(list.Repositories))
 		return nil
 	},
 }
@@ -460,8 +554,38 @@ func init() {
 	githubCmd.AddCommand(githubConnectCmd)
 	githubCmd.AddCommand(githubDisconnectCmd)
 	githubCmd.AddCommand(githubStatusCmd)
+	githubCmd.AddCommand(githubReposCmd)
 	githubCmd.AddCommand(githubLinkCmd)
 	githubCmd.AddCommand(githubUnlinkCmd)
+}
+
+// printLinkableRepos prints what the account CAN link, after a link 404.
+//
+// SILENT ON ITS OWN FAILURE, deliberately. It runs after the link has already
+// failed and printed why; a second error here would bury the first. The user
+// is no worse off than before this existed.
+func printLinkableRepos(client *api.Client, attempted string) {
+	list, err := client.GitHubRepositories()
+	if err != nil || list == nil || len(list.Repositories) == 0 {
+		return
+	}
+	output.Println("")
+	if list.Account != "" {
+		output.Printf("Aetherfy can link these repositories on %s:\n", list.Account)
+	} else {
+		output.Println("Aetherfy can link these repositories:")
+	}
+	for _, r := range list.Repositories {
+		output.Dim.Printf("  %s\n", r.FullName)
+	}
+	// The owner is the half nobody can look up, so name it when it is the
+	// half that differs. Comparing owners rather than whole names: a right
+	// owner with a wrong repo is a typo the list above already answers.
+	if list.Account != "" && !strings.HasPrefix(attempted, list.Account+"/") {
+		output.Println("")
+		output.Printf("You asked for %s. The App is installed on %s, not on the owner you named.\n",
+			attempted, list.Account)
+	}
 }
 
 // openBrowser tries to open url in the user's default browser.

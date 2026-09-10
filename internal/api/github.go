@@ -32,6 +32,21 @@ func (c *Client) GitHubStatus() (*GitHubStatus, error) {
 	return &status, nil
 }
 
+// GitHubRepositories lists the repositories the account's App installation can
+// reach — the domain of GitHubLinkAgent's repo argument.
+//
+// Linking registers a webhook ON the repository, so the installation has to be
+// able to reach it. A repository outside this list cannot be linked at all,
+// which is why this is the set to show someone rather than a search over
+// everything they own.
+func (c *Client) GitHubRepositories() (*GitHubRepoList, error) {
+	var list GitHubRepoList
+	if err := c.Get("/auth/github/repositories", &list); err != nil {
+		return nil, err
+	}
+	return &list, nil
+}
+
 // GitHubDisconnect revokes the stored GitHub OAuth token (idempotent — 204 even if not connected).
 func (c *Client) GitHubDisconnect() error {
 	return c.Delete("/auth/github")
