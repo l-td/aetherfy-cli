@@ -62,7 +62,7 @@ func (e *NotWritableError) Error() string {
 	if runtime.GOOS == "windows" {
 		return fmt.Sprintf("cannot write to %s — re-run this from a terminal opened as Administrator", e.Dir)
 	}
-	return fmt.Sprintf("cannot write to %s — re-run with elevated rights, e.g. `sudo %s update`", e.Dir, BinaryName)
+	return fmt.Sprintf("cannot write to %s — re-run with elevated rights, e.g. `sudo %s upgrade`", e.Dir, BinaryName)
 }
 
 func (e *NotWritableError) Unwrap() error { return e.Err }
