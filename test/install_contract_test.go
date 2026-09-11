@@ -553,6 +553,60 @@ func TestWindowsInstallScriptAgreesOnTheAssetName(t *testing.T) {
 		"install.ps1 fetches %q but the release publishes %q", checksums, release.ChecksumsFile)
 }
 
+// The two installers must know about each other.
+//
+// install.sh refuses on Git Bash, MSYS and Cygwin, and the message it prints is
+// the only guidance a Windows user who copied the documented curl one-liner
+// ever sees. For a fortnight it sent them to the releases page to unzip a
+// binary by hand while install.ps1 — a one-liner that installs and puts afy on
+// PATH — sat in the same directory, unmentioned. That is not a stale message
+// left behind by a later addition: install.ps1 landed 2026-08-27, and both
+// files were edited together in the release-day commit on 2026-09-10 with the
+// gap intact. A shared commit is not a shared review, and nothing here was
+// watching the pairing.
+//
+// The URL is READ FROM install.ps1's own usage header rather than written twice.
+// install.ps1 is the file served at that path and declares it, so moving the
+// served path updates one file and reds this until install.sh follows.
+//
+// Scoped to the refusal BRANCH, not the file. install.sh's header prose names
+// the URL too, and a file-wide search would let the runtime message rot while a
+// comment kept this green — the comment is not what a user sees.
+func TestUnixInstallerSendsWindowsUsersToThePowerShellInstaller(t *testing.T) {
+	sh := readSuggestionSource(t, "scripts/install.sh")
+	ps := readSuggestionSource(t, "scripts/install.ps1")
+
+	// `#   irm https://aetherfy.com/install.ps1 | iex` in install.ps1's header.
+	served := mustMatch(t, ps, "install.ps1 usage header URL",
+		regexp.MustCompile(`irm\s+(https://\S+)\s*\|\s*iex`))
+
+	// The case arm that fires on a Windows shell, up to its `;;`. Anchored on
+	// the patterns rather than a line number so it travels with the code.
+	branch := mustMatch(t, sh, "install.sh Windows case arm",
+		regexp.MustCompile(`(?s)(mingw\*\|msys\*\|cygwin\*\).*?;;)`))
+
+	// Over-reach bound. `.*?;;` is non-greedy, but if this arm ever lost its
+	// `;;` the scan would run into the NEXT arm and assert about the wrong
+	// message. Named by that arm's own text rather than by a comment marker or a
+	// length: this file comments its branches, and a guard that reds when
+	// someone explains a line teaches people to delete guards.
+	require.NotContains(t, branch, "Unsupported operating system",
+		"the Windows arm extracted from install.sh ran on into the fallback arm (%q) — it has "+
+			"lost its `;;` and this test is asserting about the wrong message.", branch)
+	require.Contains(t, branch, "exit 1",
+		"the Windows arm extracted from install.sh does not exit (%q) — either the scan is "+
+			"wrong or the script now continues on a platform it cannot install to.", branch)
+
+	assert.Contains(t, branch, served,
+		"INSTALL PATH NOT OFFERED.\n"+
+			"  install.ps1 is served at: %s\n"+
+			"  install.sh's Windows refusal does not name it.\n"+
+			"A Windows user running the documented `curl ... | bash` is told to unzip a "+
+			"release archive by hand while a working one-liner goes unmentioned. Name it "+
+			"first in the refusal, keeping the releases page and the README as fallbacks.",
+		served)
+}
+
 // install.ps1 must stay pure ASCII.
 //
 // Not style. Windows PowerShell 5.1 reads a BOM-less file as ANSI, so a UTF-8

@@ -14,8 +14,9 @@
 #
 # Linux and macOS only. Windows is not supported by this script: Git Bash has
 # no sudo and no /usr/local/bin, and an extensionless binary is useless to cmd
-# or PowerShell. On Windows, download the release zip from
-# https://github.com/l-td/aetherfy-cli/releases or build from source (README).
+# or PowerShell. Windows has its own one-liner, scripts/install.ps1, served at
+# https://aetherfy.com/install.ps1 -- that is what the refusal below names
+# first. The release zip and a source build remain the fallbacks.
 #
 # Environment variables:
 #   AETHERFY_INSTALL_DIR - Installation directory (default: /usr/local/bin)
@@ -51,7 +52,9 @@ detect_platform() {
         darwin)  OS="darwin" ;;
         mingw*|msys*|cygwin*)
             echo -e "${RED}Error: this installer supports Linux and macOS only.${NC}"
-            echo "On Windows, download the release zip from:"
+            echo "On Windows, install with PowerShell:"
+            echo "  irm https://aetherfy.com/install.ps1 | iex"
+            echo "Or download the release zip from:"
             echo "  https://github.com/${GITHUB_REPO}/releases"
             echo "or build from source (see the README)."
             exit 1
