@@ -372,3 +372,36 @@ type GitHubLinkResponse struct {
 	WebhookID     string `json:"webhook_id"`
 	WebhookSecret string `json:"webhook_secret"`
 }
+
+// GitHubLinkStatus is the answer from GET /agents/{id}/github: what an agent's
+// link points at, and whether it can still fire.
+//
+// LINKED IS NOT ENOUGH, which is the whole reason this type carries more than
+// the four link fields. A link survives an account disconnect on purpose (the
+// webhook is verified with the agent's own secret, so reconnecting restores
+// auto-deploy with no relinking) and survives the deletion of the branch it
+// tracks. In both states the repo, branch and webhook below are all still true
+// and no push deploys, and the push path CANNOT say so for itself: announcing a
+// skip means posting a commit status, which needs the installation token that
+// is gone — and a branch deletion has no commit to attach one to at all.
+//
+// NOTHING IS OMITEMPTY. `linked: false` and `account_connected: false` are the
+// values a reader most needs to see, and omitempty is exactly the tag that
+// would drop them from `afy status -o json`. The nullable fields mirror the
+// server's own nullability so a null stays a null rather than becoming "".
+type GitHubLinkStatus struct {
+	Linked    bool    `json:"linked"`
+	Repo      *string `json:"repo"`
+	Branch    *string `json:"branch"`
+	RootDir   *string `json:"root_dir"`
+	WebhookID *string `json:"webhook_id"`
+	// False means reconnect the ACCOUNT (`afy github connect`). It does NOT
+	// mean relink the agent: relinking fails for the same missing
+	// installation, and the link is not what broke.
+	AccountConnected bool `json:"account_connected"`
+	// When the tracked branch was last seen deleted, or null. A TIMESTAMP
+	// rather than a boolean because "when" is the question someone has when
+	// they find their agent inert. Null covers both a branch that was never
+	// lost and one that came back — the next push clears it.
+	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
+}

@@ -545,9 +545,17 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// The GitHub link state, read FAIL-SOFT: `afy status` answers about the
+	// agent, and must not start failing because a second read did. Fetched
+	// before the format branch because both lanes carry it.
+	link, linkErr := client.GitHubLinkStatus(name)
+
 	// Check output format
 	if config.Get().OutputFormat == "json" {
-		return output.JSON(agent)
+		if linkErr != nil {
+			printLinkReadFailure(linkErr)
+		}
+		return output.JSON(agentStatusJSON(agent, link))
 	}
 
 	output.Header(fmt.Sprintf("Agent: %s", agent.Name))
@@ -599,6 +607,9 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	// if this instance was spawned, the SERVICE that spawned it.
 	printSpawnRelationships(client, agent)
 
+	// Where the agent's code comes from, and whether pushes to it still land.
+	printAgentGitHubLink(link, linkErr)
+
 	return nil
 }
 
@@ -636,6 +647,100 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 			output.KeyValue("Spawned by", name)
 		}
 	}
+}
+
+// agentStatusJSON is the `-o json` shape of `afy status`.
+//
+// The agent's own fields stay at the TOP LEVEL — an embedded struct pointer is
+// inlined by encoding/json — so every key a script already reads keeps its
+// place, and the link travels under "github" carrying the server's own field
+// names and nullability.
+//
+// A FAILED link read omits the key entirely. A read that worked always emits
+// the object, `linked: false` and `account_connected: false` included, so the
+// key's absence means "could not be read" and never has to be told apart from
+// "not linked".
+func agentStatusJSON(agent *api.Agent, link *api.GitHubLinkStatus) interface{} {
+	return struct {
+		*api.Agent
+		GitHub *api.GitHubLinkStatus `json:"github,omitempty"`
+	}{Agent: agent, GitHub: link}
+}
+
+// printLinkReadFailure says the link state could not be read.
+//
+// ON STDERR, unlike the CLI's other warnings, because this exact line is also
+// emitted under `-o json`, where anything on stdout that is not JSON breaks the
+// caller that asked for JSON. output.PrintWarning writes to stdout.
+func printLinkReadFailure(err error) {
+	output.Warning.Fprintf(os.Stderr, "Warning: GitHub link state could not be read: %v\n", err)
+}
+
+// printAgentGitHubLink renders the GitHub section of `afy status`: what the
+// agent's link points at, and the two states in which that link is intact and
+// deploying nothing.
+//
+// SILENT FOR AN UNLINKED AGENT. Most agents have no link, and a permanent
+// "GitHub: not linked" line would be a fact about nothing on every status
+// anyone ever runs.
+//
+// THE TWO WARNINGS SAY WHAT THE DASHBOARD SAYS, deliberately: they describe one
+// server-side fact each, and two surfaces wording it differently is two surfaces
+// that can be read as disagreeing about what is wrong. The CLI names a command
+// where the dashboard names a settings page — that is the one difference, and
+// it is the remedy being spelled for the surface the reader is on.
+func printAgentGitHubLink(link *api.GitHubLinkStatus, readErr error) {
+	if readErr != nil {
+		printLinkReadFailure(readErr)
+		return
+	}
+	if link == nil || !link.Linked {
+		return
+	}
+
+	output.Println("")
+	output.KeyValue("Repo", derefString(link.Repo))
+	output.KeyValue("Branch", derefString(link.Branch))
+	// An empty root_dir is not missing information: it is the repository root,
+	// which is where the build context starts. The server normalises '' and
+	// '.' to null, so both spellings arrive here as the same nothing.
+	if dir := derefString(link.RootDir); dir != "" {
+		output.KeyValue("Directory", dir)
+	} else {
+		output.KeyValue("Directory", "repository root")
+	}
+	output.KeyValue("Webhook id", derefString(link.WebhookID))
+
+	// LINKED, BUT INERT. Nothing on GitHub reports either of these — a skip is
+	// announced as a commit status, which needs the installation token that is
+	// gone, and a deleted branch has no commit to attach one to. If it is not
+	// said here it is not said anywhere a terminal can see.
+	if !link.AccountConnected {
+		output.Println("")
+		output.PrintWarning("GitHub disconnected — pushes are not deploying.")
+		output.Println("This agent is still linked, but this account is no longer connected to GitHub.")
+		output.Println("Reconnect with 'afy github connect'. The link is kept, so deploys resume with nothing to set up again.")
+	}
+	// Named separately from the disconnect, and NOT offering a relink: relinking
+	// to a branch that does not exist succeeds and changes nothing, which is the
+	// wrong remedy pointed at the wrong thing.
+	if link.BranchDeletedAt != nil {
+		output.Println("")
+		output.PrintWarning("Branch deleted — pushes are not deploying.")
+		output.Printf("The %s branch was deleted on %s %s.\n",
+			derefString(link.Branch), derefString(link.Repo), formatUTCTime(link.BranchDeletedAt))
+		output.Println("This agent is still linked, and pushes will not deploy until that branch exists again.")
+		output.Println("Recreate it and push — the link is kept, so deploys resume with nothing to set up again.")
+	}
+}
+
+// derefString reads a nullable server string. The API's link fields are null
+// rather than "" when unset, and the difference matters for root_dir.
+func derefString(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }
 
 // --- RUN (manual "run now" of a JOB agent) ---

@@ -67,3 +67,14 @@ func (c *Client) GitHubLinkAgent(agentID, repo, branch, rootDir string) (*GitHub
 func (c *Client) GitHubUnlinkAgent(agentID string) error {
 	return c.Delete(fmt.Sprintf("/agents/%s/github", agentID))
 }
+
+// GitHubLinkStatus reads one agent's current link state: what it points at, and
+// whether that link can still fire (see the type's own note). Accepts an agent
+// id or name, like the rest of the agent routes.
+func (c *Client) GitHubLinkStatus(agentID string) (*GitHubLinkStatus, error) {
+	var status GitHubLinkStatus
+	if err := c.Get(fmt.Sprintf("/agents/%s/github", agentID), &status); err != nil {
+		return nil, err
+	}
+	return &status, nil
+}
