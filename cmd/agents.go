@@ -545,17 +545,17 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// The GitHub link state, read FAIL-SOFT: `afy status` answers about the
-	// agent, and must not start failing because a second read did. Fetched
-	// before the format branch because both lanes carry it.
-	link, linkErr := client.GitHubLinkStatus(name)
+	// The GitHub link state. FAIL-SOFT BY SHAPE: readAgentGitHubLink hands back
+	// a value and, when the read failed, a note to show — never an error. This
+	// function therefore holds nothing it could return, and cannot grow a
+	// `return linkErr` in a later edit. Read before the format branch because
+	// both lanes carry it.
+	link := readAgentGitHubLink(client, name)
 
 	// Check output format
 	if config.Get().OutputFormat == "json" {
-		if linkErr != nil {
-			printLinkReadFailure(linkErr)
-		}
-		return output.JSON(agentStatusJSON(agent, link))
+		link.printNote()
+		return output.JSON(agentStatusJSON(agent, link.state))
 	}
 
 	output.Header(fmt.Sprintf("Agent: %s", agent.Name))
@@ -608,7 +608,7 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	printSpawnRelationships(client, agent)
 
 	// Where the agent's code comes from, and whether pushes to it still land.
-	printAgentGitHubLink(link, linkErr)
+	printAgentGitHubLink(link)
 
 	return nil
 }
@@ -667,13 +667,45 @@ func agentStatusJSON(agent *api.Agent, link *api.GitHubLinkStatus) interface{} {
 	}{Agent: agent, GitHub: link}
 }
 
-// printLinkReadFailure says the link state could not be read.
+// agentLinkRead is what `afy status` knows about an agent's GitHub link: the
+// state, or a note saying why there is none. NO ERROR FIELD, deliberately.
+//
+// The fail-soft rule is that a failed link read must not fail `afy status`. As
+// an `error` handed back to the caller, that rule was a convention one edit
+// could undo — `return linkErr` compiles, reads as diligence, and turns a
+// working command into a failing one whenever the link route has a bad day. As a
+// value carrying its own note there is nothing to return, so the rule holds by
+// shape instead of by everyone remembering it.
+type agentLinkRead struct {
+	// state is nil when the read failed. An unlinked agent also prints no
+	// section, so the two need no distinguishing beyond the note.
+	state *api.GitHubLinkStatus
+	// note is empty unless the read failed. Prose for a person, not a code:
+	// nothing branches on it.
+	note string
+}
+
+// readAgentGitHubLink reads one agent's link state, absorbing any failure into a
+// note. It is the only place the link route's error is handled, and the only
+// place it exists.
+func readAgentGitHubLink(client *api.Client, idOrName string) agentLinkRead {
+	state, err := client.GitHubLinkStatus(idOrName)
+	if err != nil {
+		return agentLinkRead{note: fmt.Sprintf("GitHub link state could not be read: %v", err)}
+	}
+	return agentLinkRead{state: state}
+}
+
+// printNote says why the link state is missing, and says nothing when it is not.
 //
 // ON STDERR, unlike the CLI's other warnings, because this exact line is also
 // emitted under `-o json`, where anything on stdout that is not JSON breaks the
 // caller that asked for JSON. output.PrintWarning writes to stdout.
-func printLinkReadFailure(err error) {
-	output.Warning.Fprintf(os.Stderr, "Warning: GitHub link state could not be read: %v\n", err)
+func (r agentLinkRead) printNote() {
+	if r.note == "" {
+		return
+	}
+	output.Warning.Fprintf(os.Stderr, "Warning: %s\n", r.note)
 }
 
 // printAgentGitHubLink renders the GitHub section of `afy status`: what the
@@ -689,11 +721,12 @@ func printLinkReadFailure(err error) {
 // that can be read as disagreeing about what is wrong. The CLI names a command
 // where the dashboard names a settings page — that is the one difference, and
 // it is the remedy being spelled for the surface the reader is on.
-func printAgentGitHubLink(link *api.GitHubLinkStatus, readErr error) {
-	if readErr != nil {
-		printLinkReadFailure(readErr)
+func printAgentGitHubLink(read agentLinkRead) {
+	if read.note != "" {
+		read.printNote()
 		return
 	}
+	link := read.state
 	if link == nil || !link.Linked {
 		return
 	}

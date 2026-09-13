@@ -1,0 +1,21 @@
+{
+  "$comment": "The field names of the control plane's GitHubLinkStatusResponse, extracted from the sibling aetherfy-control-plane repo — do not edit by hand. Consumed by test/cp_link_status_test.go so internal/api.GitHubLinkStatus cannot decode a field name the control plane does not send. Regenerate with `go run ./scripts/cp-link-status-snapshot`.",
+  "generator": "scripts/cp-link-status-snapshot",
+  "schemaVersion": 1,
+  "source": {
+    "path": "api/routes/github.py",
+    "model": "GitHubLinkStatusResponse",
+    "branch": "main",
+    "dirty": false,
+    "unpushed": false
+  },
+  "fields": [
+    "account_connected",
+    "branch",
+    "branch_deleted_at",
+    "linked",
+    "repo",
+    "root_dir",
+    "webhook_id"
+  ]
+}
