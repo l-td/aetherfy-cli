@@ -20,9 +20,7 @@ package test
 // checked out the extraction re-runs and reds on drift.
 //
 // WHAT IT DOES NOT CHECK: types, nullability, defaults. The field NAMES are what
-// a rename breaks silently. A type change breaks loudly at decode time, and the
-// server's own default for account_connected is pinned where it is acted on, in
-// cmd/agents_github_link_test.go.
+// a rename breaks silently; a type change breaks loudly at decode time.
 
 import (
 	"reflect"

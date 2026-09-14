@@ -187,28 +187,6 @@ func TestStatusWarnsWhenTheAccountIsDisconnected(t *testing.T) {
 	}
 }
 
-func TestStatusTreatsAnAbsentAccountConnectedAsConnected(t *testing.T) {
-	// The field is `bool = True` server-side, so a link that omits it says
-	// connected. Go's zero value says the opposite, and the CLI and the control
-	// plane ship on separate schedules — so the untouched-by-default direction
-	// decides whether an old binary against a newer server (or the reverse)
-	// tells everyone their deploys are broken. Decoded here NESTED, inside the
-	// agent, which is the path the server default now has to survive.
-	link := `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,` +
-		`"webhook_id":"1","branch_deleted_at":null}`
-
-	out, _ := runStatus(t, "text", link)
-	if strings.Contains(out, "pushes are not deploying") {
-		t.Errorf("an absent account_connected was read as a disconnect:\n%s", out)
-	}
-	// And the same absence reaches a script as the server's own default, not as
-	// a null and not as false.
-	raw, _ := runStatus(t, "json", link)
-	if !strings.Contains(raw, `"account_connected": true`) {
-		t.Errorf("`-o json` did not carry the server's default for an absent field:\n%s", raw)
-	}
-}
-
 func TestStatusWarnsWhenTheTrackedBranchWasDeleted(t *testing.T) {
 	// The sharper half of the pair: a branch deletion has no commit to hang a
 	// status on — the SHA GitHub sends is forty zeros — so there is no surface

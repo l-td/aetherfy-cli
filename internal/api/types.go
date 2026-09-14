@@ -409,40 +409,10 @@ type GitHubLinkStatus struct {
 	// False means reconnect the ACCOUNT (`afy github connect`). It does NOT
 	// mean relink the agent: relinking fails for the same missing
 	// installation, and the link is not what broke.
-	//
-	// A PLAIN BOOL, defaulted to true by UnmarshalJSON below rather than left
-	// to Go's zero value. The server declares it `bool = True`, so absence
-	// means connected there; Go's zero value would turn the same absence into
-	// "your deploys are broken", which is the one direction this field must
-	// never guess in. The dashboard reads the same field the same way, and for
-	// the same reason (AgentGithubLinkSection.tsx).
 	AccountConnected bool `json:"account_connected"`
 	// When the tracked branch was last seen deleted, or null. A TIMESTAMP
 	// rather than a boolean because "when" is the question someone has when
 	// they find their agent inert. Null covers both a branch that was never
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
-}
-
-// UnmarshalJSON decodes a link state, starting from the server's OWN defaults
-// instead of Go's.
-//
-// One field needs it. `account_connected` is `bool = True` server-side, so a
-// response that omits it means connected — while Go's zero value would read the
-// same bytes as disconnected and print "pushes are not deploying" over a link
-// that is deploying perfectly. The CLI and the control plane ship on separate
-// schedules, and a false alarm about broken deploys is the worst direction to
-// resolve an absent field in.
-//
-// The field stays a plain bool rather than becoming a pointer, because the
-// server's is not nullable: `-o json` must answer true or false, never null.
-func (s *GitHubLinkStatus) UnmarshalJSON(data []byte) error {
-	// A distinct type, or this method would call itself.
-	type linkStatus GitHubLinkStatus
-	decoded := linkStatus{AccountConnected: true}
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		return err
-	}
-	*s = GitHubLinkStatus(decoded)
-	return nil
 }
