@@ -2,104 +2,105 @@ package cmd
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/config"
 )
 
-// `afy status` grew a GitHub section, and every claim it makes is a claim about
-// a field it decoded from the server. That is the part worth running rather
-// than reading: a wrong json tag, a string where the server sends null, a
-// boolean read the wrong way round — all of them compile, and all of them fail
-// as a missing or inverted line rather than as an error.
+// `afy status` prints an agent's GitHub link, and every claim that section makes
+// is a claim about a field decoded from the server. That is the part worth
+// running rather than reading: a wrong json tag, a string where the server sends
+// null, a boolean read the wrong way round — all of them compile, and all of
+// them fail as a missing or inverted line rather than as an error.
 //
-// So these tests drive the REAL client against an httptest server and hand the
-// decoded value to the real printer. A fixture built in Go would prove the
-// fixture.
+// So these tests drive the REAL command body against an httptest server that
+// answers with an AGENT carrying its link, and they count what the command asks
+// for. The link used to cost a second request; it now arrives inside the agent,
+// and a second request creeping back is what the count exists to catch.
 
-// linkStatusServer answers GET /agents/{idOrName}/github with body, or 500 when
-// body is empty, and records the path it was asked for.
-func linkStatusServer(t *testing.T, body string) (*httptest.Server, *string) {
+// statusAgentJSON is a service agent as GET /agents/{name} returns it, with link
+// under "github" — or with no "github" key at all when link is empty, which is
+// what a control plane older than the nested object sends.
+//
+// A SERVICE, deliberately: for a job agent `afy status` also lists agents to
+// resolve its spawn relationships, which is a request about something else.
+func statusAgentJSON(link string) string {
+	body := `{"id":"a1","user_id":"u1","name":"reporter","status":"running",` +
+		`"agent_type":"service","spawn_enabled":false,"deployed":true,` +
+		`"created_at":"2026-09-01T10:00:00Z","updated_at":"2026-09-01T10:00:00Z"`
+	if link != "" {
+		body += `,"github":` + link
+	}
+	return body + "}"
+}
+
+// runStatus runs `afy status reporter` in the given output format against a
+// server that answers every request with that agent, and returns what reached
+// stdout together with every path the command requested.
+func runStatus(t *testing.T, format, link string) (string, []string) {
 	t.Helper()
-	var asked string
+	var (
+		mu    sync.Mutex
+		asked []string
+	)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		asked = r.URL.Path
+		mu.Lock()
+		asked = append(asked, r.URL.Path)
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		if body == "" {
-			w.WriteHeader(http.StatusInternalServerError)
-			_, _ = w.Write([]byte(`{"detail":{"code":"INTERNAL_ERROR","message":"boom"}}`))
-			return
-		}
-		_, _ = w.Write([]byte(body))
+		_, _ = w.Write([]byte(statusAgentJSON(link)))
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &asked
-}
 
-// readLinkStatus performs the real GET through the real helper, so the tests
-// hold exactly what the call site in runAgentsStatus holds: a value and a note,
-// with no error anywhere to hand back.
-func readLinkStatus(t *testing.T, body string) (agentLinkRead, *string) {
-	t.Helper()
-	srv, asked := linkStatusServer(t, body)
-	client := api.NewClientWithURL(srv.URL, "afy_test_key")
-	return readAgentGitHubLink(client, "reporter"), asked
-}
+	previous := config.Get().OutputFormat
+	config.SetOutputFormat(format)
+	t.Cleanup(func() { config.SetOutputFormat(previous) })
 
-// captureStderr lives in github_connect_test.go — the same swap of os.Stderr,
-// which printNote resolves at call time.
-
-func TestTheLinkNoteGoesToStderrAtAll(t *testing.T) {
-	// Positive control on the capture. Every "wrote nothing to stderr"
-	// assertion below is worthless if this stream never reaches the harness.
-	note := agentLinkRead{note: "link state could not be read: " + io.EOF.Error()}
-	if out := captureStderr(t, note.printNote); !strings.Contains(out, "EOF") {
-		t.Fatalf("stderr capture saw %q, which does not contain the note it was given", out)
+	var runErr error
+	out := captureStdout(t, func() {
+		runErr = showAgentStatus(api.NewClientWithURL(srv.URL, "afy_test_key"), "reporter")
+	})
+	if runErr != nil {
+		t.Fatalf("afy status failed: %v", runErr)
 	}
-	// And silence when there is nothing to say, which is every healthy status.
-	if out := captureStderr(t, agentLinkRead{state: &api.GitHubLinkStatus{}}.printNote); out != "" {
-		t.Errorf("a read with no note still wrote to stderr: %q", out)
-	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	return out, append([]string(nil), asked...)
 }
 
-const linkedBody = `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":"services/scraper",` +
+// sectionLabels are the GitHub section's own lines. Asserted present for a
+// linked agent, which is what makes asserting them ABSENT mean anything.
+var sectionLabels = []string{"Repo:", "Branch:", "Directory:", "Webhook id:"}
+
+const linkedJSON = `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":"services/scraper",` +
 	`"webhook_id":"558899","account_connected":true,"branch_deleted_at":null}`
 
-func TestStatusPrintsTheWholeGitHubLink(t *testing.T) {
-	read, asked := readLinkStatus(t, linkedBody)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
+func TestStatusReadsTheLinkFromTheAgentInOneRequest(t *testing.T) {
+	out, asked := runStatus(t, "text", linkedJSON)
+
+	// ONE request, and it is for the agent. Asking the link route as well is the
+	// second read this command no longer makes.
+	if len(asked) != 1 || asked[0] != "/agents/reporter" {
+		t.Errorf("afy status requested %v, want exactly [/agents/reporter]", asked)
 	}
-
-	var errOut string
-	out := captureStdout(t, func() {
-		errOut = captureStderr(t, func() { printAgentGitHubLink(read) })
-	})
-
-	// The four fields, each one a separate json tag that could be wrong on its
-	// own and would then simply not appear.
-	for _, want := range []string{"myorg/agents", "production", "services/scraper", "558899"} {
+	// The four fields, each a separate json tag that could be wrong on its own
+	// and would then simply not appear.
+	for _, want := range append([]string{"myorg/agents", "production", "services/scraper", "558899"}, sectionLabels...) {
 		if !strings.Contains(out, want) {
 			t.Errorf("the GitHub section is missing %q; got:\n%s", want, out)
 		}
 	}
-	// The route the section reads. A wrong path 500s and the section silently
-	// becomes a warning, which is exactly the shape of "not linked".
-	if *asked != "/agents/reporter/github" {
-		t.Errorf("asked for %q, want /agents/reporter/github", *asked)
-	}
 	// THE CONTROL THE TWO WARNINGS NEED. A healthy link warns about nothing;
 	// without this, a warning that fires unconditionally still passes both of
-	// the tests below.
+	// the warning tests below.
 	if strings.Contains(out, "pushes are not deploying") {
 		t.Errorf("a healthy link printed an inert-state warning:\n%s", out)
-	}
-	if strings.TrimSpace(errOut) != "" {
-		t.Errorf("a healthy link wrote to stderr:\n%s", errOut)
 	}
 }
 
@@ -107,14 +108,8 @@ func TestStatusCallsAnEmptyRootDirTheRepositoryRoot(t *testing.T) {
 	// The server normalises '', '.' and './x/' before storing, so a repo-root
 	// link arrives as null. Printing an empty "Directory:" line would read as
 	// missing information about a link that is complete.
-	body := `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,` +
-		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null}`
-	read, _ := readLinkStatus(t, body)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
-	}
-
-	out := captureStdout(t, func() { printAgentGitHubLink(read) })
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null}`)
 	if !strings.Contains(out, "repository root") {
 		t.Errorf("a link at the repository root did not say so; got:\n%s", out)
 	}
@@ -126,46 +121,42 @@ func TestStatusSaysNothingAboutGitHubForAnUnlinkedAgent(t *testing.T) {
 	// `linked:false` still carries account_connected:false here — the account
 	// can be disconnected while this agent was never linked, and that is not
 	// this agent's problem to report.
-	body := `{"linked":false,"repo":null,"branch":null,"root_dir":null,` +
-		`"webhook_id":null,"account_connected":false,"branch_deleted_at":null}`
-	read, _ := readLinkStatus(t, body)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
-	}
+	out, _ := runStatus(t, "text", `{"linked":false,"repo":null,"branch":null,"root_dir":null,`+
+		`"webhook_id":null,"account_connected":false,"branch_deleted_at":null}`)
 
-	var errOut string
-	out := captureStdout(t, func() {
-		errOut = captureStderr(t, func() { printAgentGitHubLink(read) })
-	})
-	if strings.TrimSpace(out) != "" {
-		t.Errorf("an unlinked agent printed a GitHub section:\n%s", out)
+	// Positive control: the status itself printed, so the absences below are
+	// absences from real output and not from an empty capture.
+	if !strings.Contains(out, "reporter") {
+		t.Fatalf("the status block did not print at all; got:\n%s", out)
 	}
-	if strings.TrimSpace(errOut) != "" {
-		t.Errorf("an unlinked agent wrote to stderr:\n%s", errOut)
+	for _, unwanted := range append([]string{"pushes are not deploying"}, sectionLabels...) {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("an unlinked agent printed %q:\n%s", unwanted, out)
+		}
 	}
 }
 
-func TestStatusSaysWhenTheLinkStateCouldNotBeRead(t *testing.T) {
-	// FAIL-SOFT, NOT SILENT. The read hands back a value and a note, with no
-	// error in it, so nothing in runAgentsStatus can fail the command over this
-	// — the remaining way to get it wrong is to print nothing at all, leaving a
-	// linked agent looking exactly like an unlinked one.
-	read, _ := readLinkStatus(t, "")
-	if read.note == "" {
-		t.Fatal("the 500 lane produced no note; the rest of this test would be vacuous")
+func TestStatusSaysNothingAboutGitHubWhenTheAgentCarriesNoLink(t *testing.T) {
+	// A control plane older than the nested object sends no "github" key. That
+	// reads as nothing to say — and `-o json` must not invent an answer either:
+	// a zero-valued object would claim `linked: false` and `account_connected:
+	// false` about an agent the server said nothing about.
+	out, _ := runStatus(t, "text", "")
+	if !strings.Contains(out, "reporter") {
+		t.Fatalf("the status block did not print at all; got:\n%s", out)
+	}
+	for _, unwanted := range append([]string{"pushes are not deploying"}, sectionLabels...) {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("an agent with no link object printed %q:\n%s", unwanted, out)
+		}
 	}
 
-	var errOut string
-	out := captureStdout(t, func() {
-		errOut = captureStderr(t, func() { printAgentGitHubLink(read) })
-	})
-	if !strings.Contains(errOut, "GitHub link state could not be read") {
-		t.Errorf("a failed read said nothing; stderr was:\n%s", errOut)
+	raw, _ := runStatus(t, "json", "")
+	if !strings.Contains(raw, `"id": "a1"`) {
+		t.Fatalf("`afy status -o json` did not print the agent; got:\n%s", raw)
 	}
-	// The rest of the status block is already on stdout by now. Nothing about
-	// the failure belongs there — under `-o json` that stream is the payload.
-	if strings.TrimSpace(out) != "" {
-		t.Errorf("the failure note landed on stdout, which `-o json` must keep parseable:\n%s", out)
+	if strings.Contains(raw, `"github"`) {
+		t.Errorf("an agent with no link object still emitted a github key, which reads as an answer:\n%s", raw)
 	}
 }
 
@@ -173,14 +164,9 @@ func TestStatusWarnsWhenTheAccountIsDisconnected(t *testing.T) {
 	// Linked, and inert. Nothing on GitHub reports this: announcing a skipped
 	// push means posting a commit status, which needs the installation token
 	// that is gone.
-	body := `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,` +
-		`"webhook_id":"1","account_connected":false,"branch_deleted_at":null}`
-	read, _ := readLinkStatus(t, body)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
-	}
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":false,"branch_deleted_at":null}`)
 
-	out := captureStdout(t, func() { printAgentGitHubLink(read) })
 	if !strings.Contains(out, "pushes are not deploying") {
 		t.Errorf("a disconnected account printed no warning; got:\n%s", out)
 	}
@@ -192,7 +178,7 @@ func TestStatusWarnsWhenTheAccountIsDisconnected(t *testing.T) {
 	// The link itself is still printed: it is still true, and it is what comes
 	// back to life on reconnect.
 	if !strings.Contains(out, "myorg/agents") {
-		t.Errorf("the warning replaced the link instead of preceding it; got:\n%s", out)
+		t.Errorf("the warning replaced the link instead of following it; got:\n%s", out)
 	}
 	// Not the other inert state. The two are separate facts with separate
 	// remedies, and one must not stand in for the other.
@@ -202,30 +188,24 @@ func TestStatusWarnsWhenTheAccountIsDisconnected(t *testing.T) {
 }
 
 func TestStatusTreatsAnAbsentAccountConnectedAsConnected(t *testing.T) {
-	// The field is `bool = True` server-side, so a response that omits it says
+	// The field is `bool = True` server-side, so a link that omits it says
 	// connected. Go's zero value says the opposite, and the CLI and the control
 	// plane ship on separate schedules — so the untouched-by-default direction
 	// decides whether an old binary against a newer server (or the reverse)
-	// tells everyone their deploys are broken.
-	body := `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,` +
+	// tells everyone their deploys are broken. Decoded here NESTED, inside the
+	// agent, which is the path the server default now has to survive.
+	link := `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,` +
 		`"webhook_id":"1","branch_deleted_at":null}`
-	read, _ := readLinkStatus(t, body)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
-	}
 
-	out := captureStdout(t, func() { printAgentGitHubLink(read) })
+	out, _ := runStatus(t, "text", link)
 	if strings.Contains(out, "pushes are not deploying") {
 		t.Errorf("an absent account_connected was read as a disconnect:\n%s", out)
 	}
 	// And the same absence reaches a script as the server's own default, not as
 	// a null and not as false.
-	raw, marshalErr := json.Marshal(agentStatusJSON(&api.Agent{ID: "a1"}, read.state))
-	if marshalErr != nil {
-		t.Fatalf("marshal: %v", marshalErr)
-	}
-	if !strings.Contains(string(raw), `"account_connected":true`) {
-		t.Errorf("`-o json` did not carry the server's default for an absent field: %s", raw)
+	raw, _ := runStatus(t, "json", link)
+	if !strings.Contains(raw, `"account_connected": true`) {
+		t.Errorf("`-o json` did not carry the server's default for an absent field:\n%s", raw)
 	}
 }
 
@@ -233,14 +213,9 @@ func TestStatusWarnsWhenTheTrackedBranchWasDeleted(t *testing.T) {
 	// The sharper half of the pair: a branch deletion has no commit to hang a
 	// status on — the SHA GitHub sends is forty zeros — so there is no surface
 	// left but this one.
-	body := `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,` +
-		`"webhook_id":"1","account_connected":true,"branch_deleted_at":"2026-09-10T14:32:00Z"}`
-	read, _ := readLinkStatus(t, body)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
-	}
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,`+
+		`"webhook_id":"1","account_connected":true,"branch_deleted_at":"2026-09-10T14:32:00Z"}`)
 
-	out := captureStdout(t, func() { printAgentGitHubLink(read) })
 	if !strings.Contains(out, "pushes are not deploying") {
 		t.Errorf("a deleted branch printed no warning; got:\n%s", out)
 	}
@@ -266,22 +241,19 @@ func TestStatusJSONCarriesTheLinkWithTheServersFieldNames(t *testing.T) {
 	// `-o json` is a contract with scripts, and the two fields a script would
 	// branch on are exactly the two that a well-meaning omitempty deletes when
 	// they are false.
-	read, _ := readLinkStatus(t, `{"linked":false,"repo":null,"branch":null,"root_dir":null,`+
+	raw, asked := runStatus(t, "json", `{"linked":false,"repo":null,"branch":null,"root_dir":null,`+
 		`"webhook_id":null,"account_connected":false,"branch_deleted_at":null}`)
-	if read.note != "" {
-		t.Fatalf("the read failed: %s", read.note)
+
+	// One request in this lane too.
+	if len(asked) != 1 || asked[0] != "/agents/reporter" {
+		t.Errorf("afy status -o json requested %v, want exactly [/agents/reporter]", asked)
 	}
 
-	raw, marshalErr := json.Marshal(agentStatusJSON(&api.Agent{ID: "a1", Name: "reporter"}, read.state))
-	if marshalErr != nil {
-		t.Fatalf("marshal: %v", marshalErr)
-	}
 	var got map[string]interface{}
-	if err := json.Unmarshal(raw, &got); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("`afy status -o json` is not JSON: %v\n%s", err, raw)
 	}
-
-	// The agent's own keys stay where they were. Nesting them under an "agent"
+	// The agent's own keys stay at the top level. Nesting them under an "agent"
 	// key would break every existing consumer of `afy status -o json`.
 	if got["id"] != "a1" || got["name"] != "reporter" {
 		t.Errorf("the agent's own fields left the top level: %s", raw)
@@ -306,23 +278,5 @@ func TestStatusJSONCarriesTheLinkWithTheServersFieldNames(t *testing.T) {
 		if _, present := gh[key]; !present {
 			t.Errorf("github.%s is missing from %s", key, raw)
 		}
-	}
-}
-
-func TestStatusJSONOmitsTheLinkWhenItCouldNotBeRead(t *testing.T) {
-	// The other half of the rule above: because a successful read ALWAYS emits
-	// the object, an absent key can only mean "not read". A zero-valued object
-	// here would claim `linked: false` about an agent that may well be linked.
-	read, _ := readLinkStatus(t, "")
-	if read.note == "" {
-		t.Fatal("the 500 lane produced no note; this test would be vacuous")
-	}
-
-	raw, marshalErr := json.Marshal(agentStatusJSON(&api.Agent{ID: "a1", Name: "reporter"}, read.state))
-	if marshalErr != nil {
-		t.Fatalf("marshal: %v", marshalErr)
-	}
-	if strings.Contains(string(raw), "github") {
-		t.Errorf("a failed read still emitted a github key, which would read as an answer: %s", raw)
 	}
 }

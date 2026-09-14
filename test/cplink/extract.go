@@ -1,10 +1,12 @@
 // Package cplink extracts the FIELD NAMES of the control plane's link-status
 // response, so the CLI's decode of it cannot drift in silence.
 //
-// WHY THIS EXISTS. internal/api.GitHubLinkStatus decodes
-// GET /agents/{id}/github by json tag. Rename a field on the control-plane side
-// and nothing here fails: encoding/json leaves the Go field at its zero value,
-// so `afy status` prints an empty branch, or calls an agent's directory the
+// WHY THIS EXISTS. internal/api.GitHubLinkStatus decodes an agent's `github`
+// object by json tag. On the control-plane side that object is ONE class,
+// GitHubLinkStatusResponse: AgentResponse.github is declared as it, and
+// GET /agents/{id}/github returns it, both built by one function. Rename a field
+// on that side and nothing here fails: encoding/json leaves the Go field at its
+// zero value, so `afy status` prints an empty branch, or calls an agent's directory the
 // repository root, or silently stops warning that a link is inert. No error, no
 // red test, because this repo's tests mock the server and agree with themselves
 // about the spellings. It is the same failure mode cperrors was built for, one

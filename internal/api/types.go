@@ -61,6 +61,16 @@ type Agent struct {
 	// as an empty value, never as an error.
 	Regions        []string `json:"regions,omitempty"`
 	PendingRegions []string `json:"pending_regions,omitempty"`
+	// The agent's GitHub link, carried on the agent itself (server
+	// AgentResponse.github — the same object GET /agents/{id}/github serves on
+	// its own), so `afy status` has it from the one agent read.
+	//
+	// A POINTER, AND OMITEMPTY ON THE POINTER ONLY. A control plane that predates
+	// the nested object leaves it nil, and nil must stay distinguishable from a
+	// link that says `linked: false`: decoded as a value it would be all zeros,
+	// and `-o json` would claim an unlinked, disconnected agent the server said
+	// nothing about. Nothing INSIDE the object may take omitempty.
+	GitHub *GitHubLinkStatus `json:"github,omitempty"`
 	// Cron scheduling (CP-4). Carried on the agent list + detail responses.
 	// CronSchedule is the 5-field UTC expression (empty = no schedule); the
 	// rest is scheduler-written fire-time telemetry feeding the CLI badges.
@@ -373,8 +383,9 @@ type GitHubLinkResponse struct {
 	WebhookSecret string `json:"webhook_secret"`
 }
 
-// GitHubLinkStatus is the answer from GET /agents/{id}/github: what an agent's
-// link points at, and whether it can still fire.
+// GitHubLinkStatus is an agent's GitHub link — the `github` object on every agent
+// response, which GET /agents/{id}/github also serves on its own: what the link
+// points at, and whether it can still fire.
 //
 // LINKED IS NOT ENOUGH, which is the whole reason this type carries more than
 // the four link fields. A link survives an account disconnect on purpose (the

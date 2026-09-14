@@ -3,9 +3,10 @@ package test
 // Pins internal/api.GitHubLinkStatus's json tags to the control plane's
 // GitHubLinkStatusResponse.
 //
-// WHAT GOES WRONG WITHOUT IT. `afy status` reads an agent's GitHub link through
-// that struct, by json tag. Rename a field on the control-plane side and
-// encoding/json does not complain: it leaves the Go field at its zero value. So
+// WHAT GOES WRONG WITHOUT IT. `afy status` reads an agent's GitHub link — the
+// `github` object inside the agent response — through that struct, by json
+// tag. Rename a field on the control-plane side and encoding/json does not
+// complain: it leaves the Go field at its zero value. So
 // `root_dir` becoming `directory` makes every linked agent's directory read as
 // the repository root; `account_connected` becoming anything else makes the
 // "pushes are not deploying" warning stop firing, or start firing on every
