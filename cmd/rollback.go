@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/output"
@@ -41,20 +43,29 @@ func runRollback(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
 		return err
 	}
+	if code := rollbackAgent(api.NewClient(), args, rollbackDetach, deploymentPollInterval, deploymentWatchTimeout); code != 0 {
+		os.Exit(code)
+	}
+	return nil
+}
 
+// rollbackAgent runs `afy rollback` and returns its exit code: 0 when the
+// rollback went live, was queued with --detach, or there was only a history to
+// print. Values rather than os.Exit calls, so a test can drive the command
+// against a server and read the code a script would see.
+func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval, timeout time.Duration) int {
 	agentID := args[0]
-	client := api.NewClient()
 
 	// No version supplied — list deployments so the user can choose.
 	if len(args) == 1 {
 		deployments, err := client.ListDeployments(agentID)
 		if err != nil {
 			output.PrintError("Failed to list deployments: %v", err)
-			return nil
+			return 1
 		}
 		if len(deployments) == 0 {
 			output.PrintInfo("No deployments found for agent '%s'", agentID)
-			return nil
+			return 0
 		}
 
 		output.Println("Deployment history (newest first):")
@@ -71,14 +82,14 @@ func runRollback(cmd *cobra.Command, args []string) error {
 		output.Println("")
 		output.Println("Re-run with a version number to roll back:")
 		output.Printf("  afy rollback %s <version>\n", agentID)
-		return nil
+		return 0
 	}
 
 	// Parse version argument.
 	version, err := strconv.Atoi(args[1])
 	if err != nil || version < 1 {
 		output.PrintError("Version must be a positive integer, got: %s", args[1])
-		return nil
+		return 1
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Rolling back %s to version %d...", agentID, version))
@@ -88,19 +99,20 @@ func runRollback(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Rollback failed: %v", err)
-		return nil
+		return 1
 	}
 
 	output.KeyValue("Deployment ID", resp.ID)
 	output.KeyValue("New Version", strconv.Itoa(resp.Version))
 	output.Println("")
 
-	if rollbackDetach {
+	if detach {
 		output.PrintSuccess("Rollback queued (rolling back to v%d image).", version)
 		output.Printf("Run 'afy logs %s' to follow progress.\n", agentID)
-	} else {
-		watchDeployment(client, agentID, resp.ID)
+		return 0
 	}
-
-	return nil
+	if watchDeployment(client, agentID, resp.ID, pollInterval, timeout) != nil {
+		return 1
+	}
+	return 0
 }

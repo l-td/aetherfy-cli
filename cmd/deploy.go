@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -441,7 +442,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		output.PrintSuccess("Deployment queued.")
 		output.Println("Run 'afy logs " + agentID + "' to follow progress.")
 	} else {
-		watchDeployment(client, agentID, resp.DeploymentID)
+		if err := watchDeployment(client, agentID, resp.DeploymentID, deploymentPollInterval, deploymentWatchTimeout); err != nil {
+			os.Exit(1)
+		}
 	}
 
 	return nil
@@ -625,7 +628,9 @@ func runDeployFromGitHub(repoRef string) error {
 		output.PrintSuccess("Deployment queued.")
 		output.Println("Run 'afy logs " + agentID + "' to follow progress.")
 	} else {
-		watchDeployment(client, agentID, resp.DeploymentID)
+		if err := watchDeployment(client, agentID, resp.DeploymentID, deploymentPollInterval, deploymentWatchTimeout); err != nil {
+			os.Exit(1)
+		}
 	}
 
 	return nil
@@ -664,11 +669,32 @@ func isHexString(s string) bool {
 	return true
 }
 
-func watchDeployment(client *api.Client, agentID, deploymentID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+// How often a command waiting on a deployment re-reads it, and how long it
+// waits in all before giving up.
+const (
+	deploymentPollInterval = 5 * time.Second
+	deploymentWatchTimeout = 10 * time.Minute
+)
+
+var (
+	errDeploymentFailed        = errors.New("deployment failed")
+	errDeploymentWatchTimedOut = errors.New("deployment did not finish before the wait ran out")
+)
+
+// watchDeployment follows a deployment until it settles, and returns nil only
+// when it went live.
+//
+// A COMMAND THAT WAITS IS A COMMAND A SCRIPT TRUSTS WITH ITS EXIT STATUS. On
+// 2026-09-14 a failed `afy deploy`, `afy redeploy` and `afy rollback` each
+// printed "Deployment failed" and exited 0, so a pipeline read them as green and
+// the fallback a script had written for exactly that case never ran. So a
+// failure is an error, and its reason goes to stderr beside the "Error:" line.
+// A wait that runs out is an error too: nothing was confirmed.
+func watchDeployment(client *api.Client, agentID, deploymentID string, pollInterval, timeout time.Duration) error {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
 	lastStatus := ""
@@ -676,8 +702,8 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 	for {
 		select {
 		case <-ctx.Done():
-			output.PrintWarning("Deployment watch timed out")
-			return
+			output.PrintError("Deployment watch timed out; the deployment has not finished. Check it with 'afy deployments %s'.", agentID)
+			return errDeploymentWatchTimedOut
 		case <-ticker.C:
 			deployment, err := client.GetDeployment(deploymentID)
 			if err != nil {
@@ -703,11 +729,11 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 					output.PrintSuccess("Deployment completed!")
 				}
 				printAgentURL(client, agentID)
-				return
+				return nil
 			case "failed", "error":
 				output.PrintError("Deployment failed")
 				if deployment.ErrorMessage != "" {
-					output.Printf("Reason: %s\n", deployment.ErrorMessage)
+					fmt.Fprintf(os.Stderr, "Reason: %s\n", deployment.ErrorMessage)
 				}
 				// THE STEP THAT FAILED, when the server sent it. "Reason" above
 				// is a mapped sentence — the same one for a pip resolution
@@ -728,7 +754,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string) {
 				}
 				output.Println("")
 				output.Println("Run 'afy deploy' to try again.")
-				return
+				return errDeploymentFailed
 			}
 		}
 	}

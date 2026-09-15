@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/output"
@@ -62,16 +64,25 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
 		return err
 	}
+	if code := redeployAgent(api.NewClient(), args, redeployDetach, deploymentPollInterval, deploymentWatchTimeout); code != 0 {
+		os.Exit(code)
+	}
+	return nil
+}
 
+// redeployAgent runs `afy redeploy` and returns its exit code: 0 when the
+// rebuilt deployment went live or was queued with --detach. Values rather than
+// os.Exit calls, so a test can drive the command against a server and read the
+// code a script would see.
+func redeployAgent(client *api.Client, args []string, detach bool, pollInterval, timeout time.Duration) int {
 	agentID := args[0]
-	client := api.NewClient()
 
 	version := 0
 	if len(args) == 2 {
 		parsed, err := strconv.Atoi(args[1])
 		if err != nil || parsed < 1 {
 			output.PrintError("Version must be a positive integer, got: %s", args[1])
-			return nil
+			return 1
 		}
 		version = parsed
 	} else {
@@ -82,7 +93,7 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 		deployments, err := client.ListDeployments(agentID)
 		if err != nil {
 			output.PrintError("Failed to list deployments: %v", err)
-			return nil
+			return 1
 		}
 		for _, d := range deployments {
 			if d.Status == "active" && !d.IsEphemeral {
@@ -94,7 +105,7 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 			output.PrintError("Agent '%s' has no active deployment to redeploy.", agentID)
 			output.Printf("Pick a version explicitly: afy redeploy %s <version>\n", agentID)
 			output.Printf("Or see what exists: afy deployments %s\n", agentID)
-			return nil
+			return 1
 		}
 	}
 
@@ -105,19 +116,20 @@ func runRedeploy(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Redeploy failed: %v", err)
-		return nil
+		return 1
 	}
 
 	output.KeyValue("Deployment ID", resp.ID)
 	output.KeyValue("New Version", strconv.Itoa(resp.Version))
 	output.Println("")
 
-	if redeployDetach {
+	if detach {
 		output.PrintSuccess("Redeploy queued (rebuilding v%d from source).", version)
 		output.Printf("Run 'afy logs %s' to follow progress.\n", agentID)
-	} else {
-		watchDeployment(client, agentID, resp.ID)
+		return 0
 	}
-
-	return nil
+	if watchDeployment(client, agentID, resp.ID, pollInterval, timeout) != nil {
+		return 1
+	}
+	return 0
 }
