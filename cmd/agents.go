@@ -560,6 +560,17 @@ func showAgentStatus(client *api.Client, name string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
+	// WHY it is failed, when the server recorded a reason. Until this line, an
+	// agent whose image the registry had lost read `failed` in the terminal and
+	// nothing else: the explanation existed on the API and in the dashboard and
+	// reached nobody at a command line. A code this binary is too old to have a
+	// message for still prints, with the one action that gets the wording.
+	if agent.FailureMessage != "" {
+		output.KeyValue("Reason", agent.FailureMessage)
+	} else if agent.FailureCode != "" {
+		output.KeyValue("Reason", fmt.Sprintf(
+			"%s (this CLI has no description for it — 'afy upgrade' may)", agent.FailureCode))
+	}
 	// Where to send a request, when the server says there is one.
 	if agent.URL != "" {
 		output.KeyValue("URL", agent.URL)
