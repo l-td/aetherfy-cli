@@ -104,10 +104,16 @@ func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval,
 
 	output.KeyValue("Deployment ID", resp.ID)
 	output.KeyValue("New Version", strconv.Itoa(resp.Version))
+	// A version whose image is gone is rebuilt from its stored source, which is
+	// not the exact artifact that ran before. The server says so, and so must
+	// the terminal: a rollback is usually run in a hurry, by someone trusting it.
+	if resp.RollbackNotice != "" {
+		output.PrintWarning("Rollback to v%d: %s", version, resp.RollbackNotice)
+	}
 	output.Println("")
 
 	if detach {
-		output.PrintSuccess("Rollback queued (rolling back to v%d image).", version)
+		output.PrintSuccess("Rollback to v%d queued.", version)
 		output.Printf("Run 'afy logs %s' to follow progress.\n", agentID)
 		return 0
 	}

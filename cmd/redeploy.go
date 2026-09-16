@@ -40,7 +40,7 @@ a change you made after it shipped.
 
 If version is omitted, the active deployment is used.
 
-Archives are kept for the three most recent successful deployments, and deleted
+Archives are kept for the ten most recent successful deployments, and deleted
 when a build fails, so older versions may no longer be rebuildable.`,
 	Example: `  # Rebuild the active deployment (applies secrets set since it deployed)
   afy redeploy my-agent

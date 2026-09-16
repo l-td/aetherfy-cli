@@ -189,6 +189,9 @@ type RollbackResponse struct {
 	State        string    `json:"state"`
 	ErrorMessage string    `json:"error_message,omitempty"`
 	CreatedAt    time.Time `json:"created_at"`
+	// Set when the target's image was gone and the version was rebuilt from its
+	// stored source instead of re-deployed exactly. The server's own wording.
+	RollbackNotice string `json:"rollback_notice,omitempty"`
 }
 
 // Secret represents a secret (without the value)
