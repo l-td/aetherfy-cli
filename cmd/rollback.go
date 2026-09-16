@@ -16,9 +16,11 @@ var rollbackCmd = &cobra.Command{
 	Short: "Roll back an agent to a previous deployment version",
 	Long: `Roll back an agent to a previously deployed version.
 
-Skips the build step — the image from the target version is re-deployed
-directly. Only versions that were successfully built (active or superseded)
-can be used as rollback targets.
+A version can be rolled back to while its image or its stored code archive
+still exists. With its image, the image is re-deployed exactly and nothing is
+built. With only its archive, the version is rebuilt from that source first,
+and dependencies may resolve differently than they did originally. Archives
+are kept for the ten most recent successful deployments.
 
 If version is omitted, the deployment history is printed so you can choose.`,
 	Example: `  # Show deployment history to pick a version

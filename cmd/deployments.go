@@ -94,21 +94,15 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		// This is the only place `afy deployments` can say which step failed,
 		// and someone reading a failed row is asking exactly that.
 		printBuildFailureDetail(deployments[0].BuildFailureDetail)
-		if len(deployments) > 1 {
-			// Find the most recent version with a usable image
-			for _, d := range deployments[1:] {
-				if d.Status == "active" || d.Status == "superseded" {
-					output.Printf("Roll back to v%d: afy rollback %s %d\n", d.Version, agentID, d.Version)
-					// Rollback re-deploys that version's IMAGE, which carries the
-					// secrets it was built with. Offer the rebuild alongside it
-					// only when the server says that version still has its source
-					// (CanRedeploy) — the two commands answer different questions
-					// and the failed deployment above may well be a missing secret.
-					if d.CanRedeploy {
-						output.Printf("Rebuild v%d with current secrets: afy redeploy %s %d\n", d.Version, agentID, d.Version)
-					}
-					break
-				}
+		if d := newestRollbackTarget(deployments[1:]); d != nil {
+			output.Printf("Roll back to v%d: afy rollback %s %d\n", d.Version, agentID, d.Version)
+			// Rollback re-deploys that version's IMAGE when it still exists, which
+			// carries the secrets it was built with. Offer the rebuild alongside it only
+			// when the server says that version still has its source (CanRedeploy):
+			// the two commands answer different questions, and the failed deployment
+			// above may well be a missing secret.
+			if d.CanRedeploy {
+				output.Printf("Rebuild v%d with current secrets: afy redeploy %s %d\n", d.Version, agentID, d.Version)
 			}
 		}
 	} else if len(deployments) > 0 && deployments[0].IsDegraded {
@@ -122,6 +116,19 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	return nil
+}
+
+// newestRollbackTarget is the first (newest) deployment the server says a
+// rollback can target, or nil. The server's can_rollback is the rule -- its
+// image or its stored code archive still exists -- so the suggestion is never a
+// version `afy rollback` would refuse, and never skips one it would accept.
+func newestRollbackTarget(deployments []api.Deployment) *api.Deployment {
+	for i := range deployments {
+		if deployments[i].CanRollback {
+			return &deployments[i]
+		}
+	}
 	return nil
 }
 

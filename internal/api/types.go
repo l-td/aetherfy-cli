@@ -160,10 +160,14 @@ type Deployment struct {
 	// Whether this version can be rebuilt from its stored source archive
 	// (server Deployment.can_redeploy). Server-derived: the source is an
 	// internal S3 URI the API never returns, and the archive is deleted when a
-	// build fails and reaped past the 3 most recent successful deployments — so
+	// build fails and reaped past the 10 most recent successful deployments — so
 	// this cannot be inferred from State. No omitempty: `false` must serialize
 	// explicitly for `-o json` scripting, same reason as IsDegraded.
 	CanRedeploy bool `json:"can_redeploy"`
+	// Whether `afy rollback` can target this version (server
+	// Deployment.can_rollback): its image or its stored code archive still
+	// exists. Server-derived for the same reason as CanRedeploy; no omitempty.
+	CanRollback bool `json:"can_rollback"`
 }
 
 // DeployRequest is the request body for deploying
