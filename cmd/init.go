@@ -63,7 +63,7 @@ func init() {
 	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
-	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule for job-type agents — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
+	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
 }
 
 func fileExists(path string) bool {
@@ -246,13 +246,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// --- Schedule (job agents only) ---
-	// Cron scheduling is a top-level JOB concept, so the prompt only appears
-	// when the agent is a job. The server is the authoritative cron validator
-	// (min interval, 5-field dialect) — we never validate the expression here,
-	// we just carry it into aetherfy.yaml. The --schedule flag skips the prompt.
+	// --- Schedule ---
+	// A schedule is a trigger on either agent type: a job's run executes its
+	// entrypoint, a service's run is a request to its POST /aetherfy/run. The
+	// server is the authoritative cron validator (min interval, 5-field
+	// dialect) — we never validate the expression here, we just carry it into
+	// aetherfy.yaml. The --schedule flag skips the prompt.
 	schedule := initSchedule
-	if schedule == "" && agentType == "job" && interactive {
+	if schedule == "" && interactive {
 		schedulePrompt := promptui.Prompt{
 			Label:   "Schedule — UTC, 5-field cron (min every 5 minutes), e.g. '0 3 * * *' — leave blank for none",
 			Default: "",
@@ -469,7 +470,7 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 		sb.WriteString(fmt.Sprintf("workspace: %s-workspace\n", name))
 	}
 
-	// Cron schedule (job agents). Quoted so cron expressions like "0 3 * * *"
+	// Cron schedule. Quoted so cron expressions like "0 3 * * *"
 	// are always parsed as a string. Validated server-side on deploy.
 	if schedule != "" {
 		sb.WriteString(fmt.Sprintf("schedule: %q  # UTC, 5-field cron (min every 5 minutes)\n", schedule))

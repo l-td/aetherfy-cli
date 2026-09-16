@@ -4,7 +4,7 @@
 // WHY THIS EXISTS. The CLI branches on control-plane error-code string
 // literals — `deploy` keys on AGENT_NOT_FOUND to offer create-on-deploy, the
 // lifecycle retry keys on AGENT_OPERATION_IN_PROGRESS and RESOURCE_BUSY,
-// `agents run` keys on AGENT_RUN_REQUIRES_JOB_TYPE, and so on. If the control
+// `agents run` keys on AGENT_NOT_DEPLOYED, and so on. If the control
 // plane renames one, the branch silently stops firing: no crash, no red test,
 // because the CLI's tests mock the server and agree with themselves about the
 // spelling. That is not hypothetical — commit bf93cd1 fixed exactly this drift

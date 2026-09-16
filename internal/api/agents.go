@@ -197,10 +197,10 @@ func (c *Client) SpawnAgent(agentID string, req *SpawnRequest) (*SpawnResponse, 
 	return &resp, nil
 }
 
-// RunAgent triggers a manual "run now" of a deployed JOB agent (POST
+// RunAgent triggers a manual "run now" of a deployed agent (POST
 // /agents/{id}/run). The run is a ROOT run: no parent, trigger_source=manual.
 // payload is optional (nil omits the body field). Errors carry the CP-4 code
-// taxonomy — AGENT_RUN_REQUIRES_JOB_TYPE / AGENT_NOT_DEPLOYED (422),
+// taxonomy — AGENT_NOT_DEPLOYED (422),
 // AGENT_RUN_IN_PROGRESS / AGENT_RUN_INELIGIBLE_STATE / AGENT_OPERATION_IN_PROGRESS
 // (409), the billing-gate 403s — for callers to switch on.
 func (c *Client) RunAgent(idOrName string, payload map[string]interface{}) (*RunAgentResponse, error) {

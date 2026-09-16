@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 125
+      "count": 124
     },
     {
       "path": "api/routes/regions.py",
@@ -161,10 +161,6 @@
       "tier": "top-level"
     },
     "AGENT_RUN_IN_PROGRESS": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "AGENT_RUN_REQUIRES_JOB_TYPE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

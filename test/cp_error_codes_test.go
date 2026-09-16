@@ -7,7 +7,7 @@ package test
 // OVERAGE_CONFIRM_REQUIRED for the cost prompt and on SOFT_CAP_EXCEEDED /
 // DUNNING_FROZEN for the freeze paths; the lifecycle retry keys on
 // AGENT_OPERATION_IN_PROGRESS and RESOURCE_BUSY; `agents run` picks its hint
-// from AGENT_NOT_DEPLOYED / AGENT_SCHEDULE_NOT_SET / AGENT_RUN_REQUIRES_JOB_TYPE;
+// from AGENT_NOT_DEPLOYED / AGENT_SCHEDULE_NOT_SET;
 // `github` keys on GITHUB_NOT_CONNECTED.
 //
 // (Those spellings are safe to name HERE, unlike prose elsewhere: this file is
@@ -194,7 +194,6 @@ func TestTheScanReachesTheRealPins(t *testing.T) {
 		{"RESOURCE_BUSY", "internal/api/agents.go — the lifecycle retry"},
 		{"GITHUB_NOT_CONNECTED", "cmd/github.go"},
 		{"PLAN_LIMIT_EXCEEDED", "cmd/agents.go"},
-		{"AGENT_RUN_REQUIRES_JOB_TYPE", "cmd/agents.go — run-now"},
 		{"AGENT_NOT_DEPLOYED", "cmd/agents.go — run-now hint"},
 		{"AGENT_SCHEDULE_NOT_SET", "cmd/agents.go — run-now hint"},
 	} {

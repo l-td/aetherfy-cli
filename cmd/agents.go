@@ -721,18 +721,17 @@ func derefString(s *string) string {
 	return *s
 }
 
-// --- RUN (manual "run now" of a JOB agent) ---
+// --- RUN (manual "run now" of an agent) ---
 var agentsRunCmd = &cobra.Command{
 	Use:   "run <name>",
-	Short: "Run a job agent now",
-	Long: `Trigger a one-off run of a deployed job agent immediately.
-
-This is a manual run: the agent executes once and terminates, independent of any
-cron schedule. Only deployed 'type: job' agents can be run.
+	Short: "Run an agent now",
+	Long: `Trigger a one-off run of a deployed agent immediately, independent of any
+cron schedule. A 'type: job' agent runs its entrypoint once; a 'type: service'
+agent is sent one request to its own POST /aetherfy/run route.
 
 Pass input with --payload (inline JSON) or --payload-file. Use --wait to block
 until the run finishes — the command then exits 0 on success, 1 on failure.`,
-	Example: `  # Run a job agent and return immediately
+	Example: `  # Run an agent and return immediately
   afy run nightly-report
 
   # Run with a JSON payload and wait for the result
@@ -865,8 +864,8 @@ func watchRun(client *api.Client, agentName, deploymentID string) {
 // --- RUNS (scheduled + manual run history) ---
 var agentsRunsCmd = &cobra.Command{
 	Use:   "runs <name>",
-	Short: "Show run history for a job agent",
-	Long: `List recent scheduled and manual runs for a job agent, newest first.
+	Short: "Show run history for an agent",
+	Long: `List recent scheduled and manual runs for an agent, newest first.
 
 Only cron and manual runs are shown; spawned runs belong to the parent agent's
 history and are excluded.`,
@@ -925,14 +924,14 @@ func runAgentsRuns(cmd *cobra.Command, args []string) error {
 // --- SCHEDULE (pause / resume a cron schedule) ---
 var agentsScheduleCmd = &cobra.Command{
 	Use:   "schedule",
-	Short: "Manage a job agent's cron schedule",
-	Long:  "Pause or resume the cron schedule of a job agent.",
+	Short: "Manage an agent's cron schedule",
+	Long:  "Pause or resume the cron schedule of an agent.",
 }
 
 var agentsSchedulePauseCmd = &cobra.Command{
 	Use:   "pause <name>",
-	Short: "Pause a job agent's cron schedule",
-	Long: `Pause a job agent's cron schedule: no scheduled runs fire until you resume.
+	Short: "Pause an agent's cron schedule",
+	Long: `Pause an agent's cron schedule: no scheduled runs fire until you resume.
 Manual runs ('afy run') are unaffected. Idempotent.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsSchedulePause,
@@ -1596,8 +1595,6 @@ func printAgentActionError(prefix string, err error) {
 		output.PrintInfo("Deploy it first: afy deploy")
 	case "AGENT_SCHEDULE_NOT_SET":
 		output.PrintInfo("Add `schedule:` to aetherfy.yaml and push (afy deploy).")
-	case "AGENT_RUN_REQUIRES_JOB_TYPE":
-		output.PrintInfo("Only `type: job` agents can be run on demand.")
 	}
 }
 
