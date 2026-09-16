@@ -893,11 +893,14 @@ func runAgentsRuns(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
 		return err
 	}
-	name := args[0]
+	return printAgentRuns(api.NewClient(), args[0])
+}
 
+// printAgentRuns renders one agent's run history. Takes the client so a test
+// can point it at a server of its own, the same seam `afy status` has.
+func printAgentRuns(client *api.Client, name string) error {
 	sp := output.NewSpinner("Fetching run history...")
 	sp.Start()
-	client := api.NewClient()
 	runs, err := client.ListAgentRuns(name, api.RunsQuery{Limit: runsLimit})
 	sp.Stop()
 	if err != nil {

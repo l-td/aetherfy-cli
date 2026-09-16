@@ -238,8 +238,10 @@ type RunAgentResponse struct {
 
 // AgentRun is one row from GET /agents/{id}/runs — the cron/manual run history.
 // State includes the terminal COMPLETED / FAILED outcomes (real results, not
-// just "started"). DurationSeconds is stopped-started when both machine
-// timestamps exist, else nil.
+// just "started"). DurationSeconds is computed by the server: for a task run,
+// machine stopped minus started; for a service run, which holds no machine of
+// its own and so has no machine timestamps, outcome reported minus dispatch
+// accepted. Nil until both bounds exist.
 type AgentRun struct {
 	ID               string     `json:"id"`
 	TriggerSource    string     `json:"trigger_source"`
