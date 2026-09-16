@@ -599,7 +599,17 @@ func showAgentStatus(client *api.Client, name string) error {
 		} else {
 			output.KeyValue("Next run", formatUTCTime(agent.CronNextRunAt))
 		}
-		output.KeyValue("Last run", formatLastRun(*agent))
+		// WHY the last tick did what it did, whenever the server recorded a
+		// reason. A skipped tick used to print `skipped` and nothing else, so a
+		// schedule that had stopped firing read as merely quiet (benchmark,
+		// 2026-09-16: every tick skipped behind a hung run, and `afy status`
+		// looked healthy). The reason is printed as the server sent it: the CLI
+		// keeps no list of reasons that could fall behind the server's.
+		lastRun := formatLastRun(*agent)
+		if agent.CronLastReason != "" {
+			lastRun = fmt.Sprintf("%s — %s", lastRun, agent.CronLastReason)
+		}
+		output.KeyValue("Last run", lastRun)
 	}
 	output.KeyValue("Created", agent.CreatedAt.Format("2006-01-02 15:04:05"))
 	output.KeyValue("Updated", agent.UpdatedAt.Format("2006-01-02 15:04:05"))
