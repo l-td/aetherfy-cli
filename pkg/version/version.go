@@ -45,7 +45,7 @@ var (
 )
 
 func init() {
-	fillFromBuildInfo()
+	fillFromBuildInfo(debug.ReadBuildInfo())
 }
 
 // fillFromBuildInfo recovers the version stamp for builds goreleaser did not
@@ -56,8 +56,11 @@ func init() {
 //
 // ldflags WIN. Each field is filled only while it still holds its sentinel, so
 // a release build's output is byte-identical to what it was before this existed.
-func fillFromBuildInfo() {
-	info, ok := debug.ReadBuildInfo()
+//
+// Takes the build info rather than reading it, so a test can hand it the
+// stamps a toolchain may or may not have embedded: a test binary only ever
+// sees its own.
+func fillFromBuildInfo(info *debug.BuildInfo, ok bool) {
 	if !ok {
 		// No build info (e.g. a binary built by a toolchain that omits it).
 		// Leave the sentinels alone — blanking them would replace a truthful

@@ -15,6 +15,8 @@ package test
 // binaries and runs them, the same shape as whoami_exit_contract_test.go.
 
 import (
+	"debug/buildinfo"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -22,6 +24,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/l-td/aetherfy-cli/pkg/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,6 +72,14 @@ func releaseVersionSymbol(t *testing.T) string {
 		regexp.MustCompile(`-X\s+(\S+/pkg/version\.Version)=`))
 }
 
+// gitDirIsADirectory reports whether the repo root's .git is a directory, the
+// one shape of git checkout the toolchain stamps a version from.
+func gitDirIsADirectory(t *testing.T) bool {
+	t.Helper()
+	fi, err := os.Stat(filepath.Join("..", ".git"))
+	return err == nil && fi.IsDir()
+}
+
 func TestVersionReportsTheEmbeddedBuildStamp(t *testing.T) {
 	// The regression this change exists to prevent. An unstamped `go build` must
 	// report the version the toolchain embedded, not the "dev" sentinel.
@@ -80,6 +91,26 @@ func TestVersionReportsTheEmbeddedBuildStamp(t *testing.T) {
 			"`afy version` must exit 0.\nstdout: %q\nstderr: %q", stdout, stderr)
 
 		reported := mustMatch(t, stdout, "`afy version` Version field", reportedVersionField)
+
+		// WHAT THE TOOLCHAIN ACTUALLY EMBEDDED in this binary, read back from it.
+		// The toolchain stamps a version only from a VCS root it recognises, and
+		// for git that is a `.git` DIRECTORY (cmd/go/internal/vcs: isDir: true).
+		// A linked `git worktree` has a `.git` FILE, so a plain build there
+		// embeds "(devel)" and the only truthful answer is the sentinel. The
+		// fallback's own rules are pinned checkout-independently in
+		// pkg/version/version_test.go.
+		info, err := buildinfo.ReadFile(bin)
+		require.NoError(t, err, "the built binary carries no readable build info")
+		if !gitDirIsADirectory(t) {
+			assert.Equal(t, info.Main.Version, "(devel)",
+				"this checkout's .git is not a directory, yet the toolchain embedded a version")
+			assert.Equal(t, version.UnsetVersion, reported,
+				"with nothing embedded (%q) `afy version` must report the sentinel, not invent a version",
+				info.Main.Version)
+			return
+		}
+		assert.Equal(t, info.Main.Version, reported,
+			"`afy version` does not report the version the toolchain embedded in the binary")
 
 		assert.NotContains(t, reported, "dev",
 			"a plain `go build` reports Version %q. The build info the toolchain embeds "+
