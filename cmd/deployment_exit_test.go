@@ -149,3 +149,27 @@ func TestRedeployExitsNonZeroWhenTheWaitRunsOut(t *testing.T) {
 		t.Errorf("stderr does not say the wait ran out:\n%s", stderr)
 	}
 }
+
+// The two failures are distinct errors, and this is what reads them apart: a
+// deployment that FAILED is not one we stopped waiting for, and a caller (or a
+// later exit-code split) must be able to tell. Without this the distinction is
+// written down and never checked.
+func TestTheWaitSaysWhichFailureItHad(t *testing.T) {
+	never := deploymentServer(t, "deploying", "", false)
+	var timedOut error
+	captureStderr(t, func() {
+		timedOut = watchDeployment(never, "tick", "d-4", fastPoll, 50*time.Millisecond)
+	})
+	if !errors.Is(timedOut, errDeploymentWatchTimedOut) {
+		t.Errorf("a deployment that never settled: want errDeploymentWatchTimedOut, got %v", timedOut)
+	}
+
+	failed := deploymentServer(t, "failed", imageGone, false)
+	var didFail error
+	captureStderr(t, func() {
+		didFail = watchDeployment(failed, "tick", "d-4", fastPoll, time.Minute)
+	})
+	if !errors.Is(didFail, errDeploymentFailed) {
+		t.Errorf("a deployment that failed: want errDeploymentFailed, got %v", didFail)
+	}
+}
