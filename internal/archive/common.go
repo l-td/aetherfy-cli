@@ -19,7 +19,7 @@ type AetherfyConfig struct {
 	KeepAlive  bool     `yaml:"keep_alive"`
 	Entrypoint string   `yaml:"entrypoint,omitempty"`
 	Workspace  string   `yaml:"workspace,omitempty"`
-	// Schedule is a 5-field UTC cron expression for top-level JOB agents.
+	// Schedule is a 5-field UTC cron expression for a top-level agent of either type.
 	// The server is the authoritative validator (CP-2) — the CLI never
 	// validates cron client-side; it is mutable via push (merge-patch:
 	// omitted=preserve, null=clear), so it must NOT get a runtime-style
