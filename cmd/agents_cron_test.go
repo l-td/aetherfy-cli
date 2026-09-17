@@ -61,14 +61,14 @@ func TestFormatUTCTime(t *testing.T) {
 	}
 }
 
-func TestFormatLastRun(t *testing.T) {
+func TestFormatLastTick(t *testing.T) {
 	// No fire yet.
-	if got := formatLastRun(api.Agent{}); got != "never" {
+	if got := formatLastTick(api.Agent{}); got != "never" {
 		t.Errorf("empty: got %q, want never", got)
 	}
 	// Fired with a recent timestamp -> badge + relative time.
 	last := time.Now().Add(-5 * time.Minute)
-	got := formatLastRun(api.Agent{CronLastStatus: "fired", CronLastRunAt: &last})
+	got := formatLastTick(api.Agent{CronLastStatus: "fired", CronLastRunAt: &last})
 	if !strings.Contains(got, "fired") || !strings.Contains(got, "ago") {
 		t.Errorf("fired: got %q, want it to contain 'fired' and 'ago'", got)
 	}

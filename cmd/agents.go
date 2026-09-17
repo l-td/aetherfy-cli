@@ -31,10 +31,15 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	return printAgentList(api.NewClient())
+}
+
+// printAgentList is `afy list` past the auth check. Takes the client so a test
+// can point it at a server of its own, the same seam `afy status` has.
+func printAgentList(client *api.Client) error {
 	sp := output.NewSpinner("Fetching agents...")
 	sp.Start()
 
-	client := api.NewClient()
 	agents, err := client.ListAgents()
 	sp.Stop()
 
@@ -102,7 +107,7 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 		}
 		row = append(row, formatRegions(a.Regions))
 		if anyScheduled {
-			schedCell, nextCell, lastCell := "", "", ""
+			schedCell, nextCell := "", ""
 			if a.CronSchedule != "" {
 				schedCell = a.CronSchedule
 				if a.CronPaused {
@@ -110,9 +115,8 @@ func runAgentsList(cmd *cobra.Command, args []string) error {
 				} else {
 					nextCell = formatUTCTime(a.CronNextRunAt)
 				}
-				lastCell = formatLastRun(a)
 			}
-			row = append(row, schedCell, nextCell, lastCell)
+			row = append(row, schedCell, nextCell, formatListLastRun(a))
 		}
 		row = append(row, a.ID)
 		table.Append(row)
@@ -608,7 +612,7 @@ func showAgentStatus(client *api.Client, name string) error {
 		// (benchmark, 2026-09-16: every tick skipped behind a hung run, and
 		// `afy status` looked healthy).
 		if agent.CronLastStatus != "" && !strings.EqualFold(agent.CronLastStatus, "fired") {
-			lastTick := formatLastRun(*agent)
+			lastTick := formatLastTick(*agent)
 			if agent.CronLastReason != "" {
 				lastTick = fmt.Sprintf("%s — %s", lastTick, agent.CronLastReason)
 			}
@@ -1662,10 +1666,10 @@ func formatUTCTime(t *time.Time) string {
 	return t.UTC().Format("2006-01-02 15:04") + " UTC"
 }
 
-// formatLastRun renders a schedule's last fire outcome for the detail/list
-// views: a colored fired/skipped/missed badge plus a relative timestamp. Reads
-// as "never" when the schedule has not fired yet.
-func formatLastRun(a api.Agent) string {
+// formatLastTick renders what a schedule last DID -- a colored
+// fired/skipped/missed badge plus a relative timestamp -- which is not how a run
+// went (formatAgentLastRun). Reads as "never" when the schedule has not fired.
+func formatLastTick(a api.Agent) string {
 	if a.CronLastStatus == "" && a.CronLastRunAt == nil {
 		return "never"
 	}
@@ -1674,6 +1678,28 @@ func formatLastRun(a api.Agent) string {
 		return fmt.Sprintf("%s (%s)", badge, relativeTime(*a.CronLastRunAt))
 	}
 	return badge
+}
+
+// formatListLastRun renders the Last Run cell of `afy list`: the last run's
+// outcome and how long ago it started ("failed, 2m ago"), and the schedule's
+// decision only when it did not start a run, labelled as a tick on a second
+// line of the cell ("tick skipped (5m ago)"). The column used to hold that
+// decision alone, so a failed run read "fired" under a header that says run
+// (benchmark run 4, N1). The reason a run failed is `afy status`'s to print;
+// a table cell is not the place for a traceback's last line. Empty for an
+// agent with neither a run nor a schedule.
+func formatListLastRun(a api.Agent) string {
+	if a.LastRun == nil && a.CronSchedule == "" {
+		return ""
+	}
+	cell := "never"
+	if a.LastRun != nil {
+		cell = fmt.Sprintf("%s, %s", formatRunState(a.LastRun.State), relativeTime(a.LastRun.CreatedAt))
+	}
+	if a.CronLastStatus != "" && !strings.EqualFold(a.CronLastStatus, "fired") {
+		cell = fmt.Sprintf("%s\ntick %s", cell, formatLastTick(a))
+	}
+	return cell
 }
 
 // formatAgentLastRun renders an agent's most recent run for `afy status`:
