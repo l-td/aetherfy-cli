@@ -133,12 +133,16 @@ type AgentUpdateRequest struct {
 
 // Deployment represents a deployment
 type Deployment struct {
-	ID           string   `json:"id"`
-	AgentID      string   `json:"agent_id"`
-	Version      int      `json:"version"`
-	Status       string   `json:"state"`
-	Regions      []string `json:"regions,omitempty"`
-	ErrorMessage string   `json:"error_message,omitempty"`
+	ID      string `json:"id"`
+	AgentID string `json:"agent_id"`
+	Version int    `json:"version"`
+	// On a run, the release it executed; Version is the run's own place in the
+	// sequence. Nil on a release. No omitempty: `-o json` says null rather than
+	// dropping the key, as AgentRun.ReleaseVersion does.
+	ReleaseVersion *int     `json:"release_version"`
+	Status         string   `json:"state"`
+	Regions        []string `json:"regions,omitempty"`
+	ErrorMessage   string   `json:"error_message,omitempty"`
 	// WHICH BUILD STEP FAILED, and what it printed. ErrorMessage above is the
 	// server's mapped headline; one sentence covers a pip resolution failure, a
 	// missing lockfile and a step that ran out of memory, so on its own it

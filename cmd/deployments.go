@@ -15,7 +15,8 @@ var deploymentsCmd = &cobra.Command{
 	Short: "List deployment history for an agent",
 	Long: `List all deployments for an agent, ordered newest first.
 
-Shows version, state, creation time, and error message for failed deployments.
+Shows version, state, the release a run executed, creation time, and error
+message for failed deployments.
 Use --output json for machine-readable output.`,
 	Example: `  # List deployments for an agent
   afy deployments my-agent
@@ -31,9 +32,12 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	agentID := args[0]
-	client := api.NewClient()
+	return printDeployments(api.NewClient(), args[0])
+}
 
+// printDeployments is `afy deployments` past the auth check. Takes the client so
+// a test can point it at a server of its own, the same seam `afy status` has.
+func printDeployments(client *api.Client, agentID string) error {
 	sp := output.NewSpinner("Fetching deployment history...")
 	sp.Start()
 	deployments, err := client.ListDeployments(agentID)
@@ -55,7 +59,7 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	table := output.Table([]string{"Version", "State", "Created", "Error"})
+	table := output.Table([]string{"Version", "State", "Release", "Created", "Error"})
 	for _, d := range deployments {
 		errMsg := ""
 		if d.ErrorMessage != "" {
@@ -76,6 +80,9 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 		table.Append([]string{
 			fmt.Sprintf("v%d", d.Version),
 			stateCell,
+			// The release a RUN executed (a dash on a release row, whose own
+			// number is Version), as `afy runs` prints it.
+			formatReleaseVersion(d.ReleaseVersion),
 			d.CreatedAt.Format("2006-01-02 15:04"),
 			errMsg,
 		})
