@@ -15,16 +15,16 @@ import (
 
 var spawnCmd = &cobra.Command{
 	Use:   "spawn <parent-agent> <child-agent>",
-	Short: "Spawn a JOB agent from a parent agent",
-	Long: `Spawn a JOB agent from a parent SERVICE agent.
+	Short: "Spawn a run of an agent from a parent agent",
+	Long: `Spawn a run of an agent, of either type, from a parent agent.
 
-This triggers an ephemeral execution of the child JOB agent. The JOB agent
-will run once and terminate when complete. Payload data is passed via
-AETHERFY_SPAWN_PAYLOAD environment variable.
+A job child runs its entrypoint once, on a machine of its own if its machines
+are busy. A service child is sent one request to its POST /aetherfy/run. The
+parent is recorded on the run, not on the child, so a child with a schedule
+keeps it.
 
-The parent agent must have spawn_enabled=true.
-The child agent must be of type JOB.`,
-	Example: `  # Spawn a JOB agent with JSON payload
+The parent agent must have spawn_enabled=true.`,
+	Example: `  # Spawn an agent with JSON payload
   afy spawn my-service my-job --payload '{"task": "process", "id": 123}'
 
   # Spawn with payload from file
