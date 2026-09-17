@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/config"
 )
 
 // A SERVICE RUN HAS A DURATION TOO. It holds no machine of its own, so it has
@@ -56,5 +59,68 @@ func TestRunsPrintsNoDurationWhenTheServerSendsNone(t *testing.T) {
 	}
 	if !strings.Contains(out, "run-svc") {
 		t.Errorf("the run row is missing:\n%s", out)
+	}
+}
+
+// BENCHMARK RUNS 3 AND 4. The table printed local time with no zone while
+// `-o json` printed UTC, so the same run read two hours apart. The table prints
+// the JSON's instant, in UTC, marked.
+func TestRunsTablePrintsTheJSONsInstantInUTC(t *testing.T) {
+	// The terminal's zone is not UTC here, as it was not for the benchmark: on a
+	// UTC machine local time and UTC print the same, and this could not fail.
+	previous := time.Local
+	time.Local = time.FixedZone("CEST", 2*3600)
+	t.Cleanup(func() { time.Local = previous })
+
+	out := runsTable(t, `[{"id":"run-utc","trigger_source":"cron","state":"completed",`+
+		`"created_at":"2026-09-17T12:00:21Z","duration_seconds":6}]`)
+
+	if !strings.Contains(out, "2026-09-17 12:00 UTC") {
+		t.Errorf("the run's time is not the UTC instant, marked:\n%s", out)
+	}
+}
+
+// BENCHMARK RUN 4, N3. Which release a run executed was inferred from
+// timestamps; each row now names it, and a run the server recorded none for
+// says so rather than borrowing a number.
+func TestRunsTableNamesTheReleaseEachRunExecuted(t *testing.T) {
+	out := runsTable(t, `[`+
+		`{"id":"run-new","trigger_source":"cron","state":"failed","created_at":"2026-09-17T12:20:09Z","release_version":3},`+
+		`{"id":"run-old","trigger_source":"cron","state":"completed","created_at":"2026-09-17T12:00:21Z","release_version":null}]`)
+
+	rows := map[string]string{}
+	for _, line := range strings.Split(out, "\n") {
+		for _, id := range []string{"run-new", "run-old"} {
+			if strings.Contains(line, id) {
+				rows[id] = line
+			}
+		}
+	}
+	if !strings.Contains(rows["run-new"], "v3") {
+		t.Errorf("the run that executed v3 does not say so: %q", rows["run-new"])
+	}
+	if strings.Contains(rows["run-old"], "v3") || !strings.Contains(rows["run-old"], " - ") {
+		t.Errorf("a run with no recorded release must print a dash: %q", rows["run-old"])
+	}
+}
+
+func TestRunsJSONCarriesTheReleaseAndSaysNullWhenThereIsNone(t *testing.T) {
+	previous := config.Get().OutputFormat
+	config.SetOutputFormat("json")
+	t.Cleanup(func() { config.SetOutputFormat(previous) })
+
+	out := runsTable(t, `[`+
+		`{"id":"run-new","trigger_source":"cron","state":"failed","created_at":"2026-09-17T12:20:09Z","release_version":3},`+
+		`{"id":"run-old","trigger_source":"cron","state":"completed","created_at":"2026-09-17T12:00:21Z","release_version":null}]`)
+
+	var runs []map[string]any
+	if err := json.Unmarshal([]byte(out), &runs); err != nil {
+		t.Fatalf("afy runs -o json printed no JSON: %v\n%s", err, out)
+	}
+	if len(runs) != 2 || runs[0]["release_version"] != float64(3) {
+		t.Fatalf("the first run's release is missing: %v", runs)
+	}
+	if value, present := runs[1]["release_version"]; !present || value != nil {
+		t.Errorf("a run with no recorded release must say null, not drop the key: %v", runs[1])
 	}
 }

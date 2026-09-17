@@ -599,17 +599,27 @@ func showAgentStatus(client *api.Client, name string) error {
 		} else {
 			output.KeyValue("Next run", formatUTCTime(agent.CronNextRunAt))
 		}
-		// WHY the last tick did what it did, whenever the server recorded a
-		// reason. A skipped tick used to print `skipped` and nothing else, so a
-		// schedule that had stopped firing read as merely quiet (benchmark,
-		// 2026-09-16: every tick skipped behind a hung run, and `afy status`
-		// looked healthy). The reason is printed as the server sent it: the CLI
-		// keeps no list of reasons that could fall behind the server's.
-		lastRun := formatLastRun(*agent)
-		if agent.CronLastReason != "" {
-			lastRun = fmt.Sprintf("%s — %s", lastRun, agent.CronLastReason)
+		// WHAT THE SCHEDULE LAST DID, on its own line and only when it did not
+		// fire. "fired" says a run was started, not how it went -- the run's
+		// outcome is the Last run line below -- so printing it read as success
+		// about a run that had failed (benchmark run 4, N1). A skipped or missed
+		// tick is news, with the reason the server recorded, as it sent it: the
+		// CLI keeps no list of reasons that could fall behind the server's
+		// (benchmark, 2026-09-16: every tick skipped behind a hung run, and
+		// `afy status` looked healthy).
+		if agent.CronLastStatus != "" && !strings.EqualFold(agent.CronLastStatus, "fired") {
+			lastTick := formatLastRun(*agent)
+			if agent.CronLastReason != "" {
+				lastTick = fmt.Sprintf("%s — %s", lastTick, agent.CronLastReason)
+			}
+			output.KeyValue("Last tick", lastTick)
 		}
-		output.KeyValue("Last run", lastRun)
+	}
+	// THE MOST RECENT RUN'S OUTCOME, and when it failed, why -- whatever
+	// started it. Printed for any agent that has run or has a schedule to run
+	// it; a service nobody has ever run has nothing to say here.
+	if agent.LastRun != nil || agent.CronSchedule != "" {
+		output.KeyValue("Last run", formatAgentLastRun(agent.LastRun))
 	}
 	output.KeyValue("Created", agent.CreatedAt.Format("2006-01-02 15:04:05"))
 	output.KeyValue("Updated", agent.UpdatedAt.Format("2006-01-02 15:04:05"))
@@ -909,13 +919,17 @@ func printAgentRuns(client *api.Client, name string) error {
 		return nil
 	}
 
-	table := output.Table([]string{"When", "Trigger", "State", "Duration", "Run ID"})
+	table := output.Table([]string{"When", "Trigger", "State", "Release", "Duration", "Run ID"})
 	for i := range runs {
 		r := runs[i]
 		table.Append([]string{
-			r.CreatedAt.Local().Format("2006-01-02 15:04"),
+			// UTC, MARKED, the instant `-o json` prints. The table used to print
+			// local time with no zone next to a JSON that says UTC, so the same
+			// run read two hours apart (benchmark runs 3 and 4).
+			formatUTCTime(&r.CreatedAt),
 			r.TriggerSource,
 			formatRunState(r.State),
+			formatReleaseVersion(r.ReleaseVersion),
 			formatRunDuration(r.DurationSeconds),
 			r.ID,
 		})
@@ -1620,6 +1634,15 @@ func formatRunState(state string) string {
 	}
 }
 
+// formatReleaseVersion renders the release a run executed as `afy deployments`
+// numbers it; a dash when the server recorded none.
+func formatReleaseVersion(v *int) string {
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("v%d", *v)
+}
+
 // formatRunDuration renders a run's duration; nil (a run still in flight, or one
 // with no machine timing yet) shows a dash.
 func formatRunDuration(seconds *float64) string {
@@ -1651,6 +1674,20 @@ func formatLastRun(a api.Agent) string {
 		return fmt.Sprintf("%s (%s)", badge, relativeTime(*a.CronLastRunAt))
 	}
 	return badge
+}
+
+// formatAgentLastRun renders an agent's most recent run for `afy status`:
+// its state, the server's reason when it failed, and how long ago it started --
+// "failed (run exited with code 1), 2m ago". "never" when it has not run.
+func formatAgentLastRun(r *api.LastRun) string {
+	if r == nil {
+		return "never"
+	}
+	state := formatRunState(r.State)
+	if strings.EqualFold(r.State, "failed") && r.ErrorMessage != "" {
+		state = fmt.Sprintf("%s (%s)", state, r.ErrorMessage)
+	}
+	return fmt.Sprintf("%s, %s", state, relativeTime(r.CreatedAt))
 }
 
 // formatCronStatusBadge colorizes a cron_last_status value:

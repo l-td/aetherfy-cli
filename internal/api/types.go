@@ -87,6 +87,20 @@ type Agent struct {
 	CronLastRunAt  *time.Time `json:"cron_last_run_at,omitempty"`
 	CronLastStatus string     `json:"cron_last_status,omitempty"`
 	CronLastReason string     `json:"cron_last_reason,omitempty"`
+	// The agent's most recent scheduled or manual run, as `afy runs` lists it:
+	// what the RUN did, where CronLastStatus is what the schedule did. Nil when
+	// the agent has never run.
+	LastRun *LastRun `json:"last_run,omitempty"`
+}
+
+// LastRun is AgentResponse.last_run: the outcome of an agent's most recent run.
+type LastRun struct {
+	ID             string    `json:"id"`
+	TriggerSource  string    `json:"trigger_source"`
+	State          string    `json:"state"`
+	CreatedAt      time.Time `json:"created_at"`
+	ErrorMessage   string    `json:"error_message,omitempty"`
+	ReleaseVersion *int      `json:"release_version"`
 }
 
 // AgentCreateRequest is the request body for creating an agent
@@ -248,11 +262,14 @@ type RunAgentResponse struct {
 // its own and so has no machine timestamps, outcome reported minus dispatch
 // accepted. Nil until both bounds exist.
 type AgentRun struct {
-	ID               string     `json:"id"`
-	TriggerSource    string     `json:"trigger_source"`
-	State            string     `json:"state"`
-	CreatedAt        time.Time  `json:"created_at"`
-	ErrorMessage     string     `json:"error_message,omitempty"`
+	ID            string    `json:"id"`
+	TriggerSource string    `json:"trigger_source"`
+	State         string    `json:"state"`
+	CreatedAt     time.Time `json:"created_at"`
+	ErrorMessage  string    `json:"error_message,omitempty"`
+	// The release the run executed. No omitempty: `afy runs -o json` says
+	// null for a run the server recorded none for, rather than dropping the key.
+	ReleaseVersion   *int       `json:"release_version"`
 	MachineStartedAt *time.Time `json:"machine_started_at,omitempty"`
 	MachineStoppedAt *time.Time `json:"machine_stopped_at,omitempty"`
 	DurationSeconds  *float64   `json:"duration_seconds,omitempty"`
