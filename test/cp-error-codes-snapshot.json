@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 122
+      "count": 121
     },
     {
       "path": "api/routes/regions.py",
@@ -157,10 +157,6 @@
       "tier": "top-level"
     },
     "AGENT_RUN_INELIGIBLE_STATE": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "AGENT_SCHEDULE_NOT_ALLOWED_ON_WORKER": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

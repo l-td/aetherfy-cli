@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
@@ -257,22 +258,16 @@ func TestUpdateAgentDescriptionOnlyOmitsWorkspace(t *testing.T) {
 
 // --- spawn relationship visibility (PR 4) ---
 
-// Agent struct pulls allowed_workers / parent_agent_id through from the
-// server's AgentResponse.
+// Agent struct pulls allowed_workers through from the server's AgentResponse.
 func TestAgentDeserializesSpawnFields(t *testing.T) {
-	parentID := "parent-id"
 	agent := api.Agent{
 		ID:             "job-1",
 		Name:           "my-job",
 		AgentType:      "job",
 		AllowedWorkers: []string{"a", "b"},
-		ParentAgentID:  &parentID,
 	}
 	if len(agent.AllowedWorkers) != 2 {
 		t.Errorf("Expected 2 allowed workers, got %d", len(agent.AllowedWorkers))
-	}
-	if agent.ParentAgentID == nil || *agent.ParentAgentID != "parent-id" {
-		t.Errorf("Expected ParentAgentID 'parent-id', got %v", agent.ParentAgentID)
 	}
 }
 
@@ -314,17 +309,18 @@ func TestSpawnableByEmptyWhenNoSpawner(t *testing.T) {
 	}
 }
 
-// Case 3: JOB instance with a parent → resolve parent_agent_id to the
-// SERVICE's name from the already-fetched agent list.
-func TestAgentNameByIDResolvesParent(t *testing.T) {
-	all := []api.Agent{
-		{ID: "svc-id", Name: "my-service", AgentType: "service"},
-		{ID: "job-id", Name: "my-job", AgentType: "job"},
+// No agent carries a parent: a status for a job lists who MAY spawn it and
+// never a "Spawned by" line, whatever extra field a server sends.
+func TestStatusPrintsNoSpawnedByLine(t *testing.T) {
+	var agent api.Agent
+	if err := json.Unmarshal([]byte(`{"id":"j1","name":"my-job","agent_type":"job","parent_agent_id":"s1"}`), &agent); err != nil {
+		t.Fatalf("unmarshal: %v", err)
 	}
-	if name := api.AgentNameByID("svc-id", all); name != "my-service" {
-		t.Errorf("Expected 'my-service', got %q", name)
+	encoded, err := json.Marshal(agent)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
 	}
-	if name := api.AgentNameByID("missing", all); name != "" {
-		t.Errorf("Expected empty string for unknown id, got %q", name)
+	if strings.Contains(string(encoded), "parent_agent_id") {
+		t.Errorf("the Agent type still carries a parent field: %s", encoded)
 	}
 }

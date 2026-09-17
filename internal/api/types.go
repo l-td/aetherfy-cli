@@ -32,12 +32,10 @@ type Agent struct {
 	// carrying a fragment of the owner's account id.
 	Deployed bool   `json:"deployed"`
 	URL      string `json:"url,omitempty"`
-	// AllowedWorkers / ParentAgentID pull through from the server's
-	// AgentResponse (no new server work). AllowedWorkers lists the JOB
-	// names a SERVICE may spawn; ParentAgentID is the SERVICE that spawned
-	// this JOB instance (nil for non-spawned / standalone agents).
+	// AllowedWorkers pulls through from the server's AgentResponse: the agent
+	// names this agent may spawn. There is no parent field: who spawned a run
+	// is recorded on the run, never on the agent.
 	AllowedWorkers []string  `json:"allowed_workers,omitempty"`
-	ParentAgentID  *string   `json:"parent_agent_id,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 	// Derived resource health from the server's AgentResponse (control-plane

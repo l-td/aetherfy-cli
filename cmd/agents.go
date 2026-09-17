@@ -632,7 +632,7 @@ func showAgentStatus(client *api.Client, name string) error {
 
 // printSpawnRelationships renders the field-level spawn relationships for an
 // agent. For JOBs it fetches the full agent list ONCE to compute the reverse
-// "spawnable by" view and resolve the parent's name — no new endpoint.
+// "spawnable by" view — no new endpoint.
 func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 	output.Println("")
 	switch strings.ToLower(agent.AgentType) {
@@ -655,13 +655,6 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 			output.KeyValue("Spawnable by", "["+strings.Join(spawnableBy, ", ")+"]")
 		} else {
 			output.KeyValue("Spawnable by", "(none)")
-		}
-		if agent.ParentAgentID != nil {
-			name := api.AgentNameByID(*agent.ParentAgentID, all)
-			if name == "" {
-				name = *agent.ParentAgentID
-			}
-			output.KeyValue("Spawned by", name)
 		}
 	}
 }

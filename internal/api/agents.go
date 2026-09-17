@@ -28,17 +28,6 @@ func SpawnableBy(jobName string, agents []Agent) []string {
 	return out
 }
 
-// AgentNameByID resolves an agent ID to its name using a previously-fetched
-// agent list. Returns "" if no agent in the list has that ID.
-func AgentNameByID(id string, agents []Agent) string {
-	for i := range agents {
-		if agents[i].ID == id {
-			return agents[i].Name
-		}
-	}
-	return ""
-}
-
 // ListAgents returns all agents for the authenticated user
 func (c *Client) ListAgents() ([]Agent, error) {
 	var agents []Agent
