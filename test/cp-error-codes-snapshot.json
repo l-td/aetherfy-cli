@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 121
+      "count": 122
     },
     {
       "path": "api/routes/regions.py",
@@ -161,6 +161,10 @@
       "tier": "top-level"
     },
     "AGENT_SCHEDULE_NOT_SET": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SERVICE_NOT_RUNNING": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
