@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 124
+      "count": 122
     },
     {
       "path": "api/routes/regions.py",
@@ -33,10 +33,6 @@
       "tier": "top-level"
     },
     "AGENT_CHILD_NOT_DEPLOYED": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "AGENT_CHILD_NOT_JOB_TYPE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -156,11 +152,11 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_RUN_INELIGIBLE_STATE": {
+    "AGENT_RUN_CONCURRENCY_LIMIT_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_RUN_IN_PROGRESS": {
+    "AGENT_RUN_INELIGIBLE_STATE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -169,10 +165,6 @@
       "tier": "top-level"
     },
     "AGENT_SCHEDULE_NOT_SET": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "AGENT_SPAWN_CONCURRENCY_LIMIT_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
