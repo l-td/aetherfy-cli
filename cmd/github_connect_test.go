@@ -93,6 +93,8 @@ func connected() map[string]interface{} {
 		"installation_id": 4242,
 		"connected_at":    "2026-09-04T10:00:00Z",
 		"manage_url":      "https://github.com/apps/aetherfy-bot/installations/new",
+		"account_login":   "aetherfy-ai",
+		"account_type":    "Organization",
 	}
 }
 
@@ -416,6 +418,50 @@ func TestStatusShowsWhereToManageRepositoryAccess(t *testing.T) {
 	}
 	if status.ManageURL != "" {
 		t.Errorf("manage_url: want empty, got %q", status.ManageURL)
+	}
+}
+
+// `status` names WHICH GitHub account is connected, not merely that one is.
+// One installation is stored per Aetherfy account, so installing the App on an
+// organisation replaces a personal one silently, and agents linked to the
+// displaced account's repositories fail on every push. The account name is the
+// only signal available before a deployment fails.
+func TestStatusNamesTheConnectedAccount(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(connected())
+	}))
+	defer srv.Close()
+	client := api.NewClientWithURL(srv.URL, "afy_test_key")
+
+	status, err := client.GitHubStatus()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if status.AccountLogin != "aetherfy-ai" {
+		t.Errorf("account_login: want aetherfy-ai, got %q", status.AccountLogin)
+	}
+	if status.AccountType != "Organization" {
+		t.Errorf("account_type: want Organization, got %q", status.AccountType)
+	}
+
+	out := captureStdout(t, func() {
+		printGitHubConnection(status, "GitHub connected")
+	})
+	if !strings.Contains(out, "aetherfy-ai (organisation)") {
+		t.Errorf("status must name the account it is connected to, got:\n%s", out)
+	}
+}
+
+// GitHub's word is passed through verbatim, so an account kind this build has
+// never heard of must print the login alone. A wrong noun beside a correct
+// name reads as a bug in the name.
+func TestAnUnknownAccountKindPrintsNoNoun(t *testing.T) {
+	if got := githubAccountKind("Enterprise"); got != "" {
+		t.Errorf("unknown kind must render nothing, got %q", got)
+	}
+	if got := githubAccountKind("User"); got != " (personal account)" {
+		t.Errorf("User: got %q", got)
 	}
 }
 

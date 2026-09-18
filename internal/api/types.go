@@ -356,9 +356,20 @@ type GitHubStatus struct {
 	InstallationID *int64     `json:"installation_id,omitempty"`
 	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
 	// ManageURL is where the user changes which repositories Aetherfy can
-	// see. Built server-side, because it needs the App's name and the CLI
-	// has no way to know it. Empty when the server has no App configured.
+	// see. Read from GitHub server-side, not assembled: the path encodes the
+	// account type, and the personal form 404s for an organisation. Empty
+	// when the server has no App configured or could not reach GitHub.
 	ManageURL string `json:"manage_url,omitempty"`
+	// AccountLogin is the GitHub account the App is installed ON — an
+	// organisation, or a person. NOT necessarily the account the user signs
+	// in with: one installation is stored per Aetherfy account, so installing
+	// on an organisation replaces a personal one, and this is the only field
+	// that says which one is current. Empty when GitHub was unreachable;
+	// Connected stays authoritative.
+	AccountLogin string `json:"account_login,omitempty"`
+	// AccountType is GitHub's own word for the account kind, verbatim:
+	// "User" or "Organization". Travels with AccountLogin.
+	AccountType string `json:"account_type,omitempty"`
 }
 
 // GitHubRepoChoice is one repository the account's App installation can reach.

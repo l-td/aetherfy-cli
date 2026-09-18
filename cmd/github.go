@@ -226,11 +226,36 @@ func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt 
 // three different ways.
 func printGitHubConnection(status *api.GitHubStatus, headline string) {
 	output.PrintSuccess(headline)
+	// WHICH account, printed first and above the id, because it is the field
+	// a person can act on. One installation is stored per Aetherfy account,
+	// so installing the App on an organisation replaces a personal one
+	// silently; agents linked to the displaced account's repositories then
+	// fail on every push. Empty when the server could not reach GitHub, and
+	// then this line is absent rather than blank.
+	if status.AccountLogin != "" {
+		output.KeyValue("Account", status.AccountLogin+githubAccountKind(status.AccountType))
+	}
 	if status.InstallationID != nil {
 		output.KeyValue("Installation ID", fmt.Sprintf("%d", *status.InstallationID))
 	}
 	if status.ConnectedAt != nil {
 		output.KeyValue("Connected at", status.ConnectedAt.Local().Format(time.RFC1123))
+	}
+}
+
+// githubAccountKind renders GitHub's account kind in this product's words.
+// The control plane passes "User" / "Organization" through verbatim so the
+// wording is a client's choice; this is that choice. An unrecognised kind
+// renders NOTHING rather than a guess — the login alone is already the useful
+// half, and a wrong noun beside a correct name reads as a bug in the name.
+func githubAccountKind(accountType string) string {
+	switch accountType {
+	case "Organization":
+		return " (organisation)"
+	case "User":
+		return " (personal account)"
+	default:
+		return ""
 	}
 }
 
