@@ -357,13 +357,13 @@ type GitHubStatus struct {
 	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
 	// ManageURL is where the user changes which repositories Aetherfy can
 	// see. Read from GitHub server-side, not assembled: the path encodes the
-	// account type, and the personal form 404s for an organisation. Empty
+	// account type, and the personal form 404s for an organization. Empty
 	// when the server has no App configured or could not reach GitHub.
 	ManageURL string `json:"manage_url,omitempty"`
 	// AccountLogin is the GitHub account the App is installed ON — an
-	// organisation, or a person. NOT necessarily the account the user signs
+	// organization, or a person. NOT necessarily the account the user signs
 	// in with: one installation is stored per Aetherfy account, so installing
-	// on an organisation replaces a personal one, and this is the only field
+	// on an organization replaces a personal one, and this is the only field
 	// that says which one is current. Empty when GitHub was unreachable;
 	// Connected stays authoritative.
 	AccountLogin string `json:"account_login,omitempty"`
@@ -387,7 +387,7 @@ type GitHubRepoChoice struct {
 // GitHubRepoList is the answer from GET /auth/github/repositories.
 //
 // Account is WHOSE these are: the login the App is installed on, which is an
-// organisation as often as a person and need not be the caller's own. That is
+// organization as often as a person and need not be the caller's own. That is
 // the half of `owner/repo` a user has no reliable way to know, and the reason
 // a mistyped owner and a repository the App was never granted come back as one
 // indistinguishable 404.

@@ -423,7 +423,7 @@ func TestStatusShowsWhereToManageRepositoryAccess(t *testing.T) {
 
 // `status` names WHICH GitHub account is connected, not merely that one is.
 // One installation is stored per Aetherfy account, so installing the App on an
-// organisation replaces a personal one silently, and agents linked to the
+// organization replaces a personal one silently, and agents linked to the
 // displaced account's repositories fail on every push. The account name is the
 // only signal available before a deployment fails.
 func TestStatusNamesTheConnectedAccount(t *testing.T) {
@@ -448,7 +448,7 @@ func TestStatusNamesTheConnectedAccount(t *testing.T) {
 	out := captureStdout(t, func() {
 		printGitHubConnection(status, "GitHub connected")
 	})
-	if !strings.Contains(out, "aetherfy-ai (organisation)") {
+	if !strings.Contains(out, "aetherfy-ai (organization)") {
 		t.Errorf("status must name the account it is connected to, got:\n%s", out)
 	}
 }

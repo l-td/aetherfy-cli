@@ -228,7 +228,7 @@ func printGitHubConnection(status *api.GitHubStatus, headline string) {
 	output.PrintSuccess(headline)
 	// WHICH account, printed first and above the id, because it is the field
 	// a person can act on. One installation is stored per Aetherfy account,
-	// so installing the App on an organisation replaces a personal one
+	// so installing the App on an organization replaces a personal one
 	// silently; agents linked to the displaced account's repositories then
 	// fail on every push. Empty when the server could not reach GitHub, and
 	// then this line is absent rather than blank.
@@ -251,7 +251,7 @@ func printGitHubConnection(status *api.GitHubStatus, headline string) {
 func githubAccountKind(accountType string) string {
 	switch accountType {
 	case "Organization":
-		return " (organisation)"
+		return " (organization)"
 	case "User":
 		return " (personal account)"
 	default:
@@ -473,7 +473,7 @@ These are the only repositories 'afy github link' accepts. Linking registers a
 webhook ON the repository, so a repository the App cannot reach cannot be
 linked, whoever owns it.
 
-The account shown is the one the App is installed on. It is an organisation as
+The account shown is the one the App is installed on. It is an organization as
 often as a person, and it is NOT necessarily your GitHub username -- which is
 the half of owner/repo there is otherwise no way to look up.
 
