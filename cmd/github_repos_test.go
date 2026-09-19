@@ -26,9 +26,19 @@ func reposServer(t *testing.T, status int, body string) *httptest.Server {
 	return srv
 }
 
-const twoRepos = `{"account":"acme","repositories":[` +
-	`{"full_name":"acme/apple","private":false,"default_branch":"main"},` +
-	`{"full_name":"acme/zebra","private":true,"default_branch":"trunk"}]}`
+const twoRepos = `{"repositories":[` +
+	`{"full_name":"acme/apple","private":false,"default_branch":"main",` +
+	`"installation_id":1,"account_login":"acme","account_type":"Organization"},` +
+	`{"full_name":"acme/zebra","private":true,"default_branch":"trunk",` +
+	`"installation_id":1,"account_login":"acme","account_type":"Organization"}]}`
+
+// TWO ACCOUNTS in one list — the union an Aetherfy account holding a personal
+// installation and an organization one actually returns.
+const twoAccounts = `{"repositories":[` +
+	`{"full_name":"acme/apple","private":false,"default_branch":"main",` +
+	`"installation_id":1,"account_login":"acme","account_type":"Organization"},` +
+	`{"full_name":"l-td/templates","private":false,"default_branch":"main",` +
+	`"installation_id":2,"account_login":"l-td","account_type":"User"}]}`
 
 // THE WHOLE REASON THIS EXISTS. A 404 from link means a mistyped repo, a
 // mistyped OWNER, or a repository the App was never granted, and the owner is
@@ -47,6 +57,39 @@ func TestLinkableReposListsWhatCanBeLinked(t *testing.T) {
 	}
 	if !strings.Contains(out, "acme") {
 		t.Errorf("did not name the account:\n%s", out)
+	}
+}
+
+// An owner that matches ONE of several connected accounts is not a wrong
+// owner. Before the union this could not arise — there was one account, so
+// "not that one" meant "wrong" — and a check that still compared against a
+// single account would blame the owner of every repository on the second one.
+func TestLinkableReposStaysQuietWhenTheOwnerIsOneOfSeveral(t *testing.T) {
+	srv := reposServer(t, http.StatusOK, twoAccounts)
+	client := api.NewClientWithURL(srv.URL, "afy_test_key")
+
+	out := captureStdout(t, func() { printLinkableRepos(client, "l-td/typo") })
+
+	if strings.Contains(out, "not on the owner you named") {
+		t.Errorf("blamed an owner that IS connected:\n%s", out)
+	}
+}
+
+// ...and when the owner is on neither, BOTH accounts are named. Naming only
+// the first would send someone to install on an account they already have.
+func TestLinkableReposNamesEveryAccountWhenTheOwnerIsOnNone(t *testing.T) {
+	srv := reposServer(t, http.StatusOK, twoAccounts)
+	client := api.NewClientWithURL(srv.URL, "afy_test_key")
+
+	out := captureStdout(t, func() { printLinkableRepos(client, "stranger/apple") })
+
+	if !strings.Contains(out, "not on the owner you named") {
+		t.Errorf("did not say the owner is the half that differs:\n%s", out)
+	}
+	for _, want := range []string{"acme", "l-td"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("did not name the connected account %q:\n%s", want, out)
+		}
 	}
 }
 
@@ -91,7 +134,7 @@ func TestLinkableReposPrintsNothingWhenItCannotAsk(t *testing.T) {
 		body   string
 	}{
 		{"the account is not connected", http.StatusUnprocessableEntity, ""},
-		{"the installation reaches nothing", http.StatusOK, `{"account":null,"repositories":[]}`},
+		{"the installations reach nothing", http.StatusOK, `{"repositories":[]}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			srv := reposServer(t, tc.status, tc.body)

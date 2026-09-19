@@ -350,59 +350,77 @@ type HealthResponse struct {
 	Timestamp string `json:"timestamp,omitempty"`
 }
 
-// GitHubStatus represents the GitHub connection status for the authenticated user
-type GitHubStatus struct {
-	Connected      bool       `json:"connected"`
-	InstallationID *int64     `json:"installation_id,omitempty"`
+// GitHubInstallation is one GitHub account this Aetherfy account can deploy
+// from.
+//
+// AccountLogin is the account the App is installed ON — an organization, or a
+// person — and is NOT necessarily the account the user signs in with. AccountType
+// is GitHub's own word for the kind, verbatim: "User" or "Organization".
+// ManageURL is where the user changes which repositories Aetherfy can see on
+// that account; it is read from GitHub server-side rather than assembled,
+// because the path encodes the account type and the personal form 404s for an
+// organization. It is empty when GitHub was unreachable.
+type GitHubInstallation struct {
+	InstallationID int64      `json:"installation_id"`
+	AccountID      int64      `json:"account_id"`
+	AccountLogin   string     `json:"account_login"`
+	AccountType    string     `json:"account_type"`
 	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
-	// ManageURL is where the user changes which repositories Aetherfy can
-	// see. Read from GitHub server-side, not assembled: the path encodes the
-	// account type, and the personal form 404s for an organization. Empty
-	// when the server has no App configured or could not reach GitHub.
-	ManageURL string `json:"manage_url,omitempty"`
-	// AccountLogin is the GitHub account the App is installed ON — an
-	// organization, or a person. NOT necessarily the account the user signs
-	// in with: one installation is stored per Aetherfy account, so installing
-	// on an organization replaces a personal one, and this is the only field
-	// that says which one is current. Empty when GitHub was unreachable;
-	// Connected stays authoritative.
-	AccountLogin string `json:"account_login,omitempty"`
-	// AccountType is GitHub's own word for the account kind, verbatim:
-	// "User" or "Organization". Travels with AccountLogin.
-	AccountType string `json:"account_type,omitempty"`
+	ManageURL      string     `json:"manage_url,omitempty"`
 }
 
-// GitHubRepoChoice is one repository the account's App installation can reach.
+// GitHubStatus represents the GitHub connection status for the authenticated
+// user.
+//
+// A LIST, because an Aetherfy account holds several GitHub installations — a
+// personal one and one per organization. It held exactly one until the server
+// stopped replacing them, and every field that described "the" installation
+// lived here at the top level; they are on GitHubInstallation now, with no
+// aliases left behind.
+type GitHubStatus struct {
+	Connected     bool                 `json:"connected"`
+	Installations []GitHubInstallation `json:"installations"`
+}
+
+// GitHubRepoChoice is one repository one of the account's App installations can
+// reach.
 //
 // FullName is what GitHubLinkAgent wants, so nothing composes it from parts.
 // DefaultBranch travels because "main" as a fixed default is wrong for every
 // repository whose default is something else, and wrong silently: the link
-// succeeds and no push ever deploys.
+// succeeds and no push ever deploys. AccountLogin is WHOSE it is — an
+// organization as often as a person, and not necessarily the caller's own —
+// which is the half of `owner/repo` a user has no reliable way to know.
 type GitHubRepoChoice struct {
-	FullName      string `json:"full_name"`
-	Private       bool   `json:"private"`
-	DefaultBranch string `json:"default_branch"`
+	FullName       string `json:"full_name"`
+	Private        bool   `json:"private"`
+	DefaultBranch  string `json:"default_branch"`
+	InstallationID int64  `json:"installation_id"`
+	AccountLogin   string `json:"account_login"`
+	AccountType    string `json:"account_type"`
 }
 
-// GitHubRepoList is the answer from GET /auth/github/repositories.
-//
-// Account is WHOSE these are: the login the App is installed on, which is an
-// organization as often as a person and need not be the caller's own. That is
-// the half of `owner/repo` a user has no reliable way to know, and the reason
-// a mistyped owner and a repository the App was never granted come back as one
-// indistinguishable 404.
+// GitHubRepoList is the answer from GET /auth/github/repositories: a UNION
+// across every installation the account holds, each repository carrying whose
+// it is. There is no single account for the list — that is exactly the
+// assumption an account with a personal AND an organization installation
+// breaks.
 type GitHubRepoList struct {
-	Account      string             `json:"account"`
 	Repositories []GitHubRepoChoice `json:"repositories"`
 }
 
-// GitHubInstallURL is the answer from GET /auth/github: where to send a
-// browser to install the App. The route is API-key authenticated, so the URL
-// must be fetched with the key and only then opened — pointing a browser at
-// the endpoint itself answers 401 MISSING_API_KEY.
-type GitHubInstallURL struct {
-	InstallURL string `json:"install_url"`
-	// ExpiresAt is when InstallURL stops being accepted. It comes from the
+// GitHubConnectURL is the answer from GET /auth/github: where to send a browser
+// to connect GitHub. The route is API-key authenticated, so the URL must be
+// fetched with the key and only then opened — pointing a browser at the
+// endpoint itself answers 401 MISSING_API_KEY.
+//
+// RENAMED FROM GitHubInstallURL, because the URL is no longer the App's install
+// page: it is GitHub's authorize page, which always redirects back and can
+// therefore attach an installation that already exists. The install page only
+// called back when GitHub CREATED one.
+type GitHubConnectURL struct {
+	ConnectURL string `json:"connect_url"`
+	// ExpiresAt is when ConnectURL stops being accepted. It comes from the
 	// server rather than being assumed here on purpose: the callback rejects
 	// the state token at exactly this instant, so a local copy of the
 	// lifetime would drift from the only clock that decides the outcome.

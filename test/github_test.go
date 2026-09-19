@@ -18,20 +18,29 @@ import (
 
 func TestGitHubStatusType(t *testing.T) {
 	now := time.Now()
-	installationID := int64(12345678)
 	s := &api.GitHubStatus{
-		Connected:      true,
-		InstallationID: &installationID,
-		ConnectedAt:    &now,
+		Connected: true,
+		Installations: []api.GitHubInstallation{
+			{InstallationID: 12345678, AccountID: 170044470, AccountLogin: "l-td", AccountType: "User", ConnectedAt: &now},
+			{InstallationID: 12345679, AccountID: 330816932, AccountLogin: "acme", AccountType: "Organization"},
+		},
 	}
 	if !s.Connected {
 		t.Error("expected Connected to be true")
 	}
-	if s.InstallationID == nil || *s.InstallationID != 12345678 {
-		t.Errorf("unexpected installation_id: %v", s.InstallationID)
+	// TWO OF THEM, which is the point of the type: an account holds a personal
+	// installation and one per organization, and neither displaces the other.
+	if len(s.Installations) != 2 {
+		t.Fatalf("expected 2 installations, got %d", len(s.Installations))
 	}
-	if s.ConnectedAt == nil {
+	if s.Installations[0].InstallationID != 12345678 {
+		t.Errorf("unexpected installation_id: %v", s.Installations[0].InstallationID)
+	}
+	if s.Installations[0].ConnectedAt == nil {
 		t.Error("expected ConnectedAt to be set")
+	}
+	if s.Installations[1].AccountType != "Organization" {
+		t.Errorf("unexpected account_type: %v", s.Installations[1].AccountType)
 	}
 }
 
@@ -40,8 +49,8 @@ func TestGitHubStatusNotConnected(t *testing.T) {
 	if s.Connected {
 		t.Error("expected Connected to be false")
 	}
-	if s.ConnectedAt != nil {
-		t.Error("expected ConnectedAt to be nil when not connected")
+	if len(s.Installations) != 0 {
+		t.Error("expected no installations when not connected")
 	}
 }
 
@@ -123,7 +132,7 @@ func TestGitHubConnectURL(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"install_url": "https://github.com/apps/aetherfy-bot/installations/new?state=abc",
+			"connect_url": "https://github.com/login/oauth/authorize?client_id=Iv1&state=abc",
 			"expires_at":  "2031-07-01T09:00:00Z",
 		})
 	}))
@@ -134,7 +143,10 @@ func TestGitHubConnectURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if url != "https://github.com/apps/aetherfy-bot/installations/new?state=abc" {
+	// THE AUTHORIZE URL, not the App's install page. The install page only
+	// calls back when GitHub CREATES an installation, so on an account where
+	// the App was already installed it dropped the state and never returned.
+	if url != "https://github.com/login/oauth/authorize?client_id=Iv1&state=abc" {
 		t.Errorf("unexpected connect URL: %s", url)
 	}
 	// The deadline is the server's, not one the CLI made up. Two copies of
@@ -229,8 +241,10 @@ func TestGitHubStatus_Connected(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"connected":       true,
-			"installation_id": 12345678,
+			"connected": true,
+			"installations": []map[string]interface{}{
+				{"installation_id": 12345678, "account_id": 1, "account_login": "l-td", "account_type": "User"},
+			},
 		})
 	}))
 	defer srv.Close()
@@ -243,8 +257,8 @@ func TestGitHubStatus_Connected(t *testing.T) {
 	if !status.Connected {
 		t.Error("expected Connected to be true")
 	}
-	if status.InstallationID == nil || *status.InstallationID != 12345678 {
-		t.Errorf("unexpected installation_id: %v", status.InstallationID)
+	if len(status.Installations) != 1 || status.Installations[0].InstallationID != 12345678 {
+		t.Errorf("unexpected installations: %+v", status.Installations)
 	}
 }
 

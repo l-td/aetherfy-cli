@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 122
+      "count": 123
     },
     {
       "path": "api/routes/regions.py",
@@ -317,6 +317,10 @@
       "tier": "top-level"
     },
     "GITHUB_DELIVERY_NOT_RECORDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_INSTALLATION_NOT_FOUND": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

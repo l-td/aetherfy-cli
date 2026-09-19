@@ -30,9 +30,9 @@ Once connected, you can link agents to GitHub repos so that every push
 to the configured branch automatically triggers a new deployment.
 
 Subcommands:
-  connect              Install the Aetherfy GitHub App in your browser
-  disconnect           Remove the GitHub App installation
-  status               Show GitHub connection status
+  connect              Authorize Aetherfy on GitHub in your browser
+  disconnect [account] Disconnect one GitHub account, or all of them
+  status               Show which GitHub accounts are connected
   link <agent> <repo>  Link an agent to a GitHub repo for auto-deploy
   unlink <agent>       Remove the GitHub link from an agent
 
@@ -44,6 +44,7 @@ Several agents can share one repository — give each its own folder with
   afy github link my-bot myorg/my-agent@develop
   afy github link my-bot myorg/monorepo --root-dir agents/my-bot
   afy github unlink my-bot
+  afy github disconnect acme-corp
   afy github disconnect`,
 }
 
@@ -54,18 +55,21 @@ Several agents can share one repository — give each its own folder with
 var githubConnectCmd = &cobra.Command{
 	Use:   "connect",
 	Short: "Connect your GitHub account via the Aetherfy GitHub App",
-	Long: `Install the Aetherfy GitHub App to connect your account.
+	Long: `Authorize Aetherfy on GitHub to connect your account.
 
-The CLI will attempt to open the installation URL in your default browser.
+The CLI will attempt to open the authorization URL in your default browser.
 If that fails, copy and paste the URL manually.
 
-After installing the App on GitHub, the command waits for the connection and
-reports it. The installation link is valid for a limited time; if it expires
-before anything is recorded, run the command again for a fresh one. If your
-account is already connected, the command says so and exits without opening
-a browser.
+Authorizing attaches EVERY account the Aetherfy App is installed on that you
+can reach: your own, and any organization you are an admin of. If it is
+installed nowhere yet, GitHub will ask where to install it.
 
-One App installation covers all repos you grant access to.`,
+Running this again when you are already connected is how you add another
+account — it never replaces the ones you have.
+
+After finishing on GitHub, the command waits for the connection and reports
+it. The link is valid for a limited time; if it expires before anything is
+recorded, run the command again for a fresh one.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
 			return err
@@ -98,8 +102,10 @@ var githubOpenBrowser = openBrowser
 // Reading status BEFORE starting is not an optimisation. A poll that begins
 // from an already-connected baseline would report success on its first tick
 // without GitHub having been touched at all, so "connected" would stop meaning
-// anything. Starting only from a disconnected baseline is what makes the
-// eventual `connected: true` evidence that this attempt worked.
+// anything. The baseline COUNT is what the wait compares against, so the
+// eventual answer is evidence that this attempt attached something — which it
+// has to be, because an account may already hold installations and connecting
+// again is how another is added.
 func runGitHubConnect(client *api.Client, tick time.Duration) int {
 	baseline, err := client.GitHubStatus()
 	if err != nil {
@@ -107,14 +113,18 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 		return githubConnectFailed
 	}
 
+	// A CONNECTED ACCOUNT IS NO LONGER A REASON TO STOP. Connecting again is how
+	// a SECOND GitHub account is added — an organization beside a personal one —
+	// so this reports what is already there and carries on. The baseline still
+	// matters for the poll below: starting from a connected one would make the
+	// first tick report success without GitHub having been touched, so the wait
+	// watches the installation COUNT rather than the bare flag.
+	baselineCount := len(baseline.Installations)
 	if baseline.Connected {
 		printGitHubConnection(baseline, "GitHub already connected")
 		output.Println("")
-		if baseline.ManageURL != "" {
-			output.Printf("To change which repositories Aetherfy can see: %s\n", baseline.ManageURL)
-		}
-		output.Println("To start over: afy github disconnect, then afy github connect.")
-		return githubConnectOK
+		output.Println("Continuing — authorizing again adds any other accounts you administer.")
+		output.Println("")
 	}
 
 	url, expiresAt, err := client.GitHubConnectURL()
@@ -137,6 +147,8 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 		return githubConnectFailed
 	}
 
+	output.Println("Authorize Aetherfy on GitHub; if it is installed nowhere yet, GitHub will ask where.")
+	output.Println("")
 	output.Println("Open this URL in your browser to connect GitHub:")
 	output.Println("")
 	output.Bold.Println("  " + url)
@@ -155,7 +167,7 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	return waitForGitHubConnection(ctx, client, expiresAt, tick)
+	return waitForGitHubConnection(ctx, client, expiresAt, tick, baselineCount)
 }
 
 // waitForGitHubConnection polls until the account is connected or the install
@@ -166,7 +178,7 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 // consent page, and there is nothing true to say. Past expiry there is: the
 // callback refuses the state token, so the attempt genuinely cannot succeed
 // any more, and the message can state that as fact.
-func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt time.Time, tick time.Duration) int {
+func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt time.Time, tick time.Duration, baselineCount int) int {
 	ctx, cancel := context.WithDeadline(ctx, expiresAt)
 	defer cancel()
 
@@ -213,7 +225,13 @@ func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt 
 				continue
 			}
 
-			if status.Connected {
+			// MORE THAN WHEN WE STARTED, not merely "connected". An account
+			// that already held one installation is connected on the first
+			// tick, so a bare Connected check would report success without
+			// GitHub having been touched — which is the property the baseline
+			// read exists to preserve, now that connecting again is how a
+			// second account is added.
+			if len(status.Installations) > baselineCount {
 				printGitHubConnection(status, "GitHub connected")
 				return githubConnectOK
 			}
@@ -221,25 +239,32 @@ func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt 
 	}
 }
 
-// printGitHubConnection renders a connected account. Shared by `status` and by
-// both of connect's success paths so the three cannot describe one account
+// printGitHubConnection renders the connected accounts. Shared by `status` and
+// by both of connect's success paths so the three cannot describe one account
 // three different ways.
+//
+// ONE BLOCK PER INSTALLATION, because an Aetherfy account holds several GitHub
+// accounts — a personal one and one per organization — and each agent deploys
+// through the one its repository belongs to. A single block could only name one
+// of them, and the one it named used to be whichever had most recently
+// displaced the others.
 func printGitHubConnection(status *api.GitHubStatus, headline string) {
 	output.PrintSuccess(headline)
-	// WHICH account, printed first and above the id, because it is the field
-	// a person can act on. One installation is stored per Aetherfy account,
-	// so installing the App on an organization replaces a personal one
-	// silently; agents linked to the displaced account's repositories then
-	// fail on every push. Empty when the server could not reach GitHub, and
-	// then this line is absent rather than blank.
-	if status.AccountLogin != "" {
-		output.KeyValue("Account", status.AccountLogin+githubAccountKind(status.AccountType))
-	}
-	if status.InstallationID != nil {
-		output.KeyValue("Installation ID", fmt.Sprintf("%d", *status.InstallationID))
-	}
-	if status.ConnectedAt != nil {
-		output.KeyValue("Connected at", status.ConnectedAt.Local().Format(time.RFC1123))
+	for i, inst := range status.Installations {
+		if i > 0 {
+			output.Println("")
+		}
+		// WHICH account, printed first and above the id, because it is the
+		// field a person can act on.
+		output.KeyValue("Account", inst.AccountLogin+githubAccountKind(inst.AccountType))
+		output.KeyValue("Installation ID", fmt.Sprintf("%d", inst.InstallationID))
+		if inst.ConnectedAt != nil {
+			output.KeyValue("Connected at", inst.ConnectedAt.Local().Format(time.RFC1123))
+		}
+		if inst.ManageURL != "" {
+			output.Printf("To change which repositories Aetherfy can see on %s: %s\n",
+				inst.AccountLogin, inst.ManageURL)
+		}
 	}
 }
 
@@ -264,27 +289,75 @@ func githubAccountKind(accountType string) string {
 // ---------------------------------------------------------------------------
 
 var githubDisconnectCmd = &cobra.Command{
-	Use:   "disconnect",
-	Short: "Disconnect the Aetherfy GitHub App",
-	Long: `Remove the stored GitHub App installation from your account.
+	Use:   "disconnect [account]",
+	Short: "Disconnect a GitHub account, or all of them",
+	Long: `Remove GitHub App installations from your Aetherfy account.
 
-This does not delete existing webhook links on agents — use
-'afy github unlink <agent>' first if you want to clean those up.
+With an account name, only that GitHub account is disconnected: agents linked
+to its repositories stop deploying on push, and agents deploying through your
+other GitHub accounts are untouched.
+
+With no argument, EVERY connected GitHub account is removed.
+
+Either way the agents keep their links, so reconnecting an account resumes
+auto-deploy with nothing to set up again — use 'afy github unlink <agent>'
+first if you want an agent to forget its repository entirely.
 
 To fully revoke access, also uninstall the App from your GitHub settings.
-This operation is idempotent: it succeeds even if you are not connected.`,
+The no-argument form is idempotent: it succeeds even if you are not connected.`,
+	Example: `  afy github disconnect
+  afy github disconnect acme-corp`,
+	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
 			return err
 		}
 
 		client := api.NewClient()
-		if err := client.GitHubDisconnect(); err != nil {
-			output.PrintError("Failed to disconnect GitHub: %v", err)
+
+		if len(args) == 0 {
+			if err := client.GitHubDisconnect(); err != nil {
+				output.PrintError("Failed to disconnect GitHub: %v", err)
+				os.Exit(1)
+			}
+			output.PrintSuccess("GitHub disconnected.")
+			return nil
+		}
+
+		// AN ACCOUNT NAME, NOT AN INSTALLATION ID. The id is a number nobody
+		// carries around; the account login is what 'afy github status' prints
+		// and what the repositories are named after. Resolving it here is the
+		// only place that mapping is needed.
+		account := args[0]
+		status, err := client.GitHubStatus()
+		if err != nil {
+			output.PrintError("Failed to get GitHub status: %v", err)
+			os.Exit(1)
+		}
+		var target *api.GitHubInstallation
+		for i := range status.Installations {
+			if strings.EqualFold(status.Installations[i].AccountLogin, account) {
+				target = &status.Installations[i]
+				break
+			}
+		}
+		if target == nil {
+			output.PrintError("No connected GitHub account named %q.", account)
+			if len(status.Installations) > 0 {
+				output.Println("")
+				output.Println("Connected accounts:")
+				for _, inst := range status.Installations {
+					output.Dim.Printf("  %s\n", inst.AccountLogin)
+				}
+			}
 			os.Exit(1)
 		}
 
-		output.PrintSuccess("GitHub disconnected.")
+		if err := client.GitHubDisconnectInstallation(target.InstallationID); err != nil {
+			output.PrintError("Failed to disconnect %s: %v", target.AccountLogin, err)
+			os.Exit(1)
+		}
+		output.PrintSuccess("Disconnected %s. Your other GitHub accounts are unaffected.", target.AccountLogin)
 		return nil
 	},
 }
@@ -315,11 +388,10 @@ var githubStatusCmd = &cobra.Command{
 			return nil
 		}
 
+		// The manage URL is per account and prints inside each block — an
+		// account holds several, and one trailing line could only ever offer
+		// the way in to one of them.
 		printGitHubConnection(status, "GitHub connected")
-		if status.ManageURL != "" {
-			output.Println("")
-			output.Printf("To change which repositories Aetherfy can see: %s\n", status.ManageURL)
-		}
 		return nil
 	},
 }
@@ -514,10 +586,20 @@ Change which repositories the App can see from the URL in 'afy github status'.`,
 			return nil
 		}
 
-		if list.Account != "" {
-			output.Printf("Repositories on %s that Aetherfy can link:\n\n", list.Account)
-		}
+		// GROUPED BY ACCOUNT. The list is a union across every installation, so
+		// one heading could not name all of them — and which account a
+		// repository belongs to is the half of owner/repo there is otherwise no
+		// way to look up.
+		currentAccount := ""
 		for _, r := range list.Repositories {
+			if r.AccountLogin != currentAccount {
+				if currentAccount != "" {
+					output.Println("")
+				}
+				currentAccount = r.AccountLogin
+				output.Printf("Repositories on %s%s that Aetherfy can link:\n\n",
+					r.AccountLogin, githubAccountKind(r.AccountType))
+			}
 			if r.Private {
 				output.Printf("  %s", r.FullName)
 				output.Dim.Printf("  private, default branch %s\n", r.DefaultBranch)
@@ -595,21 +677,28 @@ func printLinkableRepos(client *api.Client, attempted string) {
 		return
 	}
 	output.Println("")
-	if list.Account != "" {
-		output.Printf("Aetherfy can link these repositories on %s:\n", list.Account)
-	} else {
-		output.Println("Aetherfy can link these repositories:")
-	}
+	output.Println("Aetherfy can link these repositories:")
+	accounts := []string{}
+	seen := map[string]bool{}
 	for _, r := range list.Repositories {
 		output.Dim.Printf("  %s\n", r.FullName)
+		if !seen[r.AccountLogin] {
+			seen[r.AccountLogin] = true
+			accounts = append(accounts, r.AccountLogin)
+		}
 	}
-	// The owner is the half nobody can look up, so name it when it is the
-	// half that differs. Comparing owners rather than whole names: a right
-	// owner with a wrong repo is a typo the list above already answers.
-	if list.Account != "" && !strings.HasPrefix(attempted, list.Account+"/") {
+	// The owner is the half nobody can look up, so name the accounts when the
+	// one they asked for is not among them. Comparing owners rather than whole
+	// names: a right owner with a wrong repo is a typo the list above already
+	// answers.
+	askedOwner := attempted
+	if idx := strings.Index(attempted, "/"); idx != -1 {
+		askedOwner = attempted[:idx]
+	}
+	if !seen[askedOwner] && len(accounts) > 0 {
 		output.Println("")
 		output.Printf("You asked for %s. The App is installed on %s, not on the owner you named.\n",
-			attempted, list.Account)
+			attempted, strings.Join(accounts, ", "))
 	}
 }
 

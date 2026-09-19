@@ -67,7 +67,7 @@ func (c *connectServer) handler(t *testing.T) http.HandlerFunc {
 		case "/auth/github":
 			c.beginHits++
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"install_url": "https://github.com/apps/aetherfy-bot/installations/new?state=abc",
+				"connect_url": "https://github.com/login/oauth/authorize?client_id=Iv1&state=abc",
 				"expires_at":  c.expiresAt.Format(time.RFC3339Nano),
 			})
 
@@ -84,18 +84,41 @@ func (c *connectServer) counts() (status, begin int) {
 }
 
 func notConnected() map[string]interface{} {
-	return map[string]interface{}{"connected": false}
+	return map[string]interface{}{"connected": false, "installations": []map[string]interface{}{}}
 }
 
 func connected() map[string]interface{} {
 	return map[string]interface{}{
-		"connected":       true,
-		"installation_id": 4242,
-		"connected_at":    "2026-09-04T10:00:00Z",
-		"manage_url":      "https://github.com/apps/aetherfy-bot/installations/new",
-		"account_login":   "aetherfy-ai",
-		"account_type":    "Organization",
+		"connected": true,
+		"installations": []map[string]interface{}{
+			{
+				"installation_id": 4242,
+				"account_id":      330816932,
+				"account_login":   "aetherfy-ai",
+				"account_type":    "Organization",
+				"connected_at":    "2026-09-04T10:00:00Z",
+				"manage_url":      "https://github.com/organizations/aetherfy-ai/settings/installations/4242",
+			},
+		},
 	}
+}
+
+// connectedTwice is `connected()` plus a second, personal installation — the
+// state an account reaches by connecting again and authorizing an organization
+// it administers.
+func connectedTwice() map[string]interface{} {
+	base := connected()
+	base["installations"] = append(
+		base["installations"].([]map[string]interface{}),
+		map[string]interface{}{
+			"installation_id": 4243,
+			"account_id":      170044470,
+			"account_login":   "l-td",
+			"account_type":    "User",
+			"connected_at":    "2026-09-19T10:00:00Z",
+		},
+	)
+	return base
 }
 
 // stubBrowser replaces the real opener for the duration of a test so a run
@@ -137,11 +160,20 @@ func TestConnectWaitsThenReportsTheConnection(t *testing.T) {
 	}
 }
 
-// b2: an already-connected account is not re-run through GitHub.
-func TestConnectOnAnAlreadyConnectedAccountNeverBegins(t *testing.T) {
+// b2: an already-connected account CAN connect again — that is how a second
+// GitHub account is added — and success means one MORE installation, not merely
+// a connected flag.
+//
+// This inverts the old test, deliberately. It used to assert that an already
+// connected account never reaches GitHub at all, which was right when an
+// account could hold only one installation and was the reason an organization
+// could not be added beside a personal account without displacing it.
+func TestConnectOnAConnectedAccountAddsAnother(t *testing.T) {
 	cs := &connectServer{
-		statuses:  []interface{}{connected()},
-		expiresAt: time.Now().Add(30 * time.Second),
+		// Baseline: one installation. Then the same one, twice — which must NOT
+		// read as success. Then two.
+		statuses:  []interface{}{connected(), connected(), connected(), connectedTwice()},
+		expiresAt: time.Now().Add(5 * time.Second),
 	}
 	srv := httptest.NewServer(cs.handler(t))
 	defer srv.Close()
@@ -152,16 +184,34 @@ func TestConnectOnAnAlreadyConnectedAccountNeverBegins(t *testing.T) {
 	if code != githubConnectOK {
 		t.Fatalf("exit code: want %d, got %d", githubConnectOK, code)
 	}
-	statusHits, beginHits := cs.counts()
-	if beginHits != 0 {
-		t.Errorf("/auth/github was requested %d time(s); an already-connected "+
-			"account must not be sent back through GitHub", beginHits)
+	_, beginHits := cs.counts()
+	if beginHits != 1 {
+		t.Errorf("/auth/github hits: want exactly 1, got %d — connecting again "+
+			"is how another account is added", beginHits)
 	}
-	if statusHits != 1 {
-		t.Errorf("status hits: want exactly the baseline read, got %d", statusHits)
+	if *opened != 1 {
+		t.Errorf("a browser was opened %d time(s); want 1", *opened)
 	}
-	if *opened != 0 {
-		t.Errorf("a browser was opened %d time(s) for an account that is already connected", *opened)
+}
+
+// THE CONTROL for the test above: an account that stays at one installation
+// must never be reported as newly connected, however many times it is polled.
+// A bare `Connected` check would pass on the first tick without GitHub having
+// been touched, which is the property the baseline read exists to protect.
+func TestConnectDoesNotSucceedWhenNothingWasAdded(t *testing.T) {
+	cs := &connectServer{
+		statuses:  []interface{}{connected()},
+		expiresAt: time.Now().Add(300 * time.Millisecond),
+	}
+	srv := httptest.NewServer(cs.handler(t))
+	defer srv.Close()
+	stubBrowser(t)
+
+	code := runGitHubConnect(api.NewClientWithURL(srv.URL, "afy_test_key"), time.Millisecond)
+
+	if code != githubConnectFailed {
+		t.Errorf("exit code: want %d (the link expired with nothing added), got %d",
+			githubConnectFailed, code)
 	}
 }
 
@@ -249,7 +299,7 @@ func TestWaitReportsInterruptionSeparatelyFromExpiry(t *testing.T) {
 	cancel()
 
 	code := waitForGitHubConnection(ctx, api.NewClientWithURL(srv.URL, "afy_test_key"),
-		cs.expiresAt, time.Millisecond)
+		cs.expiresAt, time.Millisecond, 0)
 
 	if code != githubConnectInterrupt {
 		t.Errorf("exit code: want %d (interrupted), got %d", githubConnectInterrupt, code)
@@ -273,7 +323,7 @@ func TestWaitIsBoundedByTheServersExpiry(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		done <- waitForGitHubConnection(context.Background(),
-			api.NewClientWithURL(srv.URL, "afy_test_key"), cs.expiresAt, time.Millisecond)
+			api.NewClientWithURL(srv.URL, "afy_test_key"), cs.expiresAt, time.Millisecond, 0)
 	}()
 
 	select {
@@ -305,7 +355,7 @@ func TestConnectRefusesAResponseWithNoExpiry(t *testing.T) {
 			beginHits++
 			// No expires_at, deliberately.
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"install_url": "https://github.com/apps/aetherfy-bot/installations/new?state=abc",
+				"connect_url": "https://github.com/login/oauth/authorize?client_id=Iv1&state=abc",
 			})
 		default:
 			http.NotFound(w, r)
@@ -389,7 +439,7 @@ func captureStderr(t *testing.T, fn func()) string {
 // shows nothing, and showing nothing leaves a connected user with no route to
 // the one thing they are most likely to want next.
 func TestStatusShowsWhereToManageRepositoryAccess(t *testing.T) {
-	const manageURL = "https://github.com/apps/aetherfy-bot/installations/new"
+	const manageURL = "https://github.com/organizations/aetherfy-ai/settings/installations/4242"
 
 	var body map[string]interface{}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -404,28 +454,35 @@ func TestStatusShowsWhereToManageRepositoryAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if status.ManageURL != manageURL {
-		t.Errorf("manage_url: want %s, got %q", manageURL, status.ManageURL)
+	if len(status.Installations) != 1 {
+		t.Fatalf("installations: want 1, got %d", len(status.Installations))
+	}
+	if status.Installations[0].ManageURL != manageURL {
+		t.Errorf("manage_url: want %s, got %q", manageURL, status.Installations[0].ManageURL)
 	}
 
 	// Absent on a server with no GitHub App configured. Empty, so the caller
 	// can tell "nowhere to send them" from a URL and print neither a blank
 	// line nor a broken link.
-	body = map[string]interface{}{"connected": true, "installation_id": 4242}
+	body = map[string]interface{}{
+		"connected": true,
+		"installations": []map[string]interface{}{
+			{"installation_id": 4242, "account_id": 1, "account_login": "l-td", "account_type": "User"},
+		},
+	}
 	status, err = client.GitHubStatus()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if status.ManageURL != "" {
-		t.Errorf("manage_url: want empty, got %q", status.ManageURL)
+	if status.Installations[0].ManageURL != "" {
+		t.Errorf("manage_url: want empty, got %q", status.Installations[0].ManageURL)
 	}
 }
 
-// `status` names WHICH GitHub account is connected, not merely that one is.
-// One installation is stored per Aetherfy account, so installing the App on an
-// organization replaces a personal one silently, and agents linked to the
-// displaced account's repositories fail on every push. The account name is the
-// only signal available before a deployment fails.
+// `status` names WHICH GitHub accounts are connected, not merely that one is.
+// An Aetherfy account holds several — a personal one and one per organization —
+// and each agent deploys through the one its repository belongs to, so the
+// account name is what tells someone which row a failing agent belongs to.
 func TestStatusNamesTheConnectedAccount(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -438,11 +495,11 @@ func TestStatusNamesTheConnectedAccount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if status.AccountLogin != "aetherfy-ai" {
-		t.Errorf("account_login: want aetherfy-ai, got %q", status.AccountLogin)
+	if status.Installations[0].AccountLogin != "aetherfy-ai" {
+		t.Errorf("account_login: want aetherfy-ai, got %q", status.Installations[0].AccountLogin)
 	}
-	if status.AccountType != "Organization" {
-		t.Errorf("account_type: want Organization, got %q", status.AccountType)
+	if status.Installations[0].AccountType != "Organization" {
+		t.Errorf("account_type: want Organization, got %q", status.Installations[0].AccountType)
 	}
 
 	out := captureStdout(t, func() {
@@ -465,14 +522,57 @@ func TestAnUnknownAccountKindPrintsNoNoun(t *testing.T) {
 	}
 }
 
-// The command gates the line on a non-empty value rather than printing it
+// The manage line is gated on a non-empty value rather than printed
 // unconditionally, so an unconfigured server produces no dangling sentence.
+// CALLED, not grepped: the renderer is reachable from a test, and a source
+// match could not tell a gated branch from an ungated one.
 func TestStatusGatesTheManageLineOnAValue(t *testing.T) {
-	src, err := os.ReadFile("github.go")
-	if err != nil {
-		t.Fatalf("cannot read github.go: %v", err)
+	withURL := &api.GitHubStatus{
+		Connected: true,
+		Installations: []api.GitHubInstallation{{
+			InstallationID: 1, AccountLogin: "l-td", AccountType: "User",
+			ManageURL: "https://github.com/settings/installations/1",
+		}},
 	}
-	if !strings.Contains(string(src), `if status.ManageURL != "" {`) {
-		t.Error("status must print the manage line only when the server sent one")
+	out := captureStdout(t, func() { printGitHubConnection(withURL, "GitHub connected") })
+	if !strings.Contains(out, "https://github.com/settings/installations/1") {
+		t.Errorf("a manage URL that was sent must be printed, got:\n%s", out)
+	}
+
+	withoutURL := &api.GitHubStatus{
+		Connected: true,
+		Installations: []api.GitHubInstallation{{
+			InstallationID: 1, AccountLogin: "l-td", AccountType: "User",
+		}},
+	}
+	out = captureStdout(t, func() { printGitHubConnection(withoutURL, "GitHub connected") })
+	if strings.Contains(out, "To change which repositories") {
+		t.Errorf("no manage line may print when the server sent none, got:\n%s", out)
+	}
+}
+
+// PER ACCOUNT, not once for the whole status: each installation carries its own
+// manage URL, and one trailing line could only ever offer the way in to one of
+// them.
+func TestEachAccountCarriesItsOwnManageLine(t *testing.T) {
+	status := &api.GitHubStatus{
+		Connected: true,
+		Installations: []api.GitHubInstallation{
+			{InstallationID: 1, AccountLogin: "l-td", AccountType: "User",
+				ManageURL: "https://github.com/settings/installations/1"},
+			{InstallationID: 2, AccountLogin: "acme", AccountType: "Organization",
+				ManageURL: "https://github.com/organizations/acme/settings/installations/2"},
+		},
+	}
+	out := captureStdout(t, func() { printGitHubConnection(status, "GitHub connected") })
+	for _, want := range []string{
+		"l-td (personal account)",
+		"acme (organization)",
+		"https://github.com/settings/installations/1",
+		"https://github.com/organizations/acme/settings/installations/2",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("status must contain %q, got:\n%s", want, out)
+		}
 	}
 }
