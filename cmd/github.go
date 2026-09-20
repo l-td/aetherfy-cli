@@ -133,6 +133,17 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 		return githubConnectFailed
 	}
 
+	// An empty connect_url decodes from a body that carried none. Opening "" in
+	// a browser does nothing and the wait below would then poll for a
+	// connection nobody can make. Refusing is NOT tolerance for an older
+	// server — the same reasoning as the expires_at check below: it is a
+	// malformed answer, and saying so beats a browser that silently goes
+	// nowhere.
+	if url == "" {
+		output.PrintError("The server did not return a URL to open, so there is nothing to connect with.")
+		return githubConnectFailed
+	}
+
 	// A response with no expires_at decodes to the zero time, which as a
 	// deadline is already long past — the wait would end instantly and report
 	// that the link had expired, on a link that is perfectly good. That is a
@@ -288,6 +299,25 @@ func githubAccountKind(accountType string) string {
 // github disconnect
 // ---------------------------------------------------------------------------
 
+// findGitHubInstallation resolves an account NAME to the installation behind it.
+//
+// EXTRACTED SO IT CAN BE CALLED. The command around it ends in os.Exit on every
+// failure, which a test cannot survive; this is the part with a wrong answer
+// available, so it is the part that needs one.
+//
+// CASE-INSENSITIVE, because GitHub logins are: someone reading `acme-corp` off
+// `afy github status` and typing `Acme-Corp` means the same account, and
+// refusing them would be refusing a name we printed. Returns nil when nothing
+// matches — the caller lists what IS connected rather than guessing.
+func findGitHubInstallation(installations []api.GitHubInstallation, account string) *api.GitHubInstallation {
+	for i := range installations {
+		if strings.EqualFold(installations[i].AccountLogin, account) {
+			return &installations[i]
+		}
+	}
+	return nil
+}
+
 var githubDisconnectCmd = &cobra.Command{
 	Use:   "disconnect [account]",
 	Short: "Disconnect a GitHub account, or all of them",
@@ -334,13 +364,7 @@ The no-argument form is idempotent: it succeeds even if you are not connected.`,
 			output.PrintError("Failed to get GitHub status: %v", err)
 			os.Exit(1)
 		}
-		var target *api.GitHubInstallation
-		for i := range status.Installations {
-			if strings.EqualFold(status.Installations[i].AccountLogin, account) {
-				target = &status.Installations[i]
-				break
-			}
-		}
+		target := findGitHubInstallation(status.Installations, account)
 		if target == nil {
 			output.PrintError("No connected GitHub account named %q.", account)
 			if len(status.Installations) > 0 {
