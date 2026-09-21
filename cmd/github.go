@@ -60,9 +60,14 @@ var githubConnectCmd = &cobra.Command{
 The CLI will attempt to open the authorization URL in your default browser.
 If that fails, copy and paste the URL manually.
 
-Authorizing attaches EVERY account the Aetherfy App is installed on that you
-can reach: your own, and any organization you are an admin of. If it is
-installed nowhere yet, GitHub will ask where to install it.
+Authorizing attaches EVERY account the Aetherfy App is installed on that
+GitHub shows you: your own, and any organization whose installation you can
+reach — you need not be an owner or admin of it. If it is installed nowhere
+yet, GitHub will ask where to install it.
+
+Anyone who can connect an organization can deploy from every repository that
+organization granted to Aetherfy. Grant the App only the repositories you
+intend to deploy, on GitHub's installation screen.
 
 Running this again when you are already connected is how you add another
 account — it never replaces the ones you have.
