@@ -207,6 +207,7 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		}
 
 		output.PrintSuccess("Secret '%s' set successfully", key)
+		printSecretEffectNote(target, workspaceFlag != "")
 		return nil
 	}
 
@@ -215,6 +216,10 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		output.PrintError("Provide at least one KEY=value pair")
 		return nil
 	}
+
+	// Whether any pair actually landed, so the effect note is printed once and
+	// only when something was stored.
+	anySet := false
 
 	for _, pair := range pairs {
 		idx := strings.Index(pair, "=")
@@ -250,9 +255,40 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		}
 
 		output.PrintSuccess("Secret '%s' set", key)
+		anySet = true
+	}
+
+	if anySet {
+		printSecretEffectNote(target, workspaceFlag != "")
 	}
 
 	return nil
+}
+
+// printSecretEffectNote says WHEN the write the user just made reaches their
+// code. Printed after a successful set or delete, because that is where they are
+// standing and the answer is not what most people assume.
+//
+// A secret is bound when a machine is CREATED and that machine keeps it for
+// life. Nothing pushes a value into a running process. Until 2026-09-22 the
+// platform told people the opposite for task agents ("every run starts a fresh
+// machine"), which stopped being true when a task's supervisor started
+// surviving between runs; this command said nothing at all, which is why a
+// rotated credential could sit unused with no sign anywhere that it had.
+//
+// ONE MESSAGE FOR BOTH AGENT TYPES, because the CLI does not know which this is
+// without another round trip, and the advice does not differ: deploy. The task
+// note explains why a deploy is still worth doing when the value technically
+// arrives without one.
+func printSecretEffectNote(target string, workspace bool) {
+	output.Println("")
+	if workspace {
+		output.Dim.Printf("Takes effect on each agent in workspace '%s' the next time it is deployed.\n", target)
+	} else {
+		output.Dim.Printf("Takes effect the next time '%s' is deployed: 'afy deploy', 'afy redeploy %s', or a push to a linked repository.\n", target, target)
+	}
+	output.Dim.Println("A running machine keeps the values it was created with; 'afy rollback' re-deploys an already-built image and does not apply new secrets.")
+	output.Dim.Println("A 'type: job' agent gets the value on its next run without a deploy, but pays a cold start on every run until you deploy it.")
 }
 
 // --- DELETE ---
@@ -330,6 +366,7 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	output.PrintSuccess("Secret '%s' deleted", key)
+	printSecretEffectNote(target, workspaceFlag != "")
 	return nil
 }
 
