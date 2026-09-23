@@ -373,7 +373,12 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' is starting. Use 'afy status %s' to monitor.", idOrName, idOrName)
+	// "resumed", not "is starting". The control plane answers only once every
+	// machine has booted, and the platform holds a request that arrives before
+	// the agent's server is listening. The old wording sent callers to
+	// 'afy status' to wait, which reports `running` from the moment the machines
+	// are up and so could never be a readiness gate anyway.
+	output.PrintSuccess("Agent '%s' resumed; its machines are running.", idOrName)
 	return nil
 }
 
