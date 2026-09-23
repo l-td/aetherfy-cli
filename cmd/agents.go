@@ -365,7 +365,7 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	err := client.StartAgent(idOrName)
+	result, err := client.StartAgent(idOrName)
 	sp.Stop()
 
 	if err != nil {
@@ -373,13 +373,38 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// "resumed", not "is starting". The control plane answers only once every
-	// machine has booted, and the platform holds a request that arrives before
-	// the agent's server is listening. The old wording sent callers to
-	// 'afy status' to wait, which reports `running` from the moment the machines
-	// are up and so could never be a readiness gate anyway.
-	output.PrintSuccess("Agent '%s' resumed; its machines are running.", idOrName)
+	var readiness *string
+	if result != nil {
+		readiness = result.Readiness
+	}
+	printStartOutcome(idOrName, readiness)
 	return nil
+}
+
+// printStartOutcome says what the control plane OBSERVED, and nothing more.
+//
+// A machine the provider calls started is a booted VM, not an agent answering,
+// so "running" is claimed only when the agent's own /health said so before the
+// server replied. Every other value says what was seen instead, and a missing
+// value -- a task agent, or a control plane older than the field -- claims
+// nothing beyond the resume itself. The exit code stays 0 throughout: the
+// resume did happen, and these describe the agent's code, not the command.
+func printStartOutcome(name string, readiness *string) {
+	if readiness == nil {
+		output.PrintSuccess("Agent '%s' resumed.", name)
+		return
+	}
+	switch *readiness {
+	case "serving":
+		output.PrintSuccess("Agent '%s' resumed and is serving requests.", name)
+	case "starting":
+		output.PrintSuccess("Agent '%s' resumed.", name)
+		output.PrintInfo("Its code is still starting. Requests sent now are held until it is listening.")
+	case "load_failed":
+		output.PrintWarning("Agent '%s' resumed, but its code failed to load, so its requests will fail. Run 'afy logs %s' for the error.", name, name)
+	default:
+		output.PrintWarning("Agent '%s' resumed, but it did not confirm it is serving in the time allowed. Run 'afy logs %s' to see where it is.", name, name)
+	}
 }
 
 func runAgentsArchive(cmd *cobra.Command, args []string) error {

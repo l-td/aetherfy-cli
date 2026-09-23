@@ -123,10 +123,10 @@ var contendedLifecycleCodes = map[int]string{
 // This is the deliberate, response-code-aware retry that the transport-level
 // policy in client.go points at: a mutating verb earns a retry at its own call
 // site, where idempotency is known — not blindly, in the HTTP layer.
-func (c *Client) postLifecycle(path string) error {
+func (c *Client) postLifecycle(path string, result interface{}) error {
 	var err error
 	for attempt := 1; ; attempt++ {
-		err = c.Post(path, nil, nil)
+		err = c.Post(path, nil, result)
 		if !isContendedLifecycle(err) || attempt == lifecycleRetryAttempts {
 			return err
 		}
@@ -149,26 +149,42 @@ func isContendedLifecycle(err error) bool {
 // StopAgent pauses an agent (user-invoked). The server flips Fly's auto-start
 // off and stops every machine. Reversible via StartAgent.
 func (c *Client) StopAgent(idOrName string) error {
-	return c.postLifecycle(fmt.Sprintf("/agents/%s/stop", idOrName))
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/stop", idOrName), nil)
+}
+
+// StartAgentResult is the control plane's answer to a resume.
+//
+// Readiness is what the agent's own /health said before the server answered:
+// "serving", "starting", "load_failed" or "unconfirmed". It is nil for an agent
+// that serves no requests, and for a control plane older than the field -- so a
+// nil never means "serving".
+type StartAgentResult struct {
+	Status    string  `json:"status"`
+	AgentID   string  `json:"agent_id"`
+	Readiness *string `json:"readiness"`
 }
 
 // StartAgent resumes a paused agent.
-func (c *Client) StartAgent(idOrName string) error {
-	return c.postLifecycle(fmt.Sprintf("/agents/%s/start", idOrName))
+func (c *Client) StartAgent(idOrName string) (*StartAgentResult, error) {
+	var result StartAgentResult
+	if err := c.postLifecycle(fmt.Sprintf("/agents/%s/start", idOrName), &result); err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 // ArchiveAgent archives an agent: the server destroys its Fly app (freeing the
 // plan quota slot) while preserving all config and the S3 code bundle.
 // Reversible via RestoreAgent. Returns 202 on success.
 func (c *Client) ArchiveAgent(idOrName string) error {
-	return c.postLifecycle(fmt.Sprintf("/agents/%s/archive", idOrName))
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/archive", idOrName), nil)
 }
 
 // RestoreAgent re-provisions an archived agent from its preserved code bundle.
 // Quota is re-checked server-side (may 403 PLAN_LIMIT_EXCEEDED). Returns 202 on
 // success; the deploy then runs asynchronously.
 func (c *Client) RestoreAgent(idOrName string) error {
-	return c.postLifecycle(fmt.Sprintf("/agents/%s/restore", idOrName))
+	return c.postLifecycle(fmt.Sprintf("/agents/%s/restore", idOrName), nil)
 }
 
 // GetAgentStatus returns detailed status for an agent

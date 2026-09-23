@@ -123,7 +123,7 @@ func TestLifecycleDoesNotRetryStateAnswers(t *testing.T) {
 func TestEveryLifecycleVerbRetries(t *testing.T) {
 	verbs := map[string]func(*Client) error{
 		"stop":    func(c *Client) error { return c.StopAgent("a") },
-		"start":   func(c *Client) error { return c.StartAgent("a") },
+		"start":   func(c *Client) error { _, err := c.StartAgent("a"); return err },
 		"archive": func(c *Client) error { return c.ArchiveAgent("a") },
 		"restore": func(c *Client) error { return c.RestoreAgent("a") },
 	}
