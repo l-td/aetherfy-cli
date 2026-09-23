@@ -359,12 +359,16 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	idOrName := args[0]
+	return startAgent(api.NewClient(), args[0])
+}
 
+// startAgent runs `afy start` against a given client, so a test can drive the
+// whole path -- the server's answer decoded, and that answer (not a constant)
+// deciding what is printed -- and not only the printer at the end of it.
+func startAgent(client *api.Client, idOrName string) error {
 	sp := output.NewSpinner(fmt.Sprintf("Starting agent '%s'...", idOrName))
 	sp.Start()
 
-	client := api.NewClient()
 	result, err := client.StartAgent(idOrName)
 	sp.Stop()
 

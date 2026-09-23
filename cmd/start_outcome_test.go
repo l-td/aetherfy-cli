@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
 // `afy start` may say an agent is serving ONLY when the control plane's
@@ -61,5 +65,69 @@ func TestStartNamesWhatItSaw(t *testing.T) {
 		if out := startOutcome(t, ptr(readiness)); !strings.Contains(out, phrase) {
 			t.Errorf("readiness %s did not say %q:\n%s", readiness, phrase, out)
 		}
+	}
+}
+
+// THE WHOLE PATH, not just the printer: the control plane's 202 body is
+// decoded and ITS readiness decides the message. Without this, a command that
+// ignored the server and printed "serving" regardless would keep every test
+// above green -- they call the printer directly.
+func startAgainst(t *testing.T, body string) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/agents/api/start") {
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(body))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	t.Cleanup(srv.Close)
+	client := api.NewClientWithURL(srv.URL, "afy_test_key")
+
+	var err error
+	var stderr string
+	stdout := captureStdout(t, func() {
+		stderr = captureStderr(t, func() {
+			err = startAgent(client, "api")
+		})
+	})
+	if err != nil {
+		t.Fatalf("a 202 resume returned an error: %v", err)
+	}
+	return strings.ToLower(stdout + stderr)
+}
+
+func TestStartReportsTheServersReadiness(t *testing.T) {
+	cases := map[string]struct{ body, want string }{
+		"serving":     {`{"status":"running","agent_id":"a","readiness":"serving"}`, "serving requests"},
+		"starting":    {`{"status":"running","agent_id":"a","readiness":"starting"}`, "still starting"},
+		"load_failed": {`{"status":"running","agent_id":"a","readiness":"load_failed"}`, "failed to load"},
+		"unconfirmed": {`{"status":"running","agent_id":"a","readiness":"unconfirmed"}`, "did not confirm"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if out := startAgainst(t, tc.body); !strings.Contains(out, tc.want) {
+				t.Errorf("readiness %s: want %q in:\n%s", name, tc.want, out)
+			}
+		})
+	}
+}
+
+// An older control plane sends no readiness, and a job agent sends null. Both
+// must decode to "claims nothing", never to serving.
+func TestStartWithoutReadinessClaimsNothing(t *testing.T) {
+	for name, body := range map[string]string{
+		"absent": `{"status":"running","agent_id":"a"}`,
+		"null":   `{"status":"running","agent_id":"a","readiness":null}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out := startAgainst(t, body)
+			if strings.Contains(out, "serving requests") || !strings.Contains(out, "resumed") {
+				t.Errorf("readiness %s printed:\n%s", name, out)
+			}
+		})
 	}
 }
