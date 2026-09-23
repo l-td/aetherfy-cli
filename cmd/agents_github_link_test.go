@@ -210,7 +210,7 @@ func TestStatusWarnsWhenTheTrackedBranchWasDeleted(t *testing.T) {
 		t.Errorf("the deleted-branch warning offered a relink, which would change nothing:\n%s", out)
 	}
 	// Not the other inert state.
-	if strings.Contains(out, "no longer connected to GitHub") {
+	if strings.Contains(out, "no longer connected") {
 		t.Errorf("a deleted branch also claimed the account was disconnected:\n%s", out)
 	}
 }
@@ -256,5 +256,89 @@ func TestStatusJSONCarriesTheLinkWithTheServersFieldNames(t *testing.T) {
 		if _, present := gh[key]; !present {
 			t.Errorf("github.%s is missing from %s", key, raw)
 		}
+	}
+}
+
+// WHICH ACCOUNT. An Aetherfy account can connect several GitHub accounts and
+// only one of them is gone; a reconnect message that does not name it leaves
+// the user to guess. account_login is the server telling us.
+func TestStatusNamesTheDisconnectedAccount(t *testing.T) {
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"octo-org/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":false,"installation_id":4242,"account_login":"octo-org",`+
+		`"branch_deleted_at":null}`)
+
+	if !strings.Contains(out, "pushes are not deploying") {
+		t.Fatalf("a disconnected account printed no warning; got:\n%s", out)
+	}
+	// Named in the DIAGNOSIS and in the REMEDY, each on its own line: the
+	// remedy is where someone acts, and "signed in with access to" is only
+	// actionable with a name in it.
+	var named []string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "'octo-org'") {
+			named = append(named, line)
+		}
+	}
+	if len(named) != 2 {
+		t.Fatalf("want the account named in both the diagnosis and the remedy, found it on %d line(s):\n%s", len(named), out)
+	}
+	if !strings.Contains(named[1], "afy github connect") {
+		t.Errorf("the line naming the account is not the one telling you how to reconnect it:\n%s", named[1])
+	}
+}
+
+// A link older than the field arrives with account_login null. The message must
+// still say what to do, and must not render the absence as an empty quoted name.
+func TestStatusWithoutAnAccountLoginStillSaysHowToReconnect(t *testing.T) {
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":false,"installation_id":null,"account_login":null,`+
+		`"branch_deleted_at":null}`)
+
+	if !strings.Contains(out, "afy github connect") || !strings.Contains(out, "no longer connected") {
+		t.Errorf("with no login the warning lost its remedy; got:\n%s", out)
+	}
+	if strings.Contains(out, "''") || strings.Contains(out, "GitHub account:") {
+		t.Errorf("an absent login was rendered as a value; got:\n%s", out)
+	}
+}
+
+// Connected, the account is a plain fact beside the repo -- and no warning.
+func TestStatusShowsTheGitHubAccountBesideTheRepo(t *testing.T) {
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"octo-org/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":true,"installation_id":4242,"account_login":"octo-org",`+
+		`"branch_deleted_at":null}`)
+
+	found := false
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "GitHub account:") && strings.Contains(line, "octo-org") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("a linked agent did not show its GitHub account; got:\n%s", out)
+	}
+	if strings.Contains(out, "pushes are not deploying") {
+		t.Errorf("a connected account printed a disconnect warning:\n%s", out)
+	}
+}
+
+// `-o json` re-encodes the decoded link, so a field the struct does not decode
+// is a field that output silently drops. Both new ones must come through, with
+// the installation id still a number.
+func TestStatusJSONCarriesTheAccountAndInstallation(t *testing.T) {
+	raw, _ := runStatus(t, "json", `{"linked":true,"repo":"octo-org/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":true,"installation_id":4242,"account_login":"octo-org",`+
+		`"branch_deleted_at":null}`)
+
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("`afy status -o json` is not JSON: %v\n%s", err, raw)
+	}
+	gh, _ := got["github"].(map[string]interface{})
+	if gh["account_login"] != "octo-org" {
+		t.Errorf("github.account_login = %v, want octo-org: %s", gh["account_login"], raw)
+	}
+	if gh["installation_id"] != float64(4242) {
+		t.Errorf("github.installation_id = %v (%T), want the number 4242: %s", gh["installation_id"], gh["installation_id"], raw)
 	}
 }

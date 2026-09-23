@@ -11,8 +11,10 @@
   },
   "fields": [
     "account_connected",
+    "account_login",
     "branch",
     "branch_deleted_at",
+    "installation_id",
     "linked",
     "repo",
     "root_dir",

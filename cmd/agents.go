@@ -729,6 +729,9 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 
 	output.Println("")
 	output.KeyValue("Repo", derefString(link.Repo))
+	if login := derefString(link.AccountLogin); login != "" {
+		output.KeyValue("GitHub account", login)
+	}
 	output.KeyValue("Branch", derefString(link.Branch))
 	// An empty root_dir is not missing information: it is the repository root,
 	// which is where the build context starts. The server normalises '' and
@@ -747,8 +750,18 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 	if !link.AccountConnected {
 		output.Println("")
 		output.PrintWarning("GitHub disconnected — pushes are not deploying.")
-		output.Println("This agent is still linked, but this account is no longer connected to GitHub.")
-		output.Println("Reconnect with 'afy github connect'. The link is kept, so deploys resume with nothing to set up again.")
+		// NAME THE ACCOUNT. Several GitHub accounts can be connected at once and
+		// only one of them is gone, so "reconnect" alone leaves the user to
+		// guess which -- and `afy github connect` attaches whatever the signed-in
+		// GitHub user can reach, so the one thing they must get right is who
+		// they are signed in as.
+		if login := derefString(link.AccountLogin); login != "" {
+			output.Printf("This agent is still linked, but it deploys through the GitHub account '%s', which is no longer connected.\n", login)
+			output.Printf("Reconnect with 'afy github connect', signed in to GitHub with access to '%s'. The link is kept, so deploys resume with nothing to set up again.\n", login)
+		} else {
+			output.Println("This agent is still linked, but the GitHub account it deploys through is no longer connected.")
+			output.Println("Reconnect with 'afy github connect'. The link is kept, so deploys resume with nothing to set up again.")
+		}
 	}
 	// Named separately from the disconnect, and NOT offering a relink: relinking
 	// to a branch that does not exist succeeds and changes nothing, which is the

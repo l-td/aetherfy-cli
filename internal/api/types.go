@@ -474,6 +474,16 @@ type GitHubLinkStatus struct {
 	// mean relink the agent: relinking fails for the same missing
 	// installation, and the link is not what broke.
 	AccountConnected bool `json:"account_connected"`
+	// The GitHub account this agent deploys through. An Aetherfy account can
+	// connect several, so without this a disconnect can only say "reconnect the
+	// account" and leave the user to guess which. Null when the link predates
+	// the field; the messages then fall back to not naming one.
+	AccountLogin *string `json:"account_login"`
+	// The GitHub App installation behind AccountLogin. Nothing here renders it
+	// -- it is a numeric internal id -- but it is decoded because
+	// `afy status -o json` re-encodes this struct, and a field decoded nowhere
+	// is a field that output silently drops.
+	InstallationID *int64 `json:"installation_id"`
 	// When the tracked branch was last seen deleted, or null. A TIMESTAMP
 	// rather than a boolean because "when" is the question someone has when
 	// they find their agent inert. Null covers both a branch that was never
