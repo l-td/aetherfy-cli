@@ -44,14 +44,16 @@ func TestStartDescribesExactlyTheControlPlanesReadinessValues(t *testing.T) {
 }
 
 // A value this binary does not know is a gap in the CLI, not news about the
-// agent: it must not borrow "did not confirm", which is a claim.
+// agent: it must not borrow either slow case's wording, both of which are claims.
 func TestAnUnknownReadinessIsNotReportedAsAClaimAboutTheAgent(t *testing.T) {
 	out := startOutcome(t, ptr("some-future-value"))
 	if !strings.Contains(out, "does not describe") || !strings.Contains(out, "some-future-value") {
 		t.Errorf("an unknown readiness did not say the CLI lacks a description for it:\n%s", out)
 	}
-	if strings.Contains(out, "did not confirm") {
-		t.Errorf("an unknown readiness was reported as the agent not confirming:\n%s", out)
+	for _, claim := range []string{"did not answer", "aetherfy's side"} {
+		if strings.Contains(out, claim) {
+			t.Errorf("an unknown readiness borrowed a slow-case claim (%q):\n%s", claim, out)
+		}
 	}
 }
 
@@ -83,6 +85,7 @@ func TestStartClaimsNothingItDidNotObserve(t *testing.T) {
 		"starting":    ptr("starting"),
 		"load_failed": ptr("load_failed"),
 		"unconfirmed": ptr("unconfirmed"),
+		"slow_start":  ptr("slow_start"),
 		"unknown":     ptr("some-future-value"),
 	}
 	for name, readiness := range cases {
@@ -105,12 +108,27 @@ func TestStartNamesWhatItSaw(t *testing.T) {
 	want := map[string]string{
 		"starting":    "still starting",
 		"load_failed": "failed to load",
-		"unconfirmed": "did not confirm",
+		"unconfirmed": "your code did not answer",
+		"slow_start":  "aetherfy's side",
 	}
 	for readiness, phrase := range want {
 		if out := startOutcome(t, ptr(readiness)); !strings.Contains(out, phrase) {
 			t.Errorf("readiness %s did not say %q:\n%s", readiness, phrase, out)
 		}
+	}
+}
+
+// The two slow cases have different owners -- the customer's startup, or the
+// platform's -- and a message that let one read as the other would send
+// someone to debug the wrong system.
+func TestTheTwoSlowCasesNameDifferentOwners(t *testing.T) {
+	unconfirmed := startOutcome(t, ptr("unconfirmed"))
+	slow := startOutcome(t, ptr("slow_start"))
+	if !strings.Contains(unconfirmed, "machines started") || strings.Contains(unconfirmed, "aetherfy's side") {
+		t.Errorf("unconfirmed must say the machines started and not blame the platform:\n%s", unconfirmed)
+	}
+	if !strings.Contains(slow, "aetherfy's side") || strings.Contains(slow, "your code did not answer") {
+		t.Errorf("slow_start must put the delay on the platform and not on the code:\n%s", slow)
 	}
 }
 
@@ -151,7 +169,8 @@ func TestStartReportsTheServersReadiness(t *testing.T) {
 		"serving":     {`{"status":"running","agent_id":"a","readiness":"serving"}`, "serving requests"},
 		"starting":    {`{"status":"running","agent_id":"a","readiness":"starting"}`, "still starting"},
 		"load_failed": {`{"status":"running","agent_id":"a","readiness":"load_failed"}`, "failed to load"},
-		"unconfirmed": {`{"status":"running","agent_id":"a","readiness":"unconfirmed"}`, "did not confirm"},
+		"unconfirmed": {`{"status":"running","agent_id":"a","readiness":"unconfirmed"}`, "your code did not answer"},
+		"slow_start":  {`{"status":"running","agent_id":"a","readiness":"slow_start"}`, "aetherfy's side"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

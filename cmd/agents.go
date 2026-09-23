@@ -424,8 +424,15 @@ var startReadinessMessages = map[string]func(name string){
 	"load_failed": func(name string) {
 		output.PrintWarning("Agent '%s' resumed, but its code failed to load, so its requests will fail. Run 'afy logs %s' for the error.", name, name)
 	},
+	// The two slow cases are different problems with different owners, so they
+	// must never read alike. unconfirmed: the machines started in time and the
+	// customer's code did not answer -- their startup. slow_start: starting the
+	// machines took the whole time, so the code was never asked -- ours.
 	"unconfirmed": func(name string) {
-		output.PrintWarning("Agent '%s' resumed, but it did not confirm it is serving in the time allowed. Run 'afy logs %s' to see where it is.", name, name)
+		output.PrintWarning("Agent '%s' resumed and its machines started, but your code did not answer in the time allowed. Run 'afy logs %s' to see where it is.", name, name)
+	},
+	"slow_start": func(name string) {
+		output.PrintWarning("Agent '%s' resumed, but starting its machines took longer than it should, so whether your code is answering was not checked. The delay was on Aetherfy's side, not in your code.", name)
 	},
 }
 
