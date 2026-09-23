@@ -3,11 +3,57 @@ package cmd
 import (
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/test/cperrors"
+	"github.com/l-td/aetherfy-cli/test/cpreadiness"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// THE PIN. The keys of startReadinessMessages must be exactly the control
+// plane's READINESS_* values. A value renamed there, or a new one added, would
+// otherwise print the catch-all "does not describe" line forever with every
+// other test in this file green -- they feed the CLI values it already knows.
+//
+// Live against the sibling checkout, as the other control-plane guards are:
+// skipped where there is none, FAILED where cperrors.RequireEnv says there must
+// be (the e2e nightly).
+func TestStartDescribesExactlyTheControlPlanesReadinessValues(t *testing.T) {
+	cpRoot := cperrors.Root("..")
+	if !cperrors.RootExists(cpRoot) {
+		cperrors.SkipUnlessRequired(t, "SKIPPED: no control-plane checkout at %s (set %s to point elsewhere)",
+			cpRoot, cperrors.RootEnv)
+	}
+	vals, err := cpreadiness.Extract(cpRoot)
+	require.NoError(t, err, "reading the readiness constants from %s", cpRoot)
+	require.NoError(t, cpreadiness.Validate(vals))
+
+	var known []string
+	for k := range startReadinessMessages {
+		known = append(known, k)
+	}
+	sort.Strings(known)
+	assert.Equal(t, cpreadiness.Set(vals), known,
+		"`afy start` describes %v, and the control plane answers %v (%s in %s). Add or rename the "+
+			"entry in startReadinessMessages -- and the table in docs-site's agents/api-lifecycle.mdx.",
+		known, cpreadiness.Set(vals), cpreadiness.SourcePath, cpRoot)
+}
+
+// A value this binary does not know is a gap in the CLI, not news about the
+// agent: it must not borrow "did not confirm", which is a claim.
+func TestAnUnknownReadinessIsNotReportedAsAClaimAboutTheAgent(t *testing.T) {
+	out := startOutcome(t, ptr("some-future-value"))
+	if !strings.Contains(out, "does not describe") || !strings.Contains(out, "some-future-value") {
+		t.Errorf("an unknown readiness did not say the CLI lacks a description for it:\n%s", out)
+	}
+	if strings.Contains(out, "did not confirm") {
+		t.Errorf("an unknown readiness was reported as the agent not confirming:\n%s", out)
+	}
+}
 
 // `afy start` may say an agent is serving ONLY when the control plane's
 // readiness says so. Every other answer -- including no answer at all, from an

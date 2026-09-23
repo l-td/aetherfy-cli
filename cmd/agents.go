@@ -398,17 +398,35 @@ func printStartOutcome(name string, readiness *string) {
 		output.PrintSuccess("Agent '%s' resumed.", name)
 		return
 	}
-	switch *readiness {
-	case "serving":
+	if say, ok := startReadinessMessages[*readiness]; ok {
+		say(name)
+		return
+	}
+	// A value this binary has no message for. It is not "did not confirm" --
+	// that is a claim about the agent, and this is only a gap in the CLI.
+	output.PrintSuccess("Agent '%s' resumed.", name)
+	output.PrintInfo("The platform reported readiness '%s', which this CLI does not describe — 'afy upgrade' may.", *readiness)
+}
+
+// startReadinessMessages holds one entry per readiness value the control plane
+// answers. The KEYS are a contract: TestStartDescribesExactlyTheControlPlanesReadinessValues
+// compares them with the control plane's READINESS_* constants wherever that
+// checkout exists, so a value renamed there reds here instead of silently
+// falling into the catch-all above.
+var startReadinessMessages = map[string]func(name string){
+	"serving": func(name string) {
 		output.PrintSuccess("Agent '%s' resumed and is serving requests.", name)
-	case "starting":
+	},
+	"starting": func(name string) {
 		output.PrintSuccess("Agent '%s' resumed.", name)
 		output.PrintInfo("Its code is still starting. Requests sent now are held until it is listening.")
-	case "load_failed":
+	},
+	"load_failed": func(name string) {
 		output.PrintWarning("Agent '%s' resumed, but its code failed to load, so its requests will fail. Run 'afy logs %s' for the error.", name, name)
-	default:
+	},
+	"unconfirmed": func(name string) {
 		output.PrintWarning("Agent '%s' resumed, but it did not confirm it is serving in the time allowed. Run 'afy logs %s' to see where it is.", name, name)
-	}
+	},
 }
 
 func runAgentsArchive(cmd *cobra.Command, args []string) error {

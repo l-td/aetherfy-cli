@@ -119,6 +119,14 @@ var notControlPlaneCodes = map[string]string{
 	"FREEZE_REASON_DUNNING":     "extractor-test fixture: bound to \"dunning\", not self-named",
 	"INDENTED_NOT_MODULE_LEVEL": "extractor-test fixture: an indented assignment, not a module-level registry entry",
 
+	// Constant NAMES in test/cpreadiness/extract_test.go. The readiness pin
+	// compares the control plane's READINESS_* VALUES ("serving", ...), which
+	// are lowercase wire strings; these are the Python identifiers that hold
+	// them, and fixture stand-ins for two of them. Nothing sends any of these.
+	"READINESS_STARTING": "cpreadiness fixture: the control plane's constant NAME for the \"starting\" value, not an error code",
+	"READINESS_A":        "cpreadiness fixture: a stand-in constant name for the duplicate-value refusal",
+	"READINESS_B":        "cpreadiness fixture: a stand-in constant name for the duplicate-value refusal",
+
 	// Deliberately not a control-plane code — the only literal in shipped code
 	// that LOOKS like drift and is not.
 	//
