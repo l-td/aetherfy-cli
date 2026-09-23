@@ -58,8 +58,18 @@ type source struct {
 // scope ruling recorded at the top of shared/error_codes.py: that file is the
 // registry of every top-level `detail.code`, and the violation-tier codes stay
 // module-local to the endpoint that owns them. Verified complete 2026-08-20 by
-// sweeping the whole control plane for `^NAME = "NAME"$` outside these three —
-// zero hits.
+// sweeping the whole control plane for `^NAME = "NAME"$` outside the listed
+// files — zero hits.
+//
+// RE-SWEPT 2026-09-23, when shared/plan_validator.py left this list. Its one
+// code, AGENT_COLLECTION_REGION_MISMATCH, went with the refusal that raised it
+// (aetherfy-control-plane 63eeafa turned the declared-collection refusals into
+// a log line), so the file now declares no error code at all and an extraction
+// over it correctly refused as empty. The sweep's one hit outside the two files
+// below is shared/collection_observations.py's AGENT_READS_ACROSS_REGIONS, and
+// it stays OUT on purpose: that module documents it as a LOG code that nothing
+// raises and nothing can catch, which is why it is absent from error_codes.py.
+// A CLI branch on it could never fire.
 var sources = []source{
 	{
 		path: "shared/error_codes.py",
@@ -70,11 +80,6 @@ var sources = []source{
 		path: "api/routes/regions.py",
 		tier: tierViolation,
 		why:  "the five region-preflight codes, deliberately kept out of the top-level registry",
-	},
-	{
-		path: "shared/plan_validator.py",
-		tier: tierViolation,
-		why:  "AGENT_COLLECTION_REGION_MISMATCH, raised through AgentScopeViolation",
 	},
 }
 
@@ -133,11 +138,13 @@ const RootEnv = "AETHERFY_CP_ROOT"
 // A module-level, self-named string constant: `NAME = "NAME"`.
 //
 // Self-naming is the whole rule, and it is what keeps this honest without a
-// hand-maintained include list. plan_validator.py holds one error code beside
-// UPGRADE_URL = "/billing/upgrade", SUPPORT_CONTACT = "mailto:..." and two
-// FREEZE_REASON_* values; requiring name == value takes the code and leaves the
-// four others, by form rather than by enumeration. Anchored at column 0 so
-// class attributes and locals are never mistaken for a registry entry.
+// hand-maintained include list. Until 2026-09-23 a listed source,
+// plan_validator.py, held one error code beside UPGRADE_URL = "/billing/upgrade",
+// SUPPORT_CONTACT = "mailto:..." and two FREEZE_REASON_* values; requiring
+// name == value took the code and left the others, by form rather than by
+// enumeration. No listed file mixes the two today, and the rule stays for the
+// day one does again. Anchored at column 0 so class attributes and locals are
+// never mistaken for a registry entry.
 var pyConst = regexp.MustCompile(`^([A-Z][A-Z0-9_]*) = "([^"]*)"\s*(?:#.*)?$`)
 
 // codeShape is what an error code looks like: SCREAMING_SNAKE with at least
@@ -174,9 +181,9 @@ func RootExists(cpRoot string) bool {
 
 // MissingSources lists the configured registries that are not readable under
 // cpRoot. Callers that found a checkout must treat a non-empty result as a
-// FAILURE naming the paths, never as absence: extracting from two registries of
-// three and diffing against a snapshot built from all three would report the
-// third's codes as deletions, and skipping instead would silently drop drift
+// FAILURE naming the paths, never as absence: extracting from some of the
+// registries and diffing against a snapshot built from all of them would report
+// the missing one's codes as deletions, and skipping instead would silently drop drift
 // detection on every machine that has the sibling.
 func MissingSources(cpRoot string) []string {
 	var missing []string

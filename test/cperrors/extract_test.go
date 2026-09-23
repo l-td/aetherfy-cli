@@ -27,9 +27,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The non-self-named constants that really sit in shared/plan_validator.py,
-// beside the one error code it owns. These are the things the form rule exists
-// to leave behind.
+// Non-self-named constants the control plane really declares, in
+// shared/plan_validator.py -- which sat beside a registry code in a listed
+// source until 2026-09-23. No listed file mixes the two today, so the fixture
+// plants them INSIDE a registry: the form rule is exactly what would keep a URL
+// or a reason string added there from reading as an error code.
 var notCodes = map[string]string{
 	"UPGRADE_URL":           "/billing/upgrade",
 	"SUPPORT_CONTACT":       "mailto:sales@aetherfy.com",
@@ -59,16 +61,13 @@ func fakeCP(t *testing.T) string {
 		registry.WriteString(name + " = \"" + name + "\"\n")
 	}
 
-	var validator strings.Builder
-	validator.WriteString("AGENT_COLLECTION_REGION_MISMATCH = \"AGENT_COLLECTION_REGION_MISMATCH\"\n")
 	for name, value := range notCodes {
-		validator.WriteString(name + " = \"" + value + "\"\n")
+		registry.WriteString(name + " = \"" + value + "\"\n")
 	}
 
 	files := map[string]string{
-		"shared/error_codes.py":    registry.String(),
-		"api/routes/regions.py":    "INVALID_REGION = \"INVALID_REGION\"\n",
-		"shared/plan_validator.py": validator.String(),
+		"shared/error_codes.py": registry.String(),
+		"api/routes/regions.py": "INVALID_REGION = \"INVALID_REGION\"\n",
 	}
 	for rel, body := range files {
 		full := filepath.Join(root, filepath.FromSlash(rel))
@@ -97,14 +96,13 @@ func TestExtractTakesOnlySelfNamedConstants(t *testing.T) {
 	assert.Contains(t, reg.Codes, "AGENT_NOT_FOUND")
 	assert.Contains(t, reg.Codes, "RESOURCE_BUSY", "a trailing `# comment` broke the match")
 	assert.Contains(t, reg.Codes, "INVALID_REGION")
-	assert.Contains(t, reg.Codes, "AGENT_COLLECTION_REGION_MISMATCH")
 
 	for name, value := range notCodes {
 		if _, taken := reg.Codes[name]; taken {
 			assert.Fail(t, "the extractor took a constant that is not an error code",
 				"%s = %q was extracted. It is not self-named, and the whole separation "+
-					"between an error code and the URLs and reason strings beside it in "+
-					"plan_validator.py is that one property.", name, value)
+					"between an error code and a URL or reason string beside it in the "+
+					"same file is that one property.", name, value)
 		}
 	}
 
@@ -125,7 +123,7 @@ func TestValidateExtractionCatchesANonSelfNamedConstant(t *testing.T) {
 	require.NoError(t, ValidateExtraction(reg), "the clean fixture must pass, or nothing below discriminates")
 
 	// Exactly what a loosened `m[1] != m[2]` test would have produced.
-	reg.Codes["UPGRADE_URL"] = Code{Source: "shared/plan_validator.py", Tier: tierViolation}
+	reg.Codes["UPGRADE_URL"] = Code{Source: "shared/error_codes.py", Tier: tierTopLevel}
 	reg.Literals["UPGRADE_URL"] = "/billing/upgrade"
 
 	err = ValidateExtraction(reg)

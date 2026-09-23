@@ -106,9 +106,10 @@ var notControlPlaneCodes = map[string]string{
 
 	// Fixture constants in test/cperrors/extract_test.go, which builds a fake
 	// control-plane tree to pin the extractor's form rule. They are there
-	// precisely BECAUSE they are not error codes: the first four are the real
-	// non-self-named constants sitting beside the one code plan_validator.py
-	// owns, and the fifth is an indented assignment. That this guard demanded
+	// precisely BECAUSE they are not error codes: the first four are real
+	// non-self-named constants from the control plane (plan_validator.py, which
+	// held one code beside them until 2026-09-23), and the fifth is an indented
+	// assignment. That this guard demanded
 	// they be classified is the mechanism working — a file full of things that
 	// look like codes is exactly what must not slip in unexamined.
 	"UPGRADE_URL":               "extractor-test fixture: plan_validator.py's `UPGRADE_URL = \"/billing/upgrade\"`, not self-named",
@@ -310,7 +311,7 @@ func TestSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 	// A checkout IS here. From this point absence is a failure, never a skip.
 	//
 	// These were one question once — "is the control plane present?" answered by
-	// stat-ing all three registries — and that is how a guard stops guarding
+	// stat-ing every registry — and that is how a guard stops guarding
 	// without saying so: move shared/error_codes.py and every dev machine reports
 	// "no control-plane checkout", skips, and goes green, while CI keeps validating
 	// a snapshot that has quietly become fiction. The control plane is refactored

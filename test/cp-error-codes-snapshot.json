@@ -6,17 +6,12 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 123
+      "count": 121
     },
     {
       "path": "api/routes/regions.py",
       "tier": "violation",
       "count": 4
-    },
-    {
-      "path": "shared/plan_validator.py",
-      "tier": "violation",
-      "count": 1
     }
   ],
   "codes": {
@@ -35,10 +30,6 @@
     "AGENT_CHILD_NOT_DEPLOYED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
-    },
-    "AGENT_COLLECTION_REGION_MISMATCH": {
-      "source": "shared/plan_validator.py",
-      "tier": "violation"
     },
     "AGENT_DEPLOYMENT_OUTSIDE_NEW_WORKSPACE_SCOPE": {
       "source": "shared/error_codes.py",
@@ -188,10 +179,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_WOULD_LOSE_REGION_OVERLAP": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "AUTHENTICATION_ERROR": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -293,10 +280,6 @@
       "tier": "top-level"
     },
     "DEPLOYMENT_WAIT_TIMEOUT_INVALID": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "DEPLOY_REGIONS_NOT_IN_COLLECTION_SCOPE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
