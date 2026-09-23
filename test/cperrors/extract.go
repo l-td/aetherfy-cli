@@ -135,6 +135,35 @@ const GeneratorPath = "scripts/cp-error-codes-snapshot"
 // a doctored copy of the registry.
 const RootEnv = "AETHERFY_CP_ROOT"
 
+// RequireEnv, set to anything, makes the live-drift guards FAIL wherever they
+// would otherwise skip for want of a usable control-plane checkout.
+//
+// A skip is right on a dev box without the sibling, and in this repo's CI,
+// which checks out none. It is wrong where the checkout was deliberately put
+// in place: there a skip means the run is misconfigured, and it reads as
+// green -- which is how a stale snapshot survived until someone happened to
+// run the guard on the right machine. The e2e nightly sets this, because it is
+// the one CI environment with the deployed control plane beside this repo.
+const RequireEnv = "AETHERFY_REQUIRE_CP"
+
+// Skipper is the part of *testing.T that SkipUnlessRequired needs, so this
+// package does not import "testing" into the snapshot generator.
+type Skipper interface {
+	Helper()
+	Skipf(format string, args ...interface{})
+	Fatalf(format string, args ...interface{})
+}
+
+// SkipUnlessRequired skips with the given reason, or fails with it when
+// RequireEnv is set.
+func SkipUnlessRequired(t Skipper, format string, args ...interface{}) {
+	t.Helper()
+	if os.Getenv(RequireEnv) != "" {
+		t.Fatalf("REQUIRED ("+RequireEnv+" is set), and this check would have skipped: "+format, args...)
+	}
+	t.Skipf(format, args...)
+}
+
 // A module-level, self-named string constant: `NAME = "NAME"`.
 //
 // Self-naming is the whole rule, and it is what keeps this honest without a

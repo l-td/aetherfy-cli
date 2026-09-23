@@ -127,7 +127,7 @@ func TestCommittedLinkSnapshotIsTrustworthy(t *testing.T) {
 func TestLinkSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 	cpRoot := cperrors.Root(repoRoot)
 	if !cperrors.RootExists(cpRoot) {
-		t.Skipf("SKIPPED the live-drift check: no control-plane checkout at %s "+
+		cperrors.SkipUnlessRequired(t, "SKIPPED the live-drift check: no control-plane checkout at %s "+
 			"(set %s to point elsewhere). The committed snapshot was checked instead.",
 			cpRoot, cperrors.RootEnv)
 	}
@@ -152,7 +152,7 @@ func TestLinkSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 	// and the advice that failure gives, "regenerate", is the one thing that must
 	// not happen: it would commit a field list from a working copy.
 	if why := cplink.Unshareable(live.Source); why != "" {
-		t.Skipf("NOT COMPARED — %s. The committed snapshot is unchanged and still governs; "+
+		cperrors.SkipUnlessRequired(t, "NOT COMPARED — %s. The committed snapshot is unchanged and still governs; "+
 			"push the control-plane change, then regenerate: go run ./%s", why, cplink.GeneratorPath)
 	}
 

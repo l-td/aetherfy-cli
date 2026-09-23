@@ -78,6 +78,7 @@ var notControlPlaneCodes = map[string]string{
 	"NO_COLOR":            "env var: the no-color convention, honoured by internal/output",
 	"XDG_CONFIG_HOME":     "env var: XDG base-directory lookup on unix",
 	"AETHERFY_CP_ROOT":    "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
+	"AETHERFY_REQUIRE_CP": "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
 
@@ -303,7 +304,7 @@ func TestCommittedSnapshotIsTrustworthy(t *testing.T) {
 func TestSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 	cpRoot := cperrors.Root(repoRoot)
 	if !cperrors.RootExists(cpRoot) {
-		t.Skipf("SKIPPED the live-drift check: no control-plane checkout at %s "+
+		cperrors.SkipUnlessRequired(t, "SKIPPED the live-drift check: no control-plane checkout at %s "+
 			"(set %s to point elsewhere). The committed snapshot was checked instead.",
 			cpRoot, cperrors.RootEnv)
 	}
