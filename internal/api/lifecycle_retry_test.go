@@ -97,7 +97,7 @@ func TestLifecycleDoesNotRetryStateAnswers(t *testing.T) {
 		{"already archived", http.StatusConflict, "AGENT_ALREADY_ARCHIVED"},
 		{"not found", http.StatusNotFound, "AGENT_NOT_FOUND"},
 		{"plan limit", http.StatusForbidden, "PLAN_LIMIT_EXCEEDED"},
-		{"other 503", http.StatusServiceUnavailable, "AGENT_PAUSE_FAILED"},
+		{"other 503", http.StatusServiceUnavailable, "AGENT_RESUME_FAILED"},
 		{"server error", http.StatusInternalServerError, "INTERNAL_ERROR"},
 	}
 

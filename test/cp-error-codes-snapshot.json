@@ -123,10 +123,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_PAUSE_FAILED": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "AGENT_REGION_STRANDED": {
       "source": "api/routes/regions.py",
       "tier": "violation"
@@ -164,6 +160,10 @@
       "tier": "top-level"
     },
     "AGENT_SPAWN_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_STILL_STOPPING": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

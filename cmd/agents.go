@@ -369,7 +369,40 @@ func startAgent(client *api.Client, idOrName string) error {
 	sp := output.NewSpinner(fmt.Sprintf("Starting agent '%s'...", idOrName))
 	sp.Start()
 
-	result, err := client.StartAgent(idOrName)
+	// A PREVIOUS STOP STILL SETTLING is not a failed start. `afy stop` answers
+	// once the pause is decided and the control plane stops the machines after
+	// it, giving the agent's server its shutdown grace; a resume sent meanwhile
+	// is answered 409 AGENT_STILL_STOPPING with how long to wait and the
+	// longest the stop can still take. So this waits as told, up to that bound,
+	// and says so once; past the bound it fails, naming why.
+	var waited time.Duration
+	told := false
+	var result *api.StartAgentResult
+	var err error
+	for {
+		result, err = client.StartAgent(idOrName)
+		wait, bound, stopping := stillStopping(err)
+		if !stopping {
+			break
+		}
+		if waited+wait > bound {
+			sp.Stop()
+			output.PrintError("Agent '%s' was still finishing its previous stop after %.0fs, "+
+				"the longest a stop can take. Run `afy start %s` again in a moment.",
+				idOrName, waited.Seconds(), idOrName)
+			return err
+		}
+		if !told {
+			sp.Stop()
+			output.PrintInfo("Previous stop still finishing, retrying in %.0fs", wait.Seconds())
+			sp.Start()
+			told = true
+		}
+		sp.UpdateMessage(fmt.Sprintf("Waiting for agent '%s' to finish stopping (%.0fs)...",
+			idOrName, (waited + wait).Seconds()))
+		stillStoppingSleep(wait)
+		waited += wait
+	}
 	sp.Stop()
 
 	if err != nil {
@@ -383,6 +416,28 @@ func startAgent(client *api.Client, idOrName string) error {
 	}
 	printStartOutcome(idOrName, readiness)
 	return nil
+}
+
+// codeAgentStillStopping is the control plane's answer to a start whose
+// pause is still being carried out (shared/error_codes.py).
+const codeAgentStillStopping = "AGENT_STILL_STOPPING"
+
+// stillStoppingSleep is how startAgent waits between attempts. A var only so
+// a test can record the waits instead of spending them.
+var stillStoppingSleep = time.Sleep
+
+// stillStopping reads a 409 AGENT_STILL_STOPPING: how long the server asked to
+// wait (Retry-After, carried in the body), and the longest a stop can take.
+// ok is false for anything else -- and for an answer missing either number,
+// which then fails as it arrived rather than being waited on for a guess.
+func stillStopping(err error) (wait, bound time.Duration, ok bool) {
+	apiErr, isAPI := err.(*api.APIError)
+	if !isAPI || apiErr.Code != codeAgentStillStopping ||
+		apiErr.RetryAfterSeconds == nil || apiErr.StopBoundSeconds == nil {
+		return 0, 0, false
+	}
+	return time.Duration(*apiErr.RetryAfterSeconds) * time.Second,
+		time.Duration(*apiErr.StopBoundSeconds) * time.Second, true
 }
 
 // printStartOutcome says what the control plane OBSERVED, and nothing more.
