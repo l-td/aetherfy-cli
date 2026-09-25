@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 )
 
@@ -544,6 +545,57 @@ func TestTheFlagsAndTheEnvironmentReachTheRequest(t *testing.T) {
 	want := "/api/v1/workspaces/from-env/collections,/api/v1/workspaces/from-flag/collections,/api/v1/collections"
 	if strings.Join(paths, ",") != want {
 		t.Errorf("paths = %v, want %s", paths, want)
+	}
+}
+
+// A command line cobra cannot parse is refused input, exit 2, on the vector
+// commands. Measured before this existed: `--size abc`, a missing <name> and an
+// unknown flag each exited 1, the code a script reads as "the request failed".
+// Other commands keep their 1.
+func TestAnUnparseableVectorCommandLineExitsTwo(t *testing.T) {
+	t.Setenv("AETHERFY_CONFIG_DIR", t.TempDir())
+	t.Setenv("AETHERFY_API_KEY", "afy_test_0123456789abcdef0123456789abcdef")
+	cases := [][]string{
+		{"collections", "create", "a", "--size", "abc", "--distance", "cosine"},
+		{"points", "search", "a", "--vector", "[1]", "--limit", "x"},
+		{"collections", "get"},
+		{"index", "create", "a"},
+		{"points", "get", "a"},
+		{"collections", "list", "--bogus"},
+	}
+	for _, args := range cases {
+		rootCmd.SetArgs(args)
+		var err error
+		captureStderr(t, func() { err = rootCmd.Execute() })
+		if err == nil || ExitCode(err) != exitInputRefused {
+			t.Errorf("afy %s: err %v, exit %d; want exit %d", strings.Join(args, " "), err, ExitCode(err), exitInputRefused)
+		}
+	}
+	rootCmd.SetArgs([]string{"list", "--bogus"})
+	var err error
+	captureStderr(t, func() { err = rootCmd.Execute() })
+	if err == nil || ExitCode(err) != 1 {
+		t.Errorf("afy list --bogus: exit %d; a non-vector command keeps 1", ExitCode(err))
+	}
+	rootCmd.SetArgs(nil)
+}
+
+func TestNotLoggedInIsExitThreeAndJSONUnderJSON(t *testing.T) {
+	t.Setenv("AETHERFY_CONFIG_DIR", t.TempDir())
+	t.Setenv("AETHERFY_API_KEY", "")
+	if _, err := config.LoadCredentials(); err != nil {
+		t.Fatal(err)
+	}
+	s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{"collections":[]}` })
+	r, stdout, stderr, connects := s.run("", true)
+	if code := vecMain(r, collectionsList); code != exitNotLoggedIn {
+		t.Errorf("exit %d, want %d", code, exitNotLoggedIn)
+	}
+	if e := decode(t, stderr.String())["error"].(map[string]interface{}); e["message"] != "Not logged in. Run 'afy login' first." {
+		t.Errorf("stderr error = %v", e)
+	}
+	if stdout.Len() != 0 || *connects != 0 || len(s.got()) != 0 {
+		t.Error("a logged-out command printed, resolved or sent something")
 	}
 }
 

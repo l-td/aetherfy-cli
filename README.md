@@ -243,6 +243,24 @@ Workspaces group related agents so they can share secrets and vector collections
 | `afy workspaces agents <name>` | List agents in a workspace |
 | `afy workspaces delete <name>` | Delete an empty workspace and its secrets |
 
+### Vectors
+
+Read and manage the vector database with the same API key. Loading points is
+the SDKs' job. Every command takes `--json`, `--workspace` (default
+`AETHERFY_WORKSPACE`, else none), `--vectors-url` and `--api-region`.
+
+| Command | Description |
+|---------|-------------|
+| `afy collections list` | List the collections in a workspace |
+| `afy collections get <name>` | Show one collection |
+| `afy collections create <name> --size N --distance cosine` | Create a collection (`--regions` to pin it) |
+| `afy collections delete <name> --yes` | Delete a collection and its points |
+| `afy index create <collection> <field> --type keyword` | Index a payload field; returns once the index is built |
+| `afy index delete <collection> <field>` | Drop a payload index |
+| `afy points count <collection>` | Count points (`--filter` JSON) |
+| `afy points get <collection> <id>` | Read points by id |
+| `afy points search <collection> --vector '[0.1, 0.2]'` | Nearest points (`--limit`, `--filter`) |
+
 ### Deployment
 
 | Command | Description |
@@ -396,6 +414,9 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 | `AETHERFY_CONFIG_DIR` | Overrides the config directory (see resolution order above) |
 | `NO_COLOR` | Disable colored output |
 | `XDG_CONFIG_HOME` | Used on Linux if set |
+| `AETHERFY_VECTORS_URL` | Vectors endpoint for the vector commands |
+| `AETHERFY_VECTORS_API_REGION` | Vectors API region, resolved by region discovery |
+| `AETHERFY_WORKSPACE` | Workspace the vector commands scope names to |
 
 ### Global Flags
 
@@ -413,6 +434,7 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 |------|---------|
 | `0` | Success |
 | `1` | Error — usage errors and failed operations |
+| `2` | A vector command (`collections`, `index`, `points`) refused its input before sending anything, including a command line it could not parse |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
 
 ## Project Structure

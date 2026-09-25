@@ -39,10 +39,9 @@ var collectionsListCmd = &cobra.Command{
 
   # List a workspace's collections, as JSON
   afy collections list --workspace research --json`,
-	Args: cobra.NoArgs,
+	Args: refuseArgs(cobra.NoArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(collectionsList(newVecRun(cmd)))
+		return runVec(cmd, func(r *vecRun) int { return collectionsList(r) })
 	},
 }
 
@@ -124,10 +123,9 @@ var collectionsGetCmd = &cobra.Command{
 	Short: "Show one collection",
 	Example: `  # Show a collection's size, distance, point count and regions
   afy collections get articles --json`,
-	Args: cobra.ExactArgs(1),
+	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(collectionsGet(newVecRun(cmd), args[0]))
+		return runVec(cmd, func(r *vecRun) int { return collectionsGet(r, args[0]) })
 	},
 }
 
@@ -177,10 +175,11 @@ nothing.`,
 
   # Pinned to two regions, in a workspace
   afy collections create articles --size 768 --distance dot --regions us-east-1,eu-central-1 --workspace research`,
-	Args: cobra.ExactArgs(1),
+	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(collectionsCreate(newVecRun(cmd), args[0], collectionSize, collectionDistance, collectionRegions))
+		return runVec(cmd, func(r *vecRun) int {
+			return collectionsCreate(r, args[0], collectionSize, collectionDistance, collectionRegions)
+		})
 	},
 }
 
@@ -256,11 +255,12 @@ required when stdin is not a terminal, so a script cannot delete by accident.`,
 
   # Delete from a script
   afy collections delete articles --yes --json`,
-	Args: cobra.ExactArgs(1),
+	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
 		interactive := term.IsTerminal(int(os.Stdin.Fd()))
-		return exitWith(collectionsDelete(newVecRun(cmd), args[0], collectionDeleteYes, os.Stdin, interactive))
+		return runVec(cmd, func(r *vecRun) int {
+			return collectionsDelete(r, args[0], collectionDeleteYes, os.Stdin, interactive)
+		})
 	},
 }
 

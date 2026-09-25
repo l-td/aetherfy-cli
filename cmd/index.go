@@ -22,18 +22,21 @@ filters on it fast, and is required to order a scroll by it.`,
 var indexCreateCmd = &cobra.Command{
 	Use:   "create <collection> <field>",
 	Short: "Index one payload field, and wait until the index is usable",
-	Long: `Index one payload field, and return only once the index is built, so a
+	// The numbers come from internal/vectors, so the help cannot drift from
+	// what the wait does.
+	Long: fmt.Sprintf(`Index one payload field, and return only once the index is built, so a
 filter or an ordered scroll on the field works as soon as this exits 0.
 
-The server waits up to 25 s for a build. A longer build is answered
+The server waits up to %g s for a build. A longer build is answered
 "acknowledged", and the create is sent again, which waits for the running
 build, until the answer is "completed". The wait ends at --timeout seconds
-(default 600) with a "still building" error; the build carries on, and
+(default %g) with a "still building" error; the build carries on, and
 running afy index create <collection> <field> again waits for it. Creating an
 index that already exists returns at once.
 
 --type is one of keyword, integer, float, bool, geo, datetime, uuid, text,
 or a JSON object for a parameterised index. It is sent as given.`,
+		vectors.IndexWaitBudget.Seconds(), vectors.IndexDefaultDeadline.Seconds()),
 	Example: `  # Index a keyword field
   afy index create articles thread_id --type keyword
 
@@ -42,14 +45,13 @@ or a JSON object for a parameterised index. It is sent as given.`,
 
   # A full-text index with its parameters
   afy index create articles body --type '{"type":"text","tokenizer":"word","lowercase":true}'`,
-	Args: cobra.ExactArgs(2),
+	Args: refuseArgs(cobra.ExactArgs(2)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
 		var timeout *string
 		if cmd.Flags().Changed("timeout") {
 			timeout = &indexTimeout
 		}
-		return exitWith(indexCreate(newVecRun(cmd), args[0], args[1], indexType, timeout))
+		return runVec(cmd, func(r *vecRun) int { return indexCreate(r, args[0], args[1], indexType, timeout) })
 	},
 }
 
@@ -117,10 +119,9 @@ var indexDeleteCmd = &cobra.Command{
 have succeeds; a collection that does not exist is an error.`,
 	Example: `  # Drop an index
   afy index delete articles thread_id`,
-	Args: cobra.ExactArgs(2),
+	Args: refuseArgs(cobra.ExactArgs(2)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(indexDelete(newVecRun(cmd), args[0], args[1]))
+		return runVec(cmd, func(r *vecRun) int { return indexDelete(r, args[0], args[1]) })
 	},
 }
 
@@ -146,7 +147,7 @@ func indexDelete(r *vecRun, collection, field string) int {
 
 func init() {
 	indexCreateCmd.Flags().StringVar(&indexType, "type", "", "Index type: keyword, integer, float, bool, geo, datetime, uuid, text, or a JSON object; required")
-	indexCreateCmd.Flags().StringVar(&indexTimeout, "timeout", "", "Seconds to wait for the build before giving up (default 600)")
+	indexCreateCmd.Flags().StringVar(&indexTimeout, "timeout", "", fmt.Sprintf("Seconds to wait for the build before giving up (default %g)", vectors.IndexDefaultDeadline.Seconds()))
 	indexCreateCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	indexCreateCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	indexCreateCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)

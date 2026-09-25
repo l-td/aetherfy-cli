@@ -87,7 +87,8 @@ For more information, visit: https://docs.aetherfy.com`,
 		// Load credentials
 		_, err = config.LoadCredentials()
 		if err != nil {
-			output.PrintWarning("Failed to load credentials: %v", err)
+			// On stderr: stdout may be the one JSON object a script parses.
+			output.Warning.Fprintf(os.Stderr, "Warning: Failed to load credentials: %v\n", err)
 		}
 
 		_ = cfg // Silence unused warning

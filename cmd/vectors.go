@@ -8,8 +8,8 @@ package cmd
 // Built for coding agents first: every command takes --json and prints one JSON
 // object with stable field names, and exits 0 on success, 1 when a request
 // failed (the API's code and message on stderr, unchanged), 2 when the input
-// was refused before any request, and 3 when not logged in (checkAuth). The
-// human output is secondary.
+// was refused before any request (a command line cobra cannot parse included),
+// and 3 when not logged in. The human output is secondary.
 
 import (
 	"encoding/json"
@@ -54,6 +54,52 @@ func (e *inputError) Error() string { return e.msg }
 
 func refuse(format string, args ...interface{}) error {
 	return &inputError{msg: fmt.Sprintf(format, args...)}
+}
+
+// notLoggedIn is checkAuth's refusal, reported through fail so --json gets
+// its one JSON object on stderr like every other vector-command failure.
+type notLoggedIn struct{}
+
+func (notLoggedIn) Error() string { return "Not logged in. Run 'afy login' first." }
+
+const exitNotLoggedIn = 3
+
+// A command line cobra cannot parse (an unknown flag, a value of the wrong
+// type, the wrong number of arguments) is input refused before any request,
+// so it exits 2 like the refusals the commands make themselves. cobra prints
+// it as text: --json may not have been read yet when parsing stops.
+func refuseArgs(rule cobra.PositionalArgs) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := rule(cmd, args); err != nil {
+			return &inputError{msg: err.Error()}
+		}
+		return nil
+	}
+}
+
+func refuseFlag(_ *cobra.Command, err error) error { return &inputError{msg: err.Error()} }
+
+// ExitCode is the process exit code for an error Execute returned: 2 for
+// input refused before any request, 1 for anything else.
+func ExitCode(err error) int {
+	var in *inputError
+	if errors.As(err, &in) {
+		return exitInputRefused
+	}
+	return exitRequestFailed
+}
+
+// runVec is every vector command's RunE: the login check, then op, then the
+// process exit with op's code.
+func runVec(cmd *cobra.Command, op func(r *vecRun) int) error {
+	return exitWith(vecMain(newVecRun(cmd), op))
+}
+
+func vecMain(r *vecRun, op func(r *vecRun) int) int {
+	if !config.IsLoggedIn() {
+		return r.fail(notLoggedIn{})
+	}
+	return op(r)
 }
 
 // vecRun is one vector command's context. connect resolves the endpoint and
@@ -148,6 +194,9 @@ func (r *vecRun) fail(err error) int {
 	if errors.As(err, &in) || errors.As(err, &region) {
 		code = exitInputRefused
 	}
+	if errors.Is(err, notLoggedIn{}) {
+		code = exitNotLoggedIn
+	}
 	var apiErr *vectors.APIError
 	isAPI := errors.As(err, &apiErr)
 	if r.json {
@@ -171,4 +220,11 @@ func exitWith(code int) error {
 		os.Exit(code)
 	}
 	return nil
+}
+
+func init() {
+	for _, group := range []*cobra.Command{collectionsCmd, indexCmd, pointsCmd} {
+		// Inherited by every subcommand.
+		group.SetFlagErrorFunc(refuseFlag)
+	}
 }

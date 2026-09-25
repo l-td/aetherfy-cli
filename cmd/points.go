@@ -36,10 +36,9 @@ var pointsCountCmd = &cobra.Command{
 
   # The points a filter matches
   afy points count articles --filter '{"must":[{"key":"lang","match":{"value":"en"}}]}' --json`,
-	Args: cobra.ExactArgs(1),
+	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(pointsCount(newVecRun(cmd), args[0], pointsFilter))
+		return runVec(cmd, func(r *vecRun) int { return pointsCount(r, args[0], pointsFilter) })
 	},
 }
 
@@ -99,10 +98,9 @@ UUID). An id that does not exist is left out of the answer, not an error.`,
 
   # One point by UUID, as JSON
   afy points get articles 5c56c793-69f3-4fbf-87e6-c4bf54c28c26 --json`,
-	Args: cobra.MinimumNArgs(2),
+	Args: refuseArgs(cobra.MinimumNArgs(2)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(pointsGet(newVecRun(cmd), args[0], args[1:]))
+		return runVec(cmd, func(r *vecRun) int { return pointsGet(r, args[0], args[1:]) })
 	},
 }
 
@@ -196,10 +194,11 @@ must have the collection's size.`,
 
   # A vector from a file, filtered, as JSON
   afy points search articles --vector @query.json --filter '{"must":[{"key":"lang","match":{"value":"en"}}]}' --json`,
-	Args: cobra.ExactArgs(1),
+	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = checkAuth()
-		return exitWith(pointsSearch(newVecRun(cmd), args[0], pointsSearchVector, pointsSearchLimit, pointsFilter))
+		return runVec(cmd, func(r *vecRun) int {
+			return pointsSearch(r, args[0], pointsSearchVector, pointsSearchLimit, pointsFilter)
+		})
 	},
 }
 
