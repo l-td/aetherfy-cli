@@ -480,7 +480,6 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 	sb.WriteString("# Uncomment below to enable multi-agent spawning\n")
 	sb.WriteString("# spawn:\n")
 	sb.WriteString("#   enabled: true\n")
-	sb.WriteString("#   workspace: shared-workspace\n")
 	sb.WriteString("#   workers:\n")
 	sb.WriteString("#     - sub-agent-1\n")
 

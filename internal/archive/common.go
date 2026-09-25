@@ -9,7 +9,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// AetherfyConfig represents the parsed aetherfy.yaml file
+// AetherfyConfig represents the parsed aetherfy.yaml file.
+//
+// ITS YAML TAGS ARE THE CLI'S FIELD SET. A key in the file that no tag here
+// names is refused before upload (CheckUnknownFields), and the set is compared
+// with the control plane's AetherfyConfig model wherever that checkout exists
+// (TestKnownFieldsEqualTheControlPlaneModel). So every field the server accepts
+// has a field here, including the ones the CLI never reads.
 type AetherfyConfig struct {
 	Name       string   `yaml:"name"`
 	Runtime    string   `yaml:"runtime"`
@@ -25,6 +31,23 @@ type AetherfyConfig struct {
 	// omitted=preserve, null=clear), so it must NOT get a runtime-style
 	// immutability special-case in the diff view.
 	Schedule string `yaml:"schedule,omitempty"`
+
+	// Declared so they are KNOWN, not because the CLI reads them. Typed `any`
+	// on purpose: the server is the validator of their values, and a Go type
+	// here would refuse a value it accepts (a quoted "5" for an int, say)
+	// before the server ever saw it.
+	Description        any          `yaml:"description,omitempty"`
+	Tier               any          `yaml:"tier,omitempty"`
+	IdleTimeoutMinutes any          `yaml:"idle_timeout_minutes,omitempty"`
+	GithubDependencies any          `yaml:"github_dependencies,omitempty"`
+	Spawn              *SpawnConfig `yaml:"spawn,omitempty"`
+}
+
+// SpawnConfig is the `spawn:` block. A struct, not `any`, because its field
+// names are checked too: `spawn.workres` is refused like a top-level typo.
+type SpawnConfig struct {
+	Enabled any `yaml:"enabled,omitempty"`
+	Workers any `yaml:"workers,omitempty"`
 }
 
 // ParseAetherfyConfig reads and parses aetherfy.yaml from the given directory
@@ -40,6 +63,10 @@ func ParseAetherfyConfig(dir string) (*AetherfyConfig, error) {
 	var cfg AetherfyConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse aetherfy.yaml: %w", err)
+	}
+	// After the decode, so a file that is not YAML at all keeps its own error.
+	if err := CheckUnknownFields(data); err != nil {
+		return nil, err
 	}
 	return &cfg, nil
 }

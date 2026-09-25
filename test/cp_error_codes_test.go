@@ -127,6 +127,13 @@ var notControlPlaneCodes = map[string]string{
 	"READINESS_A":        "cpreadiness fixture: a stand-in constant name for the duplicate-value refusal",
 	"READINESS_B":        "cpreadiness fixture: a stand-in constant name for the duplicate-value refusal",
 
+	// Constant NAMES test/cpyaml reads from shared/config_parser.py: the
+	// wording the control plane refuses an unknown aetherfy.yaml field with,
+	// and the difflib cutoff for its suggestion. A sentence and a number the
+	// CLI compares with its own; neither is ever sent as a code.
+	"UNKNOWN_FIELD_MESSAGE":           "cpyaml: the constant holding the unknown-field sentence, not an error code",
+	"UNKNOWN_FIELD_SUGGESTION_CUTOFF": "cpyaml: the constant holding the did-you-mean cutoff, not an error code",
+
 	// Deliberately not a control-plane code — the only literal in shipped code
 	// that LOOKS like drift and is not.
 	//

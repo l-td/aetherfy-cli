@@ -1554,6 +1554,12 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 		output.PrintError("Invalid aetherfy.yaml: %v", err)
 		return err
 	}
+	// A key `afy deploy` would refuse is not a change to preview: shown as
+	// "+ schedul: ..." it would read as a field the deploy is about to set.
+	if err := archive.CheckUnknownFields(data); err != nil {
+		output.PrintError("%v", err)
+		return err
+	}
 	name, _ := local["name"].(string)
 	if name == "" {
 		output.PrintError("aetherfy.yaml has no 'name' — cannot resolve the agent to diff against")

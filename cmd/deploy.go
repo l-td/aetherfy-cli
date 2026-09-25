@@ -219,6 +219,14 @@ func decideCreateOnDeploy(in createOnDeployInput) createOnDeployOutcome {
 	}
 }
 
+// isUnknownFields reports a local aetherfy.yaml refused for naming a key the
+// server does not accept -- a file that exists, so the "create one" help that
+// follows other validation failures does not apply.
+func isUnknownFields(err error) bool {
+	var uf *archive.UnknownFieldsError
+	return errors.As(err, &uf)
+}
+
 // handleDeployResult post-processes the first deploy attempt for the D2 Part 6
 // overage cost gate, the freeze/pause 403s, and the consented create-on-deploy
 // (AGENT_NOT_FOUND). The caller does the first Deploy(confirm=false) with its
@@ -373,6 +381,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Validate aetherfy.yaml exists
 	if err := archive.ValidateAetherfyConfig(absPath); err != nil {
 		output.PrintError("%v", err)
+		if isUnknownFields(err) {
+			// The file exists and names a key the server would refuse: the
+			// sentence above says which. The create-a-file example below
+			// would only point at the wrong problem.
+			os.Exit(1)
+		}
 		output.Println("")
 		output.Println("Create an aetherfy.yaml file with your agent configuration.")
 		output.Println("Example:")
@@ -570,6 +584,9 @@ func runDeployFromGitHub(repoRef string) error {
 	// Validate aetherfy.yaml exists in the clone
 	if err := archive.ValidateAetherfyConfig(tmpDir); err != nil {
 		output.PrintError("%v", err)
+		if isUnknownFields(err) {
+			os.Exit(1)
+		}
 		output.Println("")
 		output.Println("The repository must contain an aetherfy.yaml file.")
 		os.Exit(1)
