@@ -24,8 +24,9 @@ import (
 // INDEX_ATTEMPT_TIMEOUT_S, INDEX_DEFAULT_DEADLINE_S, INDEX_RESEND_PAUSE_FIRST_S,
 // INDEX_RESEND_PAUSE_MAX_S, and the *_MS twins in aetherfy-vectors-js-sdk
 // src/client.ts. aetherfy-e2e-tests tests/pyunit/test_index_timeouts_pair.py
-// reads IndexWaitBudget, IndexForwardMargin and IndexAttemptTimeout from THIS
-// file, so each stays one `Name = <integer> * time.Second` line.
+// reads all six from THIS file (the first three against vectordb, the pacing
+// three against both SDKs), so each stays one `Name = <integer> * time.Second`
+// line.
 const (
 	IndexWaitBudget     = 25 * time.Second
 	IndexForwardMargin  = 5 * time.Second

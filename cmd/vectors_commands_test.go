@@ -508,7 +508,7 @@ func TestTheFlagsAndTheEnvironmentReachTheRequest(t *testing.T) {
 		// same tree; put these back so each run starts as a fresh process would.
 		defer func() {
 			for _, name := range []string{"json", "workspace", "vectors-url", "api-region"} {
-				f := collectionsListCmd.Flags().Lookup(name)
+				f := collectionsListCmd.Flag(name)
 				_ = f.Value.Set(f.DefValue)
 				f.Changed = false
 			}

@@ -299,29 +299,12 @@ func collectionsDelete(r *vecRun, name string, yes bool, stdin io.Reader, intera
 }
 
 func init() {
-	collectionsListCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	collectionsListCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	collectionsListCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	collectionsListCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
-
-	collectionsGetCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	collectionsGetCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	collectionsGetCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	collectionsGetCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
 	collectionsCreateCmd.Flags().IntVar(&collectionSize, "size", 0, "Vector size (dimensions), required")
 	collectionsCreateCmd.Flags().StringVar(&collectionDistance, "distance", "", "Distance: cosine, dot, euclid or manhattan, required")
 	collectionsCreateCmd.Flags().StringSliceVar(&collectionRegions, "regions", nil, "Regions to place the collection in, comma-separated (default: all your regions)")
-	collectionsCreateCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	collectionsCreateCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	collectionsCreateCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	collectionsCreateCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
 	collectionsDeleteCmd.Flags().BoolVarP(&collectionDeleteYes, "yes", "y", false, "Delete without asking")
-	collectionsDeleteCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	collectionsDeleteCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	collectionsDeleteCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	collectionsDeleteCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
 	collectionsCmd.AddCommand(collectionsListCmd)
 	collectionsCmd.AddCommand(collectionsGetCmd)

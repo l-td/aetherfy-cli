@@ -270,14 +270,24 @@ func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
 	// without one of them silently ignores it: cobra refuses an unknown flag,
 	// but a caller that gets that refusal from one command and not another
 	// cannot script against the set.
+	//
+	// They are declared ONCE, on the group, and reach each subcommand as
+	// inherited flags. A subcommand that declared one locally as well would be
+	// the per-command copy this replaced, drifting from the group's help text.
 	leaves := vectorLeaves()
 	if len(leaves) < 9 {
 		t.Fatalf("only %d vector commands found; the walk is not reaching them", len(leaves))
 	}
 	for _, c := range leaves {
 		for _, flag := range []string{"json", "workspace", "vectors-url", "api-region"} {
-			if c.Flags().Lookup(flag) == nil {
+			if c.Flag(flag) == nil {
 				t.Errorf("`%s` has no --%s", c.CommandPath(), flag)
+			}
+			if c.LocalNonPersistentFlags().Lookup(flag) != nil {
+				t.Errorf("`%s` declares --%s itself; it belongs to the group", c.CommandPath(), flag)
+			}
+			if c.Parent().PersistentFlags().Lookup(flag) == nil {
+				t.Errorf("`%s` is not a persistent flag of `%s`", flag, c.Parent().CommandPath())
 			}
 		}
 		if c.GroupID != "" {

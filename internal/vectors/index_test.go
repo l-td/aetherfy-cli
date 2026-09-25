@@ -330,10 +330,11 @@ func TestTheIndexConstantsAreTheSDKs(t *testing.T) {
 	// INDEX_WAIT_BUDGET_S = 25.0, INDEX_FORWARD_MARGIN_S = 5.0,
 	// INDEX_ATTEMPT_TIMEOUT_S = 45.0, INDEX_DEFAULT_DEADLINE_S = 600.0,
 	// INDEX_RESEND_PAUSE_FIRST_S = 1.0, INDEX_RESEND_PAUSE_MAX_S = 10.0, and
-	// the *_MS twins in aetherfy-vectors-js-sdk src/client.ts. The first
-	// three are compared with vectordb's source by aetherfy-e2e-tests
-	// tests/pyunit/test_index_timeouts_pair.py; the pacing three have no
-	// cross-repo gate, so a change to them in the SDKs is copied here by hand.
+	// the *_MS twins in aetherfy-vectors-js-sdk src/client.ts. All six are
+	// read from source by aetherfy-e2e-tests
+	// tests/pyunit/test_index_timeouts_pair.py: the first three against
+	// vectordb's, the pacing three against both SDKs'. This local copy is what
+	// reds in this repo's own CI, which checks out no sibling.
 	for name, got := range map[string][2]time.Duration{
 		"IndexWaitBudget":       {IndexWaitBudget, 25 * time.Second},
 		"IndexForwardMargin":    {IndexForwardMargin, 5 * time.Second},

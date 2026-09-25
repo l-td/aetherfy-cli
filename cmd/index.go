@@ -148,15 +148,6 @@ func indexDelete(r *vecRun, collection, field string) int {
 func init() {
 	indexCreateCmd.Flags().StringVar(&indexType, "type", "", "Index type: keyword, integer, float, bool, geo, datetime, uuid, text, or a JSON object; required")
 	indexCreateCmd.Flags().StringVar(&indexTimeout, "timeout", "", fmt.Sprintf("Seconds to wait for the build before giving up (default %g)", vectors.IndexDefaultDeadline.Seconds()))
-	indexCreateCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	indexCreateCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	indexCreateCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	indexCreateCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
-
-	indexDeleteCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	indexDeleteCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	indexDeleteCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	indexDeleteCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
 	indexCmd.AddCommand(indexCreateCmd)
 	indexCmd.AddCommand(indexDeleteCmd)

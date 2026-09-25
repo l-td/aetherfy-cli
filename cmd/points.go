@@ -254,23 +254,10 @@ func pointsSearch(r *vecRun, collection, vectorRaw string, limit int, filterRaw 
 
 func init() {
 	pointsCountCmd.Flags().StringVar(&pointsFilter, "filter", "", "Only count the points this filter (a JSON object) matches")
-	pointsCountCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	pointsCountCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	pointsCountCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	pointsCountCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
-
-	pointsGetCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	pointsGetCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	pointsGetCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	pointsGetCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
 	pointsSearchCmd.Flags().StringVar(&pointsSearchVector, "vector", "", "The query vector: a JSON array of numbers, or @path to one; required")
 	pointsSearchCmd.Flags().IntVar(&pointsSearchLimit, "limit", 10, "How many points to return")
 	pointsSearchCmd.Flags().StringVar(&pointsFilter, "filter", "", "Only return points this filter (a JSON object) matches")
-	pointsSearchCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
-	pointsSearchCmd.Flags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
-	pointsSearchCmd.Flags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
-	pointsSearchCmd.Flags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
 	pointsCmd.AddCommand(pointsCountCmd)
 	pointsCmd.AddCommand(pointsGetCmd)

@@ -28,11 +28,12 @@ const (
 	exitInputRefused  = 2
 )
 
-// Every vector command's own flags. Registered on EACH command with a literal
-// call, never through a helper or on the group: docs-site's surface extractor
-// reads `xCmd.Flags().XxxVar(&v, "name", ...)` statically and does not carry a
-// group's persistent flags down to its subcommands, so a flag registered any
-// other way would be one the docs guard refuses to let a page mention.
+// The four flags every vector command takes, declared once per group as
+// persistent flags, which cobra hands to each subcommand. Keep each a literal
+// `group.PersistentFlags().XxxVar(&v, "name", ...)` call: docs-site's surface
+// extractor reads them statically (and carries them down to the subcommands,
+// the way cobra does), so a loop or a helper would hide them from the docs
+// guard.
 var (
 	vecJSON       bool
 	vecVectorsURL string
@@ -223,6 +224,21 @@ func exitWith(code int) error {
 }
 
 func init() {
+	collectionsCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
+	collectionsCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
+	collectionsCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
+	collectionsCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
+
+	indexCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
+	indexCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
+	indexCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
+	indexCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
+
+	pointsCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
+	pointsCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
+	pointsCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
+	pointsCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
+
 	for _, group := range []*cobra.Command{collectionsCmd, indexCmd, pointsCmd} {
 		// Inherited by every subcommand.
 		group.SetFlagErrorFunc(refuseFlag)
