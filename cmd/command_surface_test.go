@@ -225,7 +225,7 @@ func TestEveryTopLevelCommandIsRegisteredWithALiteralAddCommand(t *testing.T) {
 func TestTheNonDefaultNounsKeepTheirGroups(t *testing.T) {
 	// The other half of the rule. If these ever flatten too, `afy list` becomes
 	// ambiguous and the whole design falls over.
-	for _, name := range []string{"secrets", "workspaces", "github"} {
+	for _, name := range []string{"secrets", "workspaces", "github", "collections", "index", "points"} {
 		c := rootByName(t, name)
 		if c == nil {
 			t.Errorf("`afy %s` is not registered", name)
@@ -233,6 +233,60 @@ func TestTheNonDefaultNounsKeepTheirGroups(t *testing.T) {
 		}
 		if len(c.Commands()) == 0 {
 			t.Errorf("`afy %s` has no subcommands — it was flattened, and it must not be", name)
+		}
+	}
+}
+
+// vectorLeaves is every runnable command under the three vector groups.
+func vectorLeaves() []*cobra.Command {
+	var leaves []*cobra.Command
+	for _, group := range []*cobra.Command{collectionsCmd, indexCmd, pointsCmd} {
+		leaves = append(leaves, group.Commands()...)
+	}
+	return leaves
+}
+
+func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
+	// The surface the brief scoped, and no more: upsert, payload edits and
+	// aliases are the SDKs' job. A new one here is a decision, not a drive-by.
+	want := []string{
+		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
+		"afy index create", "afy index delete",
+		"afy points count", "afy points get", "afy points search",
+	}
+	var got []string
+	for _, c := range vectorLeaves() {
+		got = append(got, c.CommandPath())
+	}
+	sort.Strings(got)
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("vector commands = %v\nwant %v", got, want)
+	}
+}
+
+func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
+	// --json is the contract a coding agent reads, and the other three decide
+	// where a request goes and which workspace a name means. A command
+	// without one of them silently ignores it: cobra refuses an unknown flag,
+	// but a caller that gets that refusal from one command and not another
+	// cannot script against the set.
+	leaves := vectorLeaves()
+	if len(leaves) < 9 {
+		t.Fatalf("only %d vector commands found; the walk is not reaching them", len(leaves))
+	}
+	for _, c := range leaves {
+		for _, flag := range []string{"json", "workspace", "vectors-url", "api-region"} {
+			if c.Flags().Lookup(flag) == nil {
+				t.Errorf("`%s` has no --%s", c.CommandPath(), flag)
+			}
+		}
+		if c.GroupID != "" {
+			t.Errorf("`%s` has a help group; only top-level commands take one", c.CommandPath())
+		}
+	}
+	for _, g := range []*cobra.Command{collectionsCmd, indexCmd, pointsCmd} {
+		if g.GroupID != groupResources {
+			t.Errorf("`%s` is in help group %q, want %q beside the other nouns", g.CommandPath(), g.GroupID, groupResources)
 		}
 	}
 }

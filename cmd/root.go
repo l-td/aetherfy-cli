@@ -132,15 +132,16 @@ func init() {
 	// SO: DO NOT ADD A TOP-LEVEL COMMAND THAT TAKES A NOUN. A new verb here is
 	// an agent verb by definition. Anything about some other kind of object goes
 	// under that object's group, and a genuinely new kind of object gets a new
-	// group beside secrets/workspaces/github. Without that rule the structure
-	// looks arbitrary and the next person adds `afy collections list`.
+	// group beside secrets/workspaces/github/collections/index/points. Without
+	// that rule the structure looks arbitrary and the next person adds a
+	// top-level `afy list-collections`.
 	for _, c := range []*cobra.Command{deployCmd, redeployCmd, rollbackCmd} {
 		c.GroupID = groupAgentLifecycle
 	}
 	for _, c := range []*cobra.Command{logsCmd, deploymentsCmd, spawnCmd} {
 		c.GroupID = groupAgentOps
 	}
-	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd} {
+	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, collectionsCmd, indexCmd, pointsCmd} {
 		c.GroupID = groupResources
 	}
 	for _, c := range []*cobra.Command{initCmd, versionCmd, loginCmd, logoutCmd, whoamiCmd} {
@@ -159,6 +160,9 @@ func init() {
 	rootCmd.AddCommand(secretsCmd)
 	rootCmd.AddCommand(workspacesCmd)
 	rootCmd.AddCommand(githubCmd)
+	rootCmd.AddCommand(collectionsCmd)
+	rootCmd.AddCommand(indexCmd)
+	rootCmd.AddCommand(pointsCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(loginCmd)
