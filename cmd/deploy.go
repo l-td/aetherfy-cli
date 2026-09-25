@@ -669,16 +669,33 @@ func isHexString(s string) bool {
 	return true
 }
 
+// THE CONTROL PLANE'S STAGE BUDGETS, mirrored here and pinned to the constants
+// they mirror by TestTheDeployWatchCoversTheControlPlanesStageBudgets (live
+// against the sibling checkout; test/cpbudgets). A release stays `deploying`
+// until its health gate has seen it serve, so a wait that ends sooner reports
+// "timed out" for a deploy that then succeeds.
+const (
+	// aetherfy-control-plane orchestrator/fly_builder.py BUILD_TIMEOUT_SECONDS
+	cpBuildTimeout = 300 * time.Second
+	// aetherfy-control-plane workers/deploy_worker.py DEPLOY_HEALTH_GATE_TIMEOUT_SECONDS
+	cpHealthGateTimeout = 300 * time.Second
+	// What the control plane does not bound with one number: the wait in the
+	// build and deploy queues, and creating and booting the machines.
+	deploymentWatchSlack = 5 * time.Minute
+)
+
 // How often a command waiting on a deployment re-reads it, and how long it
-// waits in all before giving up.
+// waits in all before giving up: every stage the control plane may spend, and
+// the part it does not bound.
 const (
 	deploymentPollInterval = 5 * time.Second
-	deploymentWatchTimeout = 10 * time.Minute
+	deploymentWatchTimeout = cpBuildTimeout + cpHealthGateTimeout + deploymentWatchSlack
 )
 
 var (
 	errDeploymentFailed        = errors.New("deployment failed")
 	errDeploymentWatchTimedOut = errors.New("deployment did not finish before the wait ran out")
+	errDeploymentReplaced      = errors.New("a newer deployment went live instead")
 )
 
 // watchDeployment follows a deployment until it settles, and returns nil only
@@ -730,6 +747,16 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 				}
 				printAgentURL(client, agentID)
 				return nil
+			case "superseded", "rolled_back":
+				// TERMINAL, NOT IN PROGRESS. A newer release of this agent went
+				// live first -- a second push while this one was still being
+				// checked, or a rollback -- so this version is not the one
+				// serving. Before this the watch kept polling a state that never
+				// changes until it timed out. Non-zero: a script that deployed
+				// this version must not read it as live.
+				output.PrintError("Deployment v%d was replaced before it went live: a newer deployment of this agent is serving instead.", deployment.Version)
+				output.Println(fmt.Sprintf("Check which version is live with 'afy deployments %s'.", agentID))
+				return errDeploymentReplaced
 			case "failed", "error":
 				output.PrintError("Deployment failed")
 				if deployment.ErrorMessage != "" {
