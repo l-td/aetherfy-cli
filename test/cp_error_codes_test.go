@@ -82,6 +82,21 @@ var notControlPlaneCodes = map[string]string{
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
 
+	// The vector commands' environment, the vectors SDKs' names, read by
+	// internal/vectors/resolve.go.
+	"AETHERFY_VECTORS_URL":        "env var: the vectors endpoint, as the SDKs read it",
+	"AETHERFY_VECTORS_API_REGION": "env var: the vectors API region, as the SDKs read it",
+	"AETHERFY_WORKSPACE":          "env var: the workspace vector collections default to, as the SDKs read it",
+
+	// VECTORDB error codes, in the internal/vectors fixtures. The vector
+	// commands talk to vectordb, not the control plane, and vectordb has no
+	// code registry to pin them against: it writes each code as a literal in
+	// the route that raises it (see the APIError comment in
+	// internal/vectors/client.go). Nothing in the CLI branches on either; the
+	// commands print the code they are sent.
+	"NOT_FOUND":   "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
+	"PROXY_ERROR": "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
+
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.
 	"AETHERFY_AGENT_ID":        "reserved agent env var, not settable as a secret",
