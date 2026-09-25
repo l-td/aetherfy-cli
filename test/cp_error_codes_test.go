@@ -134,6 +134,12 @@ var notControlPlaneCodes = map[string]string{
 	"UNKNOWN_FIELD_MESSAGE":           "cpyaml: the constant holding the unknown-field sentence, not an error code",
 	"UNKNOWN_FIELD_SUGGESTION_CUTOFF": "cpyaml: the constant holding the did-you-mean cutoff, not an error code",
 
+	// Constant NAMES test/cpbudgets reads from the control plane: the deploy
+	// stage budgets the `afy deploy` watch is built from, in seconds. Numbers
+	// the CLI compares with its own copies; neither is ever sent as a code.
+	"BUILD_TIMEOUT_SECONDS":              "cpbudgets: orchestrator/fly_builder.py's build budget, not an error code",
+	"DEPLOY_HEALTH_GATE_TIMEOUT_SECONDS": "cpbudgets: workers/deploy_worker.py's health-gate budget, not an error code",
+
 	// Deliberately not a control-plane code — the only literal in shipped code
 	// that LOOKS like drift and is not.
 	//
@@ -173,10 +179,7 @@ func TestEveryPinnedCodeExistsInTheControlPlaneRegistry(t *testing.T) {
 		"the committed snapshot is not trustworthy, so nothing below means anything")
 
 	for _, lit := range scanRepo(t) {
-		if _, ok := snap.Codes[lit.Value]; ok {
-			continue
-		}
-		if _, ok := notControlPlaneCodes[lit.Value]; ok {
+		if pinIsKnown(snap, lit.Value) {
 			continue
 		}
 		assert.Fail(t, "unknown control-plane error code",
@@ -191,6 +194,45 @@ func TestEveryPinnedCodeExistsInTheControlPlaneRegistry(t *testing.T) {
 				"  go run ./%s",
 			lit.File, lit.Line, lit.Value, guardFile, cperrors.GeneratorPath)
 	}
+}
+
+// pinIsKnown is THE GUARD's verdict on one code-shaped literal: a code the
+// control plane publishes, or an allowlisted non-code. One function, so the
+// test below proves the verdict the guard actually applies.
+func pinIsKnown(snap *cperrors.Snapshot, value string) bool {
+	if _, ok := snap.Codes[value]; ok {
+		return true
+	}
+	_, ok := notControlPlaneCodes[value]
+	return ok
+}
+
+// BOTH SIDES STILL BITE. The budget constants' exemption is two exact names:
+// a made-up code in the same file, scanned the same way, is still flagged,
+// a real code still passes, and a constant NAME that merely looks like a
+// budget (it is not on the allowlist) is still flagged -- nothing about the
+// SHAPE of a timeout name is exempt.
+func TestTheGuardFlagsAFakeCodeAndPassesTheBudgetPins(t *testing.T) {
+	snap := loadSnapshot(t)
+	src := "package x\n" +
+		"var build = \"BUILD_TIMEOUT_SECONDS\"\n" +
+		"var gate = \"DEPLOY_HEALTH_GATE_TIMEOUT_SECONDS\"\n" +
+		"var real = \"AGENT_NOT_FOUND\"\n" +
+		"var fake = \"AGENT_TELEPORTED_AWAY\"\n" +
+		"var lookalike = \"RUN_TIMEOUT_SECONDS\"\n"
+	lits, err := cperrors.ScanGoSource("x.go", src)
+	require.NoError(t, err)
+
+	verdict := map[string]bool{}
+	for _, lit := range lits {
+		verdict[lit.Value] = pinIsKnown(snap, lit.Value)
+	}
+	require.Len(t, verdict, 5, "the scanner did not see every literal: %v", verdict)
+	assert.True(t, verdict["BUILD_TIMEOUT_SECONDS"], "a budget pin was read as an unknown error code")
+	assert.True(t, verdict["DEPLOY_HEALTH_GATE_TIMEOUT_SECONDS"], "a budget pin was read as an unknown error code")
+	assert.True(t, verdict["AGENT_NOT_FOUND"], "a real control-plane code was flagged")
+	assert.False(t, verdict["AGENT_TELEPORTED_AWAY"], "a made-up code passed the registry guard")
+	assert.False(t, verdict["RUN_TIMEOUT_SECONDS"], "a timeout-shaped name passed without being allowlisted")
 }
 
 // Anti-vacuity. Every assertion above lives inside a loop, so a scan that
