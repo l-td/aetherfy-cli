@@ -450,9 +450,9 @@ func (e *stillPendingError) Error() string { return e.msg }
 // "was not started: ...". The KEYS are the control plane's RESUME_DROP_REASONS
 // (workers/lifecycle_decisions.py) -- TestStartDescribesExactlyTheControlPlanes
 // DropReasons pins them wherever that checkout exists. A reason this binary
-// does not know still gets a sentence, never a raw code.
+// does not know still gets a sentence, never a raw code. A start cancelled by
+// the owner's own pause reads as no resume at all, so it has no sentence.
 var resumeDropSentences = map[string]string{
-	"paused_again":  "you paused it again",
 	"archived":      "it was archived",
 	"deleted":       "it was deleted",
 	"billing_hold":  "a spend-limit pause or an account suspension took it",
