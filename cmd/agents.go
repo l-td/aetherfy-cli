@@ -378,7 +378,7 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 // deciding what is printed -- and not only the printer at the end of it.
 //
 // ONE REQUEST. A resume sent while the agent's previous stop is still finishing
-// is ACCEPTED by the control plane (202, resume_pending): it keeps the request
+// is ACCEPTED by the control plane (202, `resume` pending): it keeps the request
 // and starts the agent itself once that stop completes, so killing this
 // command loses nothing and nothing is ever re-sent. With wait, the agent's
 // STATUS is followed until it runs -- the start is never asked for again.
@@ -393,21 +393,24 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		return err
 	}
 
-	if result != nil && result.ResumePending {
-		bound := 0
-		if result.StopBoundSeconds != nil {
-			bound = *result.StopBoundSeconds
-		}
+	if result != nil && result.Resume.UnderWay() {
 		within := ""
-		if bound > 0 {
-			within = fmt.Sprintf(" (up to %ds)", bound)
+		if result.WaitBoundSeconds != nil && *result.WaitBoundSeconds > 0 {
+			within = fmt.Sprintf(" (at most %ds)", *result.WaitBoundSeconds)
 		}
 		output.PrintSuccess("Agent '%s' will start once its previous stop finishes%s.", idOrName, within)
 		if !wait {
 			output.PrintInfo("Nothing more to do. Follow it with 'afy status %s', or use --wait.", idOrName)
 			return nil
 		}
-		return waitForAcceptedStart(client, idOrName, bound)
+		if result.WaitBoundSeconds == nil {
+			// The server states how long its start can take; a guess here would
+			// be a second bound to drift from the platform's own.
+			output.PrintError("The control plane did not say how long the start can take, so --wait has "+
+				"nothing to wait by. Follow it with 'afy status %s'.", idOrName)
+			return fmt.Errorf("no wait_bound_seconds in the accepted start")
+		}
+		return waitForAcceptedStart(client, idOrName, *result.WaitBoundSeconds)
 	}
 
 	var readiness *string
@@ -419,24 +422,49 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 }
 
 // How `afy start --wait` follows an accepted start: one read of the agent per
-// poll, for the stop bound the server gave plus the start itself -- the
-// platform's start of the machines and its reading of their event log, which
-// the stop bound does not include. A var only so a test can record the waits
-// instead of spending them.
+// poll, for the wait_bound_seconds the server answered -- the stop still to
+// come plus the longest its start can take, from the control plane's own
+// constants. The CLI holds no bound of its own. Vars only so a test can record
+// the waits instead of spending them.
 var (
-	startWaitSleep         = time.Sleep
-	startWaitPoll          = 5 * time.Second
-	startWaitBeyondTheStop = 3 * time.Minute
+	startWaitSleep = time.Sleep
+	startWaitPoll  = 5 * time.Second
 )
 
-// waitForAcceptedStart polls the agent until it runs (success), until the
-// accepted start is gone while it is still paused (the start was dropped:
-// exit 1, saying what can drop it), or until the bound passes (exit 1; the
-// start is still the platform's to carry out, and saying so).
-func waitForAcceptedStart(client *api.Client, name string, stopBoundSeconds int) error {
+// resumeDropSentences: what each published drop reason means, as the end of
+// "was not started: ...". The KEYS are the control plane's RESUME_DROP_REASONS
+// (workers/lifecycle_decisions.py) -- TestStartDescribesExactlyTheControlPlanes
+// DropReasons pins them wherever that checkout exists. A reason this binary
+// does not know still gets a sentence, never a raw code.
+var resumeDropSentences = map[string]string{
+	"paused_again":  "you paused it again",
+	"archived":      "it was archived",
+	"deleted":       "it was deleted",
+	"billing_hold":  "a spend-limit pause or an account suspension took it",
+	"agent_failed":  "the agent failed (its app or image was lost)",
+	"stop_failed":   "its stop never finished, so it was not started",
+	"start_failed":  "its start never finished",
+	"state_changed": "it left paused another way",
+}
+
+// resumeDropSentence is the sentence for a drop reason, known or not.
+func resumeDropSentence(reason *string) string {
+	if reason != nil {
+		if s, ok := resumeDropSentences[*reason]; ok {
+			return s
+		}
+	}
+	return "the platform could not carry it out"
+}
+
+// waitForAcceptedStart polls the agent until it runs (success), until its
+// start reads dropped (exit 1, with the reason's sentence), or until the
+// server's bound passes (exit 1; the start is still the platform's to carry
+// out, and saying so).
+func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int) error {
 	sp := output.NewSpinner(fmt.Sprintf("Waiting for agent '%s' to start...", name))
 	sp.Start()
-	deadline := time.Duration(stopBoundSeconds)*time.Second + startWaitBeyondTheStop
+	deadline := time.Duration(waitBoundSeconds) * time.Second
 	var waited time.Duration
 	for {
 		startWaitSleep(startWaitPoll)
@@ -452,13 +480,15 @@ func waitForAcceptedStart(client *api.Client, name string, stopBoundSeconds int)
 			output.PrintSuccess("Agent '%s' resumed.", name)
 			return nil
 		}
-		if !agent.ResumePending {
+		if !agent.Resume.UnderWay() {
 			sp.Stop()
-			err := fmt.Errorf("agent '%s' was not started: it is %s", name, agent.Status)
-			output.PrintError("Agent '%s' was not started, and is %s: it was paused again, archived or "+
-				"deleted, or its stop did not finish. Run 'afy start %s' to start it now.",
-				name, agent.Status, name)
-			return err
+			why := "its start is no longer pending"
+			if agent.Resume != nil && agent.Resume.State == "dropped" {
+				why = resumeDropSentence(agent.Resume.Reason)
+			}
+			output.PrintError("Agent '%s' was not started: %s. It is %s; run 'afy start %s' to start it now.",
+				name, why, agent.Status, name)
+			return fmt.Errorf("agent '%s' was not started: %s", name, why)
 		}
 		if waited >= deadline {
 			sp.Stop()
@@ -711,10 +741,13 @@ func showAgentStatus(client *api.Client, name string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
-	// A start accepted while its previous stop was finishing: the status stays
-	// paused until the platform starts it, and this says one is on its way.
-	if agent.ResumePending {
+	// A start asked for while its previous stop was finishing: the status stays
+	// paused until the platform starts it, and this says one is on its way --
+	// or, when it was dropped, why.
+	if agent.Resume.UnderWay() {
 		output.KeyValue("Pending", "starting once its stop finishes")
+	} else if agent.Resume != nil && agent.Resume.State == "dropped" {
+		output.KeyValue("Start dropped", resumeDropSentence(agent.Resume.Reason))
 	}
 	// WHY it is not where it was asked to be, when the server recorded a
 	// reason -- on any status, not only `failed`: a restore the platform
