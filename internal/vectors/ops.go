@@ -122,10 +122,13 @@ func (c *Client) GetPoints(collection string, ids []interface{}) ([]Point, error
 }
 
 // Search returns the limit points nearest to vector, filtered by filter (nil
-// for none), with their payloads.
+// for none), with their payloads. It is sent as POST .../points/query, Qdrant's
+// search route: the API refuses the retired /points/search with 410
+// ROUTE_RETIRED. The vector goes in the body as "query", and the matches come
+// back under result.points.
 func (c *Client) Search(collection string, vector []float64, limit int, filter json.RawMessage) ([]Point, error) {
 	body := map[string]interface{}{
-		"vector":       vector,
+		"query":        vector,
 		"limit":        limit,
 		"offset":       0,
 		"with_payload": true,
@@ -135,10 +138,12 @@ func (c *Client) Search(collection string, vector []float64, limit int, filter j
 		body["filter"] = filter
 	}
 	var out struct {
-		Result []Point `json:"result"`
+		Result struct {
+			Points []Point `json:"points"`
+		} `json:"result"`
 	}
-	if err := c.do(http.MethodPost, c.collectionPath(collection, "/points/search"), body, c.timeout, &out); err != nil {
+	if err := c.do(http.MethodPost, c.collectionPath(collection, "/points/query"), body, c.timeout, &out); err != nil {
 		return nil, err
 	}
-	return out.Result, nil
+	return out.Result.Points, nil
 }

@@ -443,7 +443,7 @@ func TestPointsGetSendsDigitsAsNumbersAndTheRestAsStrings(t *testing.T) {
 
 func TestPointsSearch(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) {
-		return 200, `{"result":[{"id":3,"score":0.91,"payload":{"lang":"en"},"version":1}]}`
+		return 200, `{"result":{"points":[{"id":3,"score":0.91,"payload":{"lang":"en"},"version":1}]}}`
 	})
 	vectorFile := filepath.Join(t.TempDir(), "q.json")
 	if err := os.WriteFile(vectorFile, []byte("[0.5, -0.25]"), 0o600); err != nil {
@@ -454,8 +454,12 @@ func TestPointsSearch(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	req := only(t, s.got())
-	vec := req.Body["vector"].([]interface{})
-	if req.Path != "/api/v1/collections/articles/points/search" || len(vec) != 2 || vec[1] != -0.25 ||
+	// Search goes through Qdrant's query route; the vector travels as "query".
+	vec := req.Body["query"].([]interface{})
+	if _, retired := req.Body["vector"]; retired {
+		t.Errorf("sent the retired search body field \"vector\": %v", req.Body)
+	}
+	if req.Path != "/api/v1/collections/articles/points/query" || len(vec) != 2 || vec[1] != -0.25 ||
 		req.Body["limit"] != 5.0 || req.Body["filter"] == nil || req.Body["with_payload"] != true {
 		t.Errorf("sent %s %v", req.Path, req.Body)
 	}
