@@ -50,11 +50,15 @@ type Agent struct {
 	RegionsTotal   int    `json:"regions_total"`
 	RegionsReady   int    `json:"regions_ready"`
 	DegradedReason string `json:"degraded_reason,omitempty"`
-	// WHY THE AGENT IS `failed`, when nothing else on the record says. The
-	// server sets the two together: the CODE is the contract a script branches
-	// on, the MESSAGE is the platform's own prose and may be reworded between
-	// releases. That is why the terminal prints the message rather than a
-	// sentence of the CLI's own — one wording, composed where the state is.
+	// WHY THE AGENT IS NOT WHERE ITS OWNER ASKED, when nothing else on the
+	// record says: `failed` because the compute plane lost its app or image,
+	// or still `archived` because a restore was refused (the plan's agent
+	// limit, a payment issue, code that can no longer be used, ...). Read it on
+	// ANY status. The server sets the two together: the CODE is the contract a
+	// script branches on, the MESSAGE is the platform's own prose and may be
+	// reworded between releases. That is why the terminal prints the message
+	// rather than a sentence of the CLI's own — one wording, composed where the
+	// state is.
 	FailureCode    string `json:"failure_code,omitempty"`
 	FailureMessage string `json:"failure_message,omitempty"`
 	// The agent's actual region footprint, from the server's AgentResponse

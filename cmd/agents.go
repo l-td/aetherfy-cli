@@ -543,7 +543,11 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Track status via 'afy list'.", idOrName)
+	// 'afy status', NOT 'afy list': the restore is checked again when it runs,
+	// and a refused one leaves the agent `archived` with the reason on the
+	// record. The list shows the status alone, which reads the same for a
+	// restore still under way and one that was refused.
+	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Run 'afy status %s' to follow it: if the restore is refused, it says why.", idOrName, idOrName)
 	return nil
 }
 
@@ -678,11 +682,14 @@ func showAgentStatus(client *api.Client, name string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
-	// WHY it is failed, when the server recorded a reason. Until this line, an
-	// agent whose image the registry had lost read `failed` in the terminal and
-	// nothing else: the explanation existed on the API and in the dashboard and
-	// reached nobody at a command line. A code this binary is too old to have a
-	// message for still prints, with the one action that gets the wording.
+	// WHY it is not where it was asked to be, when the server recorded a
+	// reason -- on any status, not only `failed`: a restore the platform
+	// refused leaves the agent `archived`, and this line is the only place the
+	// terminal says why. Until this line, an agent whose image the registry had
+	// lost read `failed` and nothing else: the explanation existed on the API
+	// and in the dashboard and reached nobody at a command line. A code this
+	// binary is too old to have a message for still prints, with the one
+	// action that gets the wording.
 	if agent.FailureMessage != "" {
 		output.KeyValue("Reason", agent.FailureMessage)
 	} else if agent.FailureCode != "" {
