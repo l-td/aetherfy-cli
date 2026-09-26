@@ -162,8 +162,8 @@ func TestStatusSaysNothingAboutGitHubWhenTheAgentCarriesNoLink(t *testing.T) {
 
 func TestStatusWarnsWhenTheAccountIsDisconnected(t *testing.T) {
 	// Linked, and inert. Nothing on GitHub reports this: announcing a skipped
-	// push means posting a commit status, which needs the installation token
-	// that is gone.
+	// push means reporting a check on the commit, which needs the installation
+	// token that is gone.
 	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,`+
 		`"webhook_id":"1","account_connected":false,"branch_deleted_at":null}`)
 

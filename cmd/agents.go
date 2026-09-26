@@ -831,8 +831,8 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 	output.KeyValue("Webhook id", derefString(link.WebhookID))
 
 	// LINKED, BUT INERT. Nothing on GitHub reports either of these — a skip is
-	// announced as a commit status, which needs the installation token that is
-	// gone, and a deleted branch has no commit to attach one to. If it is not
+	// announced as a check on the commit, which needs the installation token
+	// that is gone, and a deleted branch has no commit to attach one to. If it is not
 	// said here it is not said anywhere a terminal can see.
 	if !link.AccountConnected {
 		output.Println("")

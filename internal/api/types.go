@@ -461,8 +461,9 @@ type GitHubLinkResponse struct {
 // auto-deploy with no relinking) and survives the deletion of the branch it
 // tracks. In both states the repo, branch and webhook below are all still true
 // and no push deploys, and the push path CANNOT say so for itself: announcing a
-// skip means posting a commit status, which needs the installation token that
-// is gone — and a branch deletion has no commit to attach one to at all.
+// skip means reporting a check on the commit, which needs the installation
+// token that is gone — and a branch deletion has no commit to attach one to at
+// all.
 //
 // NOTHING IS OMITEMPTY. `linked: false` and `account_connected: false` are the
 // values a reader most needs to see, and omitempty is exactly the tag that
