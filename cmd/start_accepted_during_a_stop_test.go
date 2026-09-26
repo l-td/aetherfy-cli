@@ -163,8 +163,8 @@ func TestWaitPrintsTheReasonTheStartWasDropped(t *testing.T) {
 
 		out, err := runStart(t, srv, true)
 
-		if err == nil {
-			t.Fatalf("%s: a dropped start exited 0:\n%s", reason, out)
+		if err == nil || ExitCode(err) != 1 {
+			t.Fatalf("%s: a dropped start must exit 1 (got err=%v):\n%s", reason, err, out)
 		}
 		if s.starts != 1 {
 			t.Fatalf("%s: the start was sent %d times", reason, s.starts)
@@ -205,11 +205,18 @@ func TestWaitGivesUpAtTheServersBoundAndSaysTheStartIsStillPending(t *testing.T)
 	if err == nil {
 		t.Fatalf("a start still pending past the bound exited 0:\n%s", out)
 	}
+	// Distinct from a failure (1): the start is still Aetherfy's to carry out.
+	if code := ExitCode(err); code != exitStillPending || exitStillPending != 4 {
+		t.Fatalf("a start still pending at the bound exits %d, want 4", code)
+	}
+	if !strings.Contains(out, "aetherfy is still retrying") || !strings.Contains(out, "'afy status api' shows the result") {
+		t.Fatalf("the still-pending wait must say Aetherfy is still retrying and where the result shows:\n%s", out)
+	}
 	if s.starts != 1 || s.reads != 4 || len(*waits) != 4 {
 		t.Fatalf("%d start(s), %d read(s), %d wait(s); want 1, 4, 4", s.starts, s.reads, len(*waits))
 	}
-	if !strings.Contains(out, "still pending") {
-		t.Fatalf("giving up must not read as the start failing -- it is still pending:\n%s", out)
+	if strings.Contains(out, "was not started") {
+		t.Fatalf("reaching the bound must not read as the start failing:\n%s", out)
 	}
 }
 

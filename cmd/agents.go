@@ -292,7 +292,10 @@ var agentsStartCmd = &cobra.Command{
 
 If the agent's previous stop is still finishing, the start is accepted and
 Aetherfy starts the agent as soon as that stop completes -- nothing needs
-re-running. Use --wait to block until the agent is running.`,
+re-running. Use --wait to block until the agent is running, for as long as the
+server says its start can take. --wait exits 1 if the start was dropped (with
+the reason), and 4 if it is still pending when that time is up: Aetherfy is
+still retrying, and 'afy status <name>' shows the result.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsStart,
 }
@@ -431,6 +434,18 @@ var (
 	startWaitPoll  = 5 * time.Second
 )
 
+// exitStillPending: `afy start --wait` reached the server's bound and the
+// start is neither carried out nor dropped. Not a failure -- Aetherfy is still
+// retrying it -- so not 1, which every waiting command uses for "it failed";
+// the next code after the CLI's 1 (failed), 2 (input refused) and
+// 3 (not logged in).
+const exitStillPending = 4
+
+// stillPendingError is what startAgent returns for exitStillPending.
+type stillPendingError struct{ msg string }
+
+func (e *stillPendingError) Error() string { return e.msg }
+
 // resumeDropSentences: what each published drop reason means, as the end of
 // "was not started: ...". The KEYS are the control plane's RESUME_DROP_REASONS
 // (workers/lifecycle_decisions.py) -- TestStartDescribesExactlyTheControlPlanes
@@ -459,8 +474,8 @@ func resumeDropSentence(reason *string) string {
 
 // waitForAcceptedStart polls the agent until it runs (success), until its
 // start reads dropped (exit 1, with the reason's sentence), or until the
-// server's bound passes (exit 1; the start is still the platform's to carry
-// out, and saying so).
+// server's bound passes (exit 4: the start is still the platform's to carry
+// out, and it says so and where the result will show).
 func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int) error {
 	sp := output.NewSpinner(fmt.Sprintf("Waiting for agent '%s' to start...", name))
 	sp.Start()
@@ -492,9 +507,10 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 		}
 		if waited >= deadline {
 			sp.Stop()
-			output.PrintError("Agent '%s' has not started after %.0fs of waiting. The start is still "+
-				"pending and Aetherfy will carry it out; check 'afy status %s'.", name, waited.Seconds(), name)
-			return fmt.Errorf("agent '%s' has not started after %.0fs", name, waited.Seconds())
+			output.PrintWarning("Agent '%s' has not started within %.0fs. Aetherfy is still retrying the "+
+				"start; 'afy status %s' shows the result.", name, waited.Seconds(), name)
+			return &stillPendingError{msg: fmt.Sprintf(
+				"agent '%s' has not started within %.0fs; Aetherfy is still retrying", name, waited.Seconds())}
 		}
 	}
 }
