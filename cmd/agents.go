@@ -288,9 +288,20 @@ Distinct from a billing-driven STOPPED state.`,
 var agentsStartCmd = &cobra.Command{
 	Use:   "start <name>",
 	Short: "Resume a paused agent",
-	Long:  "Resume an agent that was paused with 'afy stop'.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAgentsStart,
+	Long: `Resume an agent that was paused with 'afy stop'.
+
+If the agent's previous stop is still finishing, the start is accepted and
+Aetherfy starts the agent as soon as that stop completes -- nothing needs
+re-running. Use --wait to block until the agent is running.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsStart,
+}
+
+var startWait bool
+
+func init() {
+	agentsStartCmd.Flags().BoolVar(&startWait, "wait", false,
+		"If the previous stop is still finishing, wait until the agent is running (exit 1 if the start is dropped)")
 }
 
 // --- ARCHIVE / RESTORE (destroy Fly app, preserve config; re-provision) ---
@@ -359,55 +370,44 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return startAgent(api.NewClient(), args[0])
+	return startAgent(api.NewClient(), args[0], startWait)
 }
 
 // startAgent runs `afy start` against a given client, so a test can drive the
 // whole path -- the server's answer decoded, and that answer (not a constant)
 // deciding what is printed -- and not only the printer at the end of it.
-func startAgent(client *api.Client, idOrName string) error {
+//
+// ONE REQUEST. A resume sent while the agent's previous stop is still finishing
+// is ACCEPTED by the control plane (202, resume_pending): it keeps the request
+// and starts the agent itself once that stop completes, so killing this
+// command loses nothing and nothing is ever re-sent. With wait, the agent's
+// STATUS is followed until it runs -- the start is never asked for again.
+func startAgent(client *api.Client, idOrName string, wait bool) error {
 	sp := output.NewSpinner(fmt.Sprintf("Starting agent '%s'...", idOrName))
 	sp.Start()
-
-	// A PREVIOUS STOP STILL SETTLING is not a failed start. `afy stop` answers
-	// once the pause is decided and the control plane stops the machines after
-	// it, giving the agent's server its shutdown grace; a resume sent meanwhile
-	// is answered 409 AGENT_STILL_STOPPING with how long to wait and the
-	// longest the stop can still take. So this waits as told, up to that bound,
-	// and says so once; past the bound it fails, naming why.
-	var waited time.Duration
-	told := false
-	var result *api.StartAgentResult
-	var err error
-	for {
-		result, err = client.StartAgent(idOrName)
-		wait, bound, stopping := stillStopping(err)
-		if !stopping {
-			break
-		}
-		if waited+wait > bound {
-			sp.Stop()
-			output.PrintError("Agent '%s' was still finishing its previous stop after %.0fs, "+
-				"the longest a stop can take. Run `afy start %s` again in a moment.",
-				idOrName, waited.Seconds(), idOrName)
-			return err
-		}
-		if !told {
-			sp.Stop()
-			output.PrintInfo("Previous stop still finishing, retrying in %.0fs", wait.Seconds())
-			sp.Start()
-			told = true
-		}
-		sp.UpdateMessage(fmt.Sprintf("Waiting for agent '%s' to finish stopping (%.0fs)...",
-			idOrName, (waited + wait).Seconds()))
-		stillStoppingSleep(wait)
-		waited += wait
-	}
+	result, err := client.StartAgent(idOrName)
 	sp.Stop()
 
 	if err != nil {
 		output.PrintError("Failed to start agent: %v", err)
 		return err
+	}
+
+	if result != nil && result.ResumePending {
+		bound := 0
+		if result.StopBoundSeconds != nil {
+			bound = *result.StopBoundSeconds
+		}
+		within := ""
+		if bound > 0 {
+			within = fmt.Sprintf(" (up to %ds)", bound)
+		}
+		output.PrintSuccess("Agent '%s' will start once its previous stop finishes%s.", idOrName, within)
+		if !wait {
+			output.PrintInfo("Nothing more to do. Follow it with 'afy status %s', or use --wait.", idOrName)
+			return nil
+		}
+		return waitForAcceptedStart(client, idOrName, bound)
 	}
 
 	var readiness *string
@@ -418,26 +418,55 @@ func startAgent(client *api.Client, idOrName string) error {
 	return nil
 }
 
-// codeAgentStillStopping is the control plane's answer to a start whose
-// pause is still being carried out (shared/error_codes.py).
-const codeAgentStillStopping = "AGENT_STILL_STOPPING"
+// How `afy start --wait` follows an accepted start: one read of the agent per
+// poll, for the stop bound the server gave plus the start itself -- the
+// platform's start of the machines and its reading of their event log, which
+// the stop bound does not include. A var only so a test can record the waits
+// instead of spending them.
+var (
+	startWaitSleep         = time.Sleep
+	startWaitPoll          = 5 * time.Second
+	startWaitBeyondTheStop = 3 * time.Minute
+)
 
-// stillStoppingSleep is how startAgent waits between attempts. A var only so
-// a test can record the waits instead of spending them.
-var stillStoppingSleep = time.Sleep
-
-// stillStopping reads a 409 AGENT_STILL_STOPPING: how long the server asked to
-// wait (Retry-After, carried in the body), and the longest a stop can take.
-// ok is false for anything else -- and for an answer missing either number,
-// which then fails as it arrived rather than being waited on for a guess.
-func stillStopping(err error) (wait, bound time.Duration, ok bool) {
-	apiErr, isAPI := err.(*api.APIError)
-	if !isAPI || apiErr.Code != codeAgentStillStopping ||
-		apiErr.RetryAfterSeconds == nil || apiErr.StopBoundSeconds == nil {
-		return 0, 0, false
+// waitForAcceptedStart polls the agent until it runs (success), until the
+// accepted start is gone while it is still paused (the start was dropped:
+// exit 1, saying what can drop it), or until the bound passes (exit 1; the
+// start is still the platform's to carry out, and saying so).
+func waitForAcceptedStart(client *api.Client, name string, stopBoundSeconds int) error {
+	sp := output.NewSpinner(fmt.Sprintf("Waiting for agent '%s' to start...", name))
+	sp.Start()
+	deadline := time.Duration(stopBoundSeconds)*time.Second + startWaitBeyondTheStop
+	var waited time.Duration
+	for {
+		startWaitSleep(startWaitPoll)
+		waited += startWaitPoll
+		agent, err := client.GetAgent(name)
+		if err != nil {
+			sp.Stop()
+			output.PrintError("Could not read agent '%s' while waiting for it to start: %v", name, err)
+			return err
+		}
+		if agent.Status == "running" {
+			sp.Stop()
+			output.PrintSuccess("Agent '%s' resumed.", name)
+			return nil
+		}
+		if !agent.ResumePending {
+			sp.Stop()
+			err := fmt.Errorf("agent '%s' was not started: it is %s", name, agent.Status)
+			output.PrintError("Agent '%s' was not started, and is %s: it was paused again, archived or "+
+				"deleted, or its stop did not finish. Run 'afy start %s' to start it now.",
+				name, agent.Status, name)
+			return err
+		}
+		if waited >= deadline {
+			sp.Stop()
+			output.PrintError("Agent '%s' has not started after %.0fs of waiting. The start is still "+
+				"pending and Aetherfy will carry it out; check 'afy status %s'.", name, waited.Seconds(), name)
+			return fmt.Errorf("agent '%s' has not started after %.0fs", name, waited.Seconds())
+		}
 	}
-	return time.Duration(*apiErr.RetryAfterSeconds) * time.Second,
-		time.Duration(*apiErr.StopBoundSeconds) * time.Second, true
 }
 
 // printStartOutcome says what the control plane OBSERVED, and nothing more.
@@ -682,6 +711,11 @@ func showAgentStatus(client *api.Client, name string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
+	// A start accepted while its previous stop was finishing: the status stays
+	// paused until the platform starts it, and this says one is on its way.
+	if agent.ResumePending {
+		output.KeyValue("Pending", "starting once its stop finishes")
+	}
 	// WHY it is not where it was asked to be, when the server recorded a
 	// reason -- on any status, not only `failed`: a restore the platform
 	// refused leaves the agent `archived`, and this line is the only place the

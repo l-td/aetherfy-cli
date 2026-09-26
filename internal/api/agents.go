@@ -158,10 +158,18 @@ func (c *Client) StopAgent(idOrName string) error {
 // "serving", "starting", "load_failed" or "unconfirmed". It is nil for an agent
 // that serves no requests, and for a control plane older than the field -- so a
 // nil never means "serving".
+//
+// ResumePending is true when the resume arrived while the agent's previous
+// stop was still finishing: the control plane ACCEPTED it (status still
+// "paused", nothing started yet) and starts the agent itself once that stop
+// completes. StopBoundSeconds is then the longest the stop can still take (0
+// once only the start is left). Nothing needs re-sending.
 type StartAgentResult struct {
-	Status    string  `json:"status"`
-	AgentID   string  `json:"agent_id"`
-	Readiness *string `json:"readiness"`
+	Status           string  `json:"status"`
+	AgentID          string  `json:"agent_id"`
+	Readiness        *string `json:"readiness"`
+	ResumePending    bool    `json:"resume_pending"`
+	StopBoundSeconds *int    `json:"stop_bound_seconds"`
 }
 
 // StartAgent resumes a paused agent.

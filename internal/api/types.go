@@ -32,6 +32,12 @@ type Agent struct {
 	// carrying a fragment of the owner's account id.
 	Deployed bool   `json:"deployed"`
 	URL      string `json:"url,omitempty"`
+	// ResumePending: a start asked for while the agent's previous stop was
+	// still finishing, accepted and not yet carried out (server AgentResponse).
+	// The agent reads "paused" until the platform starts it. False on a paused
+	// agent means that start was dropped (paused again, archived or deleted,
+	// or the stop failed). No omitempty: `-o json` readers see it explicitly.
+	ResumePending bool `json:"resume_pending"`
 	// AllowedWorkers pulls through from the server's AgentResponse: the agent
 	// names this agent may spawn. There is no parent field: who spawned a run
 	// is recorded on the run, never on the agent.
