@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 121
+      "count": 122
     },
     {
       "path": "api/routes/regions.py",
@@ -460,6 +460,10 @@
       "tier": "top-level"
     },
     "TARGET_WORKSPACE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "TEST_POOL_ONLY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
