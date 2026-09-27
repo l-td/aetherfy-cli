@@ -135,6 +135,11 @@ func streamLogs(client *api.Client, agentID string) error {
 	return nil
 }
 
+// systemStream is the control plane's platform stream: the one thing that tells
+// a platform line from the customer's own output. Pinned to the control plane's
+// models/agent_log.SYSTEM_LOG_STREAM by TestTheSystemStreamIsTheControlPlanes.
+const systemStream = "system"
+
 // printLogLine prints one stored line as `<time> [<tag>] <message>`.
 func printLogLine(log api.LogEntry, timeLayout string) {
 	output.Dim.Printf("%s ", log.Timestamp.Format(timeLayout))
@@ -149,7 +154,7 @@ func printLogLine(log api.LogEntry, timeLayout string) {
 // never from its text: platform lines carry none in their message, which is
 // what used to print "[SYSTEM] [SYSTEM] ...".
 func logTag(log api.LogEntry) string {
-	if log.Stream == "system" && log.Level != "" && log.Level != "SYSTEM" {
+	if log.Stream == systemStream && log.Level != "" && log.Level != "SYSTEM" {
 		return "SYSTEM " + log.Level
 	}
 	return log.Level
