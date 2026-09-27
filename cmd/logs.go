@@ -97,11 +97,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 
 	// Print logs
 	for _, log := range logs {
-		timestamp := log.Timestamp.Format("2006-01-02 15:04:05")
-		levelColor := getLevelColor(log.Level)
-		output.Dim.Printf("%s ", timestamp)
-		levelColor.Printf("[%s] ", log.Level)
-		fmt.Println(log.Message)
+		printLogLine(log, "2006-01-02 15:04:05")
 	}
 
 	return nil
@@ -130,17 +126,33 @@ func streamLogs(client *api.Client, agentID string) error {
 			continue
 		}
 		for _, log := range logs {
-			timestamp := log.Timestamp.Format("15:04:05")
-			levelColor := getLevelColor(log.Level)
-			output.Dim.Printf("%s ", timestamp)
-			levelColor.Printf("[%s] ", log.Level)
-			fmt.Println(log.Message)
+			printLogLine(log, "15:04:05")
 			if log.ID > afterID {
 				afterID = log.ID
 			}
 		}
 	}
 	return nil
+}
+
+// printLogLine prints one stored line as `<time> [<tag>] <message>`.
+func printLogLine(log api.LogEntry, timeLayout string) {
+	output.Dim.Printf("%s ", log.Timestamp.Format(timeLayout))
+	getLevelColor(log.Level).Printf("[%s] ", logTag(log))
+	fmt.Println(log.Message)
+}
+
+// logTag is what goes in the brackets: the line's level, and for a line the
+// PLATFORM wrote at a level of its own (stream "system", level other than
+// SYSTEM -- today its ERROR lines) "SYSTEM <level>", so a platform error never
+// reads like the customer's own. The tag is built from the record's fields and
+// never from its text: platform lines carry none in their message, which is
+// what used to print "[SYSTEM] [SYSTEM] ...".
+func logTag(log api.LogEntry) string {
+	if log.Stream == "system" && log.Level != "" && log.Level != "SYSTEM" {
+		return "SYSTEM " + log.Level
+	}
+	return log.Level
 }
 
 func getLevelColor(level string) *output.ColorPrinter {
