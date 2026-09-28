@@ -490,3 +490,66 @@ type GitHubLinkStatus struct {
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
 }
+
+// ConnectionProvider is one service a connection can be made to (Google,
+// Slack, Notion). Configured is false while the platform has no OAuth app for
+// it in this environment; connecting to it is then refused with 501
+// CONNECTION_PROVIDER_NOT_CONFIGURED.
+type ConnectionProvider struct {
+	Provider      string   `json:"provider"`
+	DisplayName   string   `json:"display_name"`
+	Configured    bool     `json:"configured"`
+	DefaultScopes []string `json:"default_scopes"`
+	AllowedScopes []string `json:"allowed_scopes"`
+	Refreshable   bool     `json:"refreshable"`
+}
+
+// ConnectionAgentRef names the agent an agent-scoped connection belongs to.
+type ConnectionAgentRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// Connection is an OAuth grant's metadata. The control plane never sends
+// token material on any route the CLI calls.
+//
+// Scope is "agent" or "workspace": exactly one of Agent and Workspace is set.
+// Status is "connected" or "needs_reauth" — the provider refused the stored
+// grant and the user must connect again.
+type Connection struct {
+	Name            string              `json:"name"`
+	Provider        string              `json:"provider"`
+	Scope           string              `json:"scope"`
+	Agent           *ConnectionAgentRef `json:"agent"`
+	Workspace       *string             `json:"workspace"`
+	AccountLabel    *string             `json:"account_label"`
+	Scopes          []string            `json:"scopes"`
+	Status          string              `json:"status"`
+	LastErrorCode   *string             `json:"last_error_code"`
+	ConnectedAt     time.Time           `json:"connected_at"`
+	LastRefreshedAt *time.Time          `json:"last_refreshed_at"`
+	LastUsedAt      *time.Time          `json:"last_used_at"`
+}
+
+// ConnectionCreateRequest starts a connection. Name defaults server-side to
+// the provider key; Scopes are added to the provider's defaults.
+type ConnectionCreateRequest struct {
+	Provider string   `json:"provider"`
+	Name     string   `json:"name,omitempty"`
+	Scopes   []string `json:"scopes,omitempty"`
+}
+
+// ConnectionConnectURL is the provider's consent URL and the instant it stops
+// working, which is the only honest bound on how long `connect` waits.
+type ConnectionConnectURL struct {
+	ConnectURL string    `json:"connect_url"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	Name       string    `json:"name"`
+}
+
+// ConnectionDeleted reports a disconnect. ProviderRevoked is true only when
+// the provider CONFIRMED the grant is revoked.
+type ConnectionDeleted struct {
+	Name            string `json:"name"`
+	ProviderRevoked bool   `json:"provider_revoked"`
+}
