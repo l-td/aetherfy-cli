@@ -225,7 +225,7 @@ func TestEveryTopLevelCommandIsRegisteredWithALiteralAddCommand(t *testing.T) {
 func TestTheNonDefaultNounsKeepTheirGroups(t *testing.T) {
 	// The other half of the rule. If these ever flatten too, `afy list` becomes
 	// ambiguous and the whole design falls over.
-	for _, name := range []string{"secrets", "workspaces", "github", "collections", "index", "points"} {
+	for _, name := range []string{"secrets", "workspaces", "github", "gateway", "collections", "index", "points"} {
 		c := rootByName(t, name)
 		if c == nil {
 			t.Errorf("`afy %s` is not registered", name)
