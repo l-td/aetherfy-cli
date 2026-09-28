@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 121
+      "count": 131
     },
     {
       "path": "api/routes/regions.py",
@@ -239,6 +239,42 @@
       "source": "api/routes/regions.py",
       "tier": "violation"
     },
+    "CONNECTION_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NAME_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NEEDS_REAUTH": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_PROVIDER_NOT_CONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_PROVIDER_UNAVAILABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_PROVIDER_UNKNOWN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_REQUIRES_AGENT_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_SCOPE_NOT_ALLOWED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "DEPLOYMENT_ACCESS_DENIED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -460,6 +496,10 @@
       "tier": "top-level"
     },
     "TARGET_WORKSPACE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "TEST_POOL_ONLY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
