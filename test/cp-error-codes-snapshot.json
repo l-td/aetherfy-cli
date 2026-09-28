@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 123
+      "count": 127
     },
     {
       "path": "api/routes/regions.py",
@@ -168,6 +168,22 @@
       "tier": "top-level"
     },
     "AGENT_TOGGLE_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKENS_UNCONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKEN_AUDIENCE_UNKNOWN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKEN_REQUIRES_AGENT_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKEN_SCOPE_NOT_GRANTED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
