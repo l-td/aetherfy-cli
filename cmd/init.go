@@ -9,6 +9,7 @@ import (
 
 	"github.com/l-td/aetherfy-cli/internal/detect"
 	"github.com/l-td/aetherfy-cli/internal/output"
+	"github.com/l-td/aetherfy-cli/internal/starters"
 	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -33,7 +34,11 @@ accept every prompt's default without asking (useful for scripting/CI).`,
   afy init -y
 
   # Non-interactive (all flags provided)
-  afy init --name my-bot --runtime python3.11 --type service --region us-east-1 --memory 256`,
+  afy init --name my-bot --runtime python3.11 --type service --region us-east-1 --memory 256
+
+  # Start from a starter project (see --list-templates)
+  afy init --template node-ts-hono ./my-agent
+  afy init --list-templates`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInit,
 }
@@ -50,6 +55,8 @@ var (
 	initForce      bool
 	initYes        bool
 	initSchedule   string
+	initTemplate   string
+	initListTempl  bool
 )
 
 func init() {
@@ -63,6 +70,8 @@ func init() {
 	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
+	initCmd.Flags().StringVar(&initTemplate, "template", "", "Write a starter project first (see --list-templates), then aetherfy.yaml for it")
+	initCmd.Flags().BoolVar(&initListTempl, "list-templates", false, "List the starter projects --template can write, and exit")
 	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
 }
 
@@ -92,6 +101,11 @@ func slugify(s string) string {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	if initListTempl {
+		printStarters()
+		return nil
+	}
+
 	dir := "."
 	if len(args) > 0 {
 		dir = args[0]
@@ -103,8 +117,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
 
+	// A starter is written BEFORE the scan, so detection reads it like any
+	// other project and the advice lines below describe what was written.
+	// Its conflict check covers aetherfy.yaml too, so the overwrite prompt
+	// below is not asked a second time.
+	starter, err := writeStarter(absDir, configPath)
+	if err != nil {
+		return err
+	}
+
 	// Warn if config already exists
-	if fileExists(configPath) && !initForce {
+	if starter == nil && fileExists(configPath) && !initForce {
 		if !isInteractive() {
 			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
 			return fmt.Errorf("aetherfy.yaml already exists")
@@ -141,6 +164,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 			output.PrintWarning("Could not detect runtime — use --runtime to specify one")
 		}
 	}
+	// A starter's files are written for one runtime and one entrypoint, and it
+	// is a service: preset all three unless a flag says otherwise.
+	if starter != nil {
+		if initRuntime == "" {
+			initRuntime = starter.Runtime
+		}
+		if initEntrypoint == "" {
+			initEntrypoint = starter.Entrypoint
+		}
+		if initType == "" {
+			initType = "service"
+		}
+	}
 	selectedRuntime := initRuntime
 	if selectedRuntime == "" {
 		selectedRuntime = hints.Runtime
@@ -152,8 +188,19 @@ func runInit(cmd *cobra.Command, args []string) error {
 			output.PrintWarning("Could not detect entrypoint — add 'entrypoint:' to aetherfy.yaml before deploying")
 		}
 	}
-	if hints.HasMastra {
-		output.PrintSuccess("Detected 'mastra' in dependencies")
+	// ONE LINE PER DETECTED FRAMEWORK, worded by its class in the table
+	// (internal/detect/frameworks.go): served as it is, a library that needs
+	// an app around it, or a shape that needs one change first.
+	for _, f := range hints.Frameworks {
+		line := fmt.Sprintf("Detected '%s' in dependencies — %s", f.Key, f.Advice())
+		switch f.Class {
+		case detect.Served:
+			output.PrintSuccess("%s", line)
+		case detect.NeedsServer:
+			output.PrintInfo("%s", line)
+		default:
+			output.PrintWarning("%s", line)
+		}
 	}
 	if hints.HasUvLock {
 		output.PrintSuccess("Detected uv.lock — will use 'uv sync --frozen' for reproducible installs")
@@ -484,4 +531,66 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 	sb.WriteString("#     - sub-agent-1\n")
 
 	return sb.String()
+}
+
+// printStarters is --list-templates: one line per starter, name first.
+func printStarters() {
+	width := 0
+	for _, s := range starters.All {
+		if len(s.Name) > width {
+			width = len(s.Name)
+		}
+	}
+	output.Println("Starter projects for 'afy init --template <name>':")
+	for _, s := range starters.All {
+		output.Println(fmt.Sprintf("  %-*s  %s (%s)", width, s.Name, s.Description, s.Runtime))
+	}
+}
+
+// writeStarter writes the --template starter into dir, or returns nil when no
+// template was asked for.
+//
+// NOTHING IS OVERWRITTEN WITHOUT --force, and nothing is half-written: every
+// path the starter would write, and aetherfy.yaml, is checked before the
+// first file is created, so a refusal leaves the directory exactly as it was.
+func writeStarter(dir, configPath string) (*starters.Starter, error) {
+	if initTemplate == "" {
+		return nil, nil
+	}
+	starter, ok := starters.Find(initTemplate)
+	if !ok {
+		return nil, fmt.Errorf("unknown template %q. Available: %s (see 'afy init --list-templates')",
+			initTemplate, strings.Join(starters.Names(), ", "))
+	}
+	files, err := starter.Files()
+	if err != nil {
+		return nil, err
+	}
+	paths := starters.SortedPaths(files)
+
+	if !initForce {
+		var conflicts []string
+		for _, p := range append(paths, filepath.Base(configPath)) {
+			if fileExists(filepath.Join(dir, p)) {
+				conflicts = append(conflicts, p)
+			}
+		}
+		if len(conflicts) > 0 {
+			output.PrintError("The %s template would overwrite: %s", starter.Name, strings.Join(conflicts, ", "))
+			return nil, fmt.Errorf("refusing to overwrite %s; use --force to replace them, or pick an empty directory",
+				strings.Join(conflicts, ", "))
+		}
+	}
+
+	for _, p := range paths {
+		target := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return nil, fmt.Errorf("creating %s: %w", filepath.Dir(target), err)
+		}
+		if err := os.WriteFile(target, files[p], 0644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", p, err)
+		}
+	}
+	output.PrintSuccess("Wrote the %s starter: %s", starter.Name, strings.Join(paths, ", "))
+	return &starter, nil
 }
