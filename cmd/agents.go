@@ -143,13 +143,15 @@ var (
 	agentType        string
 	agentRuntime     string
 	spawnEnabled     bool
+	spawnWorkers     []string
 )
 
 func init() {
 	agentsCreateCmd.Flags().StringVarP(&agentDescription, "description", "d", "", "Agent description")
 	agentsCreateCmd.Flags().StringVarP(&agentType, "type", "t", "SERVICE", "Agent type: SERVICE or JOB")
 	agentsCreateCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "python3.11", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile")
-	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent")
+	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent (requires --spawn-workers)")
+	agentsCreateCmd.Flags().StringSliceVar(&spawnWorkers, "spawn-workers", nil, `Agents this agent may spawn, comma-separated, or "*" for any of your agents`)
 }
 
 // normalizeAgentType validates a user-supplied agent type against the
@@ -172,13 +174,18 @@ func normalizeAgentType(raw string) (string, error) {
 // `afy create` and the consented create inside `afy deploy` go through
 // here rather than building their own request body, so the two can't drift.
 // agentType must already be normalized (lowercase, backend form).
-func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool) (*api.Agent, error) {
+//
+// The spawn rule (enabled requires workers; "*" stands alone) is the control
+// plane's to state: it answers 422 AGENT_SPAWN_WORKERS_REQUIRED with the
+// sentence naming the fix, which the caller prints. No local copy to drift.
+func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool, spawnWorkers []string) (*api.Agent, error) {
 	return client.CreateAgent(&api.AgentCreateRequest{
-		Name:         name,
-		Description:  description,
-		AgentType:    agentType,
-		Runtime:      runtime,
-		SpawnEnabled: spawnEnabled,
+		Name:           name,
+		Description:    description,
+		AgentType:      agentType,
+		Runtime:        runtime,
+		SpawnEnabled:   spawnEnabled,
+		AllowedWorkers: spawnWorkers,
 	})
 }
 
@@ -200,7 +207,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled)
+	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled, spawnWorkers)
 	sp.Stop()
 
 	if err != nil {
@@ -772,7 +779,9 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 	output.Println("")
 	switch strings.ToLower(agent.AgentType) {
 	case "service":
-		if len(agent.AllowedWorkers) > 0 {
+		if len(agent.AllowedWorkers) == 1 && agent.AllowedWorkers[0] == api.AnyWorker {
+			output.KeyValue("Allowed workers", "any of your agents")
+		} else if len(agent.AllowedWorkers) > 0 {
 			output.KeyValue("Allowed workers", "["+strings.Join(agent.AllowedWorkers, ", ")+"]")
 		} else {
 			output.KeyValue("Allowed workers", "(none)")

@@ -477,7 +477,8 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 	}
 
 	sb.WriteString("\n# --- ADVANCED SETTINGS ---\n")
-	sb.WriteString("# Uncomment below to enable multi-agent spawning\n")
+	sb.WriteString("# Uncomment below to enable multi-agent spawning. workers is required:\n")
+	sb.WriteString("# the agents this one may spawn, or [\"*\"] for any of your agents.\n")
 	sb.WriteString("# spawn:\n")
 	sb.WriteString("#   enabled: true\n")
 	sb.WriteString("#   workers:\n")

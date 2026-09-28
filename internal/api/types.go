@@ -114,6 +114,9 @@ type AgentCreateRequest struct {
 	AgentType    string `json:"agent_type,omitempty"`
 	Runtime      string `json:"runtime,omitempty"`
 	SpawnEnabled bool   `json:"spawn_enabled,omitempty"`
+	// The agents it may spawn, or ["*"] for any. Required by the control plane
+	// when SpawnEnabled is true (422 AGENT_SPAWN_WORKERS_REQUIRED).
+	AllowedWorkers []string `json:"allowed_workers,omitempty"`
 }
 
 // AgentUpdateRequest is the request body for updating an agent

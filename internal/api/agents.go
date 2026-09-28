@@ -7,10 +7,15 @@ import (
 	"time"
 )
 
+// AnyWorker is the one spelling of "any of my agents" in allowed_workers
+// (control plane shared/spawn_workers.py). It stands alone in the list: an
+// empty list allows no spawns, and "*" never appears beside a name.
+const AnyWorker = "*"
+
 // SpawnableBy returns the names of SERVICE agents whose allowed_workers
-// list includes jobName — i.e. the services that could spawn this JOB.
-// Computed client-side from a previously-fetched agent list (no extra API
-// call, no new endpoint).
+// list includes jobName, or is ["*"] — i.e. the services that could spawn
+// this JOB. Computed client-side from a previously-fetched agent list (no
+// extra API call, no new endpoint).
 func SpawnableBy(jobName string, agents []Agent) []string {
 	var out []string
 	for i := range agents {
@@ -19,7 +24,7 @@ func SpawnableBy(jobName string, agents []Agent) []string {
 			continue
 		}
 		for _, w := range a.AllowedWorkers {
-			if w == jobName {
+			if w == jobName || w == AnyWorker {
 				out = append(out, a.Name)
 				break
 			}

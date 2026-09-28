@@ -23,7 +23,8 @@ are busy. A service child is sent one request to its POST /aetherfy/run. The
 parent is recorded on the run, not on the child, so a child with a schedule
 keeps it.
 
-The parent agent must have spawn_enabled=true.`,
+The parent agent must have spawn enabled and list the child in spawn.workers
+(or list ["*"], meaning any of your agents). An empty list allows no spawns.`,
 	Example: `  # Spawn an agent with JSON payload
   afy spawn my-service my-job --payload '{"task": "process", "id": 123}'
 

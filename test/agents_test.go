@@ -309,6 +309,21 @@ func TestSpawnableByEmptyWhenNoSpawner(t *testing.T) {
 	}
 }
 
+// ["*"] is the explicit "any of my agents" (control plane
+// shared/spawn_workers.py): such a service may spawn every job, named or not.
+// An empty list is not "any" — it allows none.
+func TestSpawnableByHonoursStarAndNotEmpty(t *testing.T) {
+	all := []api.Agent{
+		{ID: "s1", Name: "svc-any", AgentType: "service", AllowedWorkers: []string{api.AnyWorker}},
+		{ID: "s2", Name: "svc-empty", AgentType: "service", AllowedWorkers: []string{}},
+		{ID: "s3", Name: "svc-named", AgentType: "service", AllowedWorkers: []string{"other"}},
+	}
+	got := api.SpawnableBy("my-job", all)
+	if len(got) != 1 || got[0] != "svc-any" {
+		t.Errorf("Expected only svc-any, got %v", got)
+	}
+}
+
 // No agent carries a parent: a status for a job lists who MAY spawn it and
 // never a "Spawned by" line, whatever extra field a server sends.
 func TestStatusPrintsNoSpawnedByLine(t *testing.T) {
