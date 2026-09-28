@@ -406,11 +406,19 @@ func runConnectionDisconnect(client *api.Client, target api.ConnectionTarget, na
 }
 
 func init() {
-	for _, c := range []*cobra.Command{connectionsListCmd, connectionsConnectCmd, connectionsDisconnectCmd} {
-		c.Flags().StringVar(&connAgent, "agent", "", "Agent name or UUID")
-		c.Flags().StringVar(&connWorkspace, "workspace", "", "Workspace name")
-		c.MarkFlagsMutuallyExclusive("agent", "workspace")
-	}
+	// ONE LITERAL CALL PER FLAG, not a loop over the three commands: docs-site's
+	// cli-surface extractor reads these registrations statically (as it does the
+	// AddCommand calls in root.go) and cannot follow a loop variable, so a
+	// looped flag is invisible to the guard that checks the docs' examples.
+	connectionsListCmd.Flags().StringVar(&connAgent, "agent", "", "Agent name or UUID")
+	connectionsListCmd.Flags().StringVar(&connWorkspace, "workspace", "", "Workspace name")
+	connectionsListCmd.MarkFlagsMutuallyExclusive("agent", "workspace")
+	connectionsConnectCmd.Flags().StringVar(&connAgent, "agent", "", "Agent name or UUID")
+	connectionsConnectCmd.Flags().StringVar(&connWorkspace, "workspace", "", "Workspace name")
+	connectionsConnectCmd.MarkFlagsMutuallyExclusive("agent", "workspace")
+	connectionsDisconnectCmd.Flags().StringVar(&connAgent, "agent", "", "Agent name or UUID")
+	connectionsDisconnectCmd.Flags().StringVar(&connWorkspace, "workspace", "", "Workspace name")
+	connectionsDisconnectCmd.MarkFlagsMutuallyExclusive("agent", "workspace")
 	connectionsConnectCmd.Flags().StringVar(&connName, "name", "", "Connection name agent code asks for (default: the provider)")
 	connectionsConnectCmd.Flags().StringArrayVar(&connScopes, "scope", nil, "Extra scope to request on top of the provider's defaults (repeatable)")
 	connectionsConnectCmd.Flags().BoolVar(&connNoBrowser, "no-browser", false, "Print the URL without opening a browser")
