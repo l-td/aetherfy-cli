@@ -105,7 +105,7 @@ var connectionsProvidersCmd = &cobra.Command{
 		providers, err := api.NewClient().ConnectionProviders()
 		if err != nil {
 			output.PrintError("Failed to list providers: %v", err)
-			return nil
+			os.Exit(connectFailed)
 		}
 		if config.Get().OutputFormat == "json" {
 			return output.JSON(providers)
@@ -170,7 +170,7 @@ code gets a token for.`,
 		}
 		if err != nil {
 			output.PrintError("Failed to list connections: %v", err)
-			return nil
+			os.Exit(connectFailed)
 		}
 		if config.Get().OutputFormat == "json" {
 			return output.JSON(conns)
