@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 121
+      "count": 123
     },
     {
       "path": "api/routes/regions.py",
@@ -180,6 +180,10 @@
       "tier": "top-level"
     },
     "AUTHENTICATION_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_AGENT_KEY_OUT_OF_SCOPE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -460,6 +464,10 @@
       "tier": "top-level"
     },
     "TARGET_WORKSPACE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "TEST_POOL_ONLY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
