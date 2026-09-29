@@ -26,6 +26,10 @@ import (
 const (
 	exitRequestFailed = 1
 	exitInputRefused  = 2
+	// An eval that completed but missed --fail-under or --max-drop (cmd/eval.go).
+	// A STABLE INTERFACE: CI pipelines gate on it, and red-team scans (evals M2)
+	// reuse it. Returned as a typed error, never os.Exit(4).
+	exitThresholdBreached = 4
 )
 
 // The four flags every vector command takes, declared once per group as
@@ -81,11 +85,16 @@ func refuseArgs(rule cobra.PositionalArgs) cobra.PositionalArgs {
 func refuseFlag(_ *cobra.Command, err error) error { return &inputError{msg: err.Error()} }
 
 // ExitCode is the process exit code for an error Execute returned: 2 for
-// input refused before any request, 1 for anything else.
+// input refused before any request, 4 for an eval threshold breached, 1 for
+// anything else.
 func ExitCode(err error) int {
 	var in *inputError
 	if errors.As(err, &in) {
 		return exitInputRefused
+	}
+	var breached *thresholdBreached
+	if errors.As(err, &breached) {
+		return exitThresholdBreached
 	}
 	return exitRequestFailed
 }

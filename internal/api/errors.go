@@ -57,6 +57,12 @@ type APIError struct {
 	// RetryAfterSeconds, so the number is the control plane's and never a copy.
 	// nil for every other error.
 	StopBoundSeconds *int `json:"-"`
+	// Violations carries `violations` from the envelopes that report every
+	// problem at once: VALIDATION_ERROR, and the evals dataset push's
+	// EVAL_DATASET_INVALID / EVAL_GRADER_INVALID ([{case, field, message}] and
+	// [{grader, field, message}]). `afy datasets push` prints each one, so a
+	// customer fixes a file in one round trip. nil when the envelope has none.
+	Violations []map[string]interface{} `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -127,6 +133,13 @@ func parseAPIError(resp *resty.Response) error {
 				if secs, ok := v["stop_bound_seconds"].(float64); ok {
 					n := int(secs)
 					apiErr.StopBoundSeconds = &n
+				}
+				if list, ok := v["violations"].([]interface{}); ok {
+					for _, item := range list {
+						if violation, ok := item.(map[string]interface{}); ok {
+							apiErr.Violations = append(apiErr.Violations, violation)
+						}
+					}
 				}
 			default:
 				// Unexpected shape — serialize whatever we got so it isn't

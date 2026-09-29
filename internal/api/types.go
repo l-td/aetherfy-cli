@@ -490,3 +490,199 @@ type GitHubLinkStatus struct {
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
 }
+
+// ---------------------------------------------------------------------------
+// Agent evals (control plane api/routes/evals.py). Field names are the wire's;
+// NOTHING IS OMITEMPTY on what the server sends, so `-o json` re-encodes every
+// value the control plane returned, nulls included.
+// ---------------------------------------------------------------------------
+
+// EvalDataset is one dataset of an agent.
+type EvalDataset struct {
+	ID            string                      `json:"id"`
+	Name          string                      `json:"name"`
+	Description   *string                     `json:"description"`
+	LatestVersion *int                        `json:"latest_version"`
+	CaseCount     *int                        `json:"case_count"`
+	CreatedAt     time.Time                   `json:"created_at"`
+	UpdatedAt     time.Time                   `json:"updated_at"`
+	Versions      []EvalDatasetVersionSummary `json:"versions,omitempty"`
+}
+
+// EvalDatasetVersionSummary is one version in a dataset's detail.
+type EvalDatasetVersionSummary struct {
+	Version       int       `json:"version"`
+	CaseCount     int       `json:"case_count"`
+	GradersDigest string    `json:"graders_digest"`
+	CasesDigest   string    `json:"cases_digest"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// EvalDatasetVersion is a version with its graders and, when read page by
+// page, a page of its cases.
+type EvalDatasetVersion struct {
+	EvalDatasetVersionSummary
+	Dataset          string                   `json:"dataset"`
+	Graders          []map[string]interface{} `json:"graders"`
+	Cases            []EvalCase               `json:"cases,omitempty"`
+	NextAfterOrdinal *int                     `json:"next_after_ordinal,omitempty"`
+}
+
+// EvalCase is one case of a dataset version.
+type EvalCase struct {
+	Ordinal  int                    `json:"ordinal"`
+	Key      string                 `json:"key"`
+	Input    map[string]interface{} `json:"input"`
+	Expected interface{}            `json:"expected"`
+	Metadata map[string]interface{} `json:"metadata"`
+}
+
+// EvalDatasetVersionCreate is the body of a version push. Graders nil keeps
+// the previous version's.
+type EvalDatasetVersionCreate struct {
+	Cases   []interface{} `json:"cases"`
+	Graders []interface{} `json:"graders,omitempty"`
+}
+
+// EvalRunCreate is POST /evals' body.
+type EvalRunCreate struct {
+	Dataset        string `json:"dataset"`
+	DatasetVersion *int   `json:"dataset_version,omitempty"`
+	ReleaseVersion *int   `json:"release_version,omitempty"`
+	Concurrency    *int   `json:"concurrency,omitempty"`
+}
+
+// EvalProgress counts an eval's cases by status.
+type EvalProgress struct {
+	Total      int `json:"total"`
+	Pending    int `json:"pending"`
+	Dispatched int `json:"dispatched"`
+	Ran        int `json:"ran"`
+	Graded     int `json:"graded"`
+	Errored    int `json:"errored"`
+	Skipped    int `json:"skipped"`
+}
+
+// EvalSummary is an eval's scorecard.
+type EvalSummary struct {
+	CasesTotal   int      `json:"cases_total"`
+	CasesGraded  int      `json:"cases_graded"`
+	CasesPassed  int      `json:"cases_passed"`
+	CasesFailed  int      `json:"cases_failed"`
+	CasesErrored int      `json:"cases_errored"`
+	CasesSkipped int      `json:"cases_skipped"`
+	PassRate     *float64 `json:"pass_rate"`
+	MeanScore    *float64 `json:"mean_score"`
+	RunsFailed   int      `json:"runs_failed"`
+	DurationMs   struct {
+		P50 *int `json:"p50"`
+		P95 *int `json:"p95"`
+		Max *int `json:"max"`
+	} `json:"duration_ms"`
+	Graders []struct {
+		Name      string   `json:"name"`
+		Type      string   `json:"type"`
+		Graded    int      `json:"graded"`
+		Passed    int      `json:"passed"`
+		Errored   int      `json:"errored"`
+		MeanScore *float64 `json:"mean_score"`
+	} `json:"graders"`
+	Judge struct {
+		Calls        int `json:"calls"`
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"judge"`
+}
+
+// EvalRun is one eval. Progress is present on GET /evals/{id} only.
+type EvalRun struct {
+	ID                string        `json:"id"`
+	Agent             string        `json:"agent"`
+	Dataset           string        `json:"dataset"`
+	DatasetVersion    int           `json:"dataset_version"`
+	ReleaseVersion    int           `json:"release_version"`
+	ReleaseCodeDigest *string       `json:"release_code_digest"`
+	Origin            string        `json:"origin"`
+	Status            string        `json:"status"`
+	StatusReason      *string       `json:"status_reason"`
+	Concurrency       int           `json:"concurrency"`
+	CancelRequested   bool          `json:"cancel_requested"`
+	CreatedAt         time.Time     `json:"created_at"`
+	StartedAt         *time.Time    `json:"started_at"`
+	FinishedAt        *time.Time    `json:"finished_at"`
+	Summary           *EvalSummary  `json:"summary"`
+	Progress          *EvalProgress `json:"progress,omitempty"`
+}
+
+// EvalCaseResult is one case of an eval, with the run that answered it.
+type EvalCaseResult struct {
+	Ordinal      int                      `json:"ordinal"`
+	Key          string                   `json:"key"`
+	Status       string                   `json:"status"`
+	StatusReason *string                  `json:"status_reason"`
+	Verdict      *string                  `json:"verdict"`
+	Score        *float64                 `json:"score"`
+	Passed       *bool                    `json:"passed"`
+	Input        map[string]interface{}   `json:"input"`
+	Expected     interface{}              `json:"expected"`
+	Output       interface{}              `json:"output"`
+	OutputError  *string                  `json:"output_error"`
+	Grades       []map[string]interface{} `json:"grades"`
+	Run          struct {
+		ID             *string `json:"id"`
+		ReleaseVersion *int    `json:"release_version"`
+		State          *string `json:"state"`
+		Error          *string `json:"error"`
+		DurationMs     *int    `json:"duration_ms"`
+	} `json:"run"`
+}
+
+// EvalCasePage is a page of an eval's case results.
+type EvalCasePage struct {
+	Cases            []EvalCaseResult `json:"cases"`
+	NextAfterOrdinal *int             `json:"next_after_ordinal"`
+}
+
+// EvalComparisonSide is one eval in a comparison.
+type EvalComparisonSide struct {
+	EvalID            string   `json:"eval_id"`
+	ReleaseVersion    int      `json:"release_version"`
+	ReleaseCodeDigest *string  `json:"release_code_digest"`
+	PassRate          *float64 `json:"pass_rate"`
+	MeanScore         *float64 `json:"mean_score"`
+	CasesGraded       *int     `json:"cases_graded"`
+	CasesErrored      *int     `json:"cases_errored"`
+}
+
+// EvalComparisonCase is a case that moved between two evals.
+type EvalComparisonCase struct {
+	CaseKey   string   `json:"case_key"`
+	BaseScore *float64 `json:"base_score"`
+	HeadScore *float64 `json:"head_score"`
+}
+
+// EvalComparison is GET /eval-comparisons.
+type EvalComparison struct {
+	Dataset struct {
+		Name    string `json:"name"`
+		Version int    `json:"version"`
+	} `json:"dataset"`
+	Base     EvalComparisonSide `json:"base"`
+	Head     EvalComparisonSide `json:"head"`
+	SameCode bool               `json:"same_code"`
+	Delta    struct {
+		PassRate  *float64 `json:"pass_rate"`
+		MeanScore *float64 `json:"mean_score"`
+	} `json:"delta"`
+	Graders []struct {
+		Name         string   `json:"name"`
+		BasePassRate *float64 `json:"base_pass_rate"`
+		HeadPassRate *float64 `json:"head_pass_rate"`
+		Delta        *float64 `json:"delta"`
+	} `json:"graders"`
+	Regressions   []EvalComparisonCase `json:"regressions"`
+	Fixes         []EvalComparisonCase `json:"fixes"`
+	UnchangedPass int                  `json:"unchanged_pass"`
+	UnchangedFail int                  `json:"unchanged_fail"`
+	NotComparable []string             `json:"not_comparable"`
+}
