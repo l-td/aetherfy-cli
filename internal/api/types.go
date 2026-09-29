@@ -497,7 +497,9 @@ type GitHubLinkStatus struct {
 //
 // MONEY IS A JSON NUMBER OF US DOLLARS, the control plane's wire form for
 // these routes (and for additional_monthly_usd before them), decoded as
-// float64: exact for every amount they carry (at most 14 significant digits).
+// float64. That is exact for up to 15 significant digits: every budget and
+// every single call's cost, and a spend total below $10,000,000; above that a
+// total's eighth decimal can differ.
 // Nothing is omitempty: a null budget means "no budget" and must survive
 // `-o json` as null.
 
