@@ -434,8 +434,9 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 |------|---------|
 | `0` | Success |
 | `1` | Error — usage errors and failed operations |
-| `2` | A vector command (`collections`, `index`, `points`) refused its input before sending anything, including a command line it could not parse |
+| `2` | A vector command (`collections`, `index`, `points`), or an `eval` or `datasets` subcommand, refused its input before sending anything, including a command line it could not parse |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
+| `4` | `afy eval run` — the eval completed but missed `--fail-under` or `--max-drop` |
 
 ## Project Structure
 
