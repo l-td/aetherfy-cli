@@ -64,7 +64,9 @@ version keeps the previous version's graders; the first version needs them.`,
 		if err := checkAuth(); err != nil {
 			return err
 		}
-		return datasetsPush(newEvalIO(), args[0], args[1], datasetsPushOpts)
+		return datasetsPush(newEvalIO(), args[0], args[1], datasetsPushFlags{
+			cases: datasetsPushCases, graders: datasetsPushGraders, description: datasetsPushDescription,
+		})
 	},
 }
 
@@ -101,16 +103,18 @@ type datasetsPushFlags struct {
 }
 
 var (
-	datasetsPushOpts    datasetsPushFlags
-	datasetsShowVersion int
-	datasetsShowCases   bool
-	datasetsDeleteYes   bool
+	datasetsPushCases       string
+	datasetsPushGraders     string
+	datasetsPushDescription string
+	datasetsShowVersion     int
+	datasetsShowCases       bool
+	datasetsDeleteYes       bool
 )
 
 func init() {
-	datasetsPushCmd.Flags().StringVar(&datasetsPushOpts.cases, "cases", "", "JSONL file of cases, one per line (required)")
-	datasetsPushCmd.Flags().StringVar(&datasetsPushOpts.graders, "graders", "", "YAML or JSON file with the graders (default: the previous version's)")
-	datasetsPushCmd.Flags().StringVar(&datasetsPushOpts.description, "description", "", "Description, when this push creates the dataset")
+	datasetsPushCmd.Flags().StringVar(&datasetsPushCases, "cases", "", "JSONL file of cases, one per line (required)")
+	datasetsPushCmd.Flags().StringVar(&datasetsPushGraders, "graders", "", "YAML or JSON file with the graders (default: the previous version's)")
+	datasetsPushCmd.Flags().StringVar(&datasetsPushDescription, "description", "", "Description, when this push creates the dataset")
 
 	datasetsShowCmd.Flags().IntVar(&datasetsShowVersion, "version", 0, "Show this version's graders (default: the dataset and its versions)")
 	datasetsShowCmd.Flags().BoolVar(&datasetsShowCases, "cases", false, "Also list the version's cases")

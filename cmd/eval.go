@@ -188,7 +188,11 @@ the same dataset version (--baseline-release).`,
 		if err := checkAuth(); err != nil {
 			return err
 		}
-		return evalRun(newEvalIO(), args[0], evalRunOpts)
+		return evalRun(newEvalIO(), args[0], evalRunFlags{
+			dataset: evalRunDataset, datasetVersion: evalRunDatasetVersion, release: evalRunRelease,
+			concurrency: evalRunConcurrency, detach: evalRunDetach, failUnder: evalRunFailUnder,
+			maxDrop: evalRunMaxDrop, baseline: evalRunBaseline, baselineRelease: evalRunBaselineRelease,
+		})
 	},
 }
 
@@ -200,7 +204,9 @@ var evalListCmd = &cobra.Command{
 		if err := checkAuth(); err != nil {
 			return err
 		}
-		return evalList(newEvalIO(), args[0], evalListOpts)
+		return evalList(newEvalIO(), args[0], evalListFlags{
+			dataset: evalListDataset, release: evalListRelease, status: evalListStatus, limit: evalListLimit,
+		})
 	},
 }
 
@@ -259,30 +265,44 @@ type evalListFlags struct {
 	limit   int
 }
 
+// One variable per flag, each bound by a literal `Flags().XxxVar(&v, ...)` call
+// that docs-site's surface extractor reads (see cmd/vectors.go); RunE gathers
+// them into the flags struct the command function takes.
 var (
-	evalRunOpts   evalRunFlags
-	evalListOpts  evalListFlags
-	evalShowCases string
+	evalRunDataset         string
+	evalRunDatasetVersion  int
+	evalRunRelease         int
+	evalRunConcurrency     int
+	evalRunDetach          bool
+	evalRunFailUnder       float64
+	evalRunMaxDrop         float64
+	evalRunBaseline        string
+	evalRunBaselineRelease int
+	evalListDataset        string
+	evalListRelease        int
+	evalListStatus         string
+	evalListLimit          int
+	evalShowCases          string
 )
 
 // Unset thresholds read as negative, so 0 stays a real value for both.
 const thresholdUnset = -1
 
 func init() {
-	evalRunCmd.Flags().StringVar(&evalRunOpts.dataset, "dataset", "", "Dataset to evaluate (required)")
-	evalRunCmd.Flags().IntVar(&evalRunOpts.datasetVersion, "dataset-version", 0, "Dataset version (default: the latest)")
-	evalRunCmd.Flags().IntVar(&evalRunOpts.release, "release", 0, "Refuse unless this is the agent's current release")
-	evalRunCmd.Flags().IntVar(&evalRunOpts.concurrency, "concurrency", 0, "Case runs in flight at once (default 2, at most 10)")
-	evalRunCmd.Flags().BoolVar(&evalRunOpts.detach, "detach", false, "Print the eval id and exit without waiting")
-	evalRunCmd.Flags().Float64Var(&evalRunOpts.failUnder, "fail-under", thresholdUnset, "Exit 4 when the pass rate is below this (0 to 1)")
-	evalRunCmd.Flags().Float64Var(&evalRunOpts.maxDrop, "max-drop", thresholdUnset, "Exit 4 when the pass rate fell by more than this against the baseline (0 to 1)")
-	evalRunCmd.Flags().StringVar(&evalRunOpts.baseline, "baseline", "", "Baseline eval id for --max-drop")
-	evalRunCmd.Flags().IntVar(&evalRunOpts.baselineRelease, "baseline-release", 0, "Baseline for --max-drop: the newest completed eval of this release on the same dataset version")
+	evalRunCmd.Flags().StringVar(&evalRunDataset, "dataset", "", "Dataset to evaluate (required)")
+	evalRunCmd.Flags().IntVar(&evalRunDatasetVersion, "dataset-version", 0, "Dataset version (default: the latest)")
+	evalRunCmd.Flags().IntVar(&evalRunRelease, "release", 0, "Refuse unless this is the agent's current release")
+	evalRunCmd.Flags().IntVar(&evalRunConcurrency, "concurrency", 0, "Case runs in flight at once (default 2, at most 10)")
+	evalRunCmd.Flags().BoolVar(&evalRunDetach, "detach", false, "Print the eval id and exit without waiting")
+	evalRunCmd.Flags().Float64Var(&evalRunFailUnder, "fail-under", thresholdUnset, "Exit 4 when the pass rate is below this (0 to 1)")
+	evalRunCmd.Flags().Float64Var(&evalRunMaxDrop, "max-drop", thresholdUnset, "Exit 4 when the pass rate fell by more than this against the baseline (0 to 1)")
+	evalRunCmd.Flags().StringVar(&evalRunBaseline, "baseline", "", "Baseline eval id for --max-drop")
+	evalRunCmd.Flags().IntVar(&evalRunBaselineRelease, "baseline-release", 0, "Baseline for --max-drop: the newest completed eval of this release on the same dataset version")
 
-	evalListCmd.Flags().StringVar(&evalListOpts.dataset, "dataset", "", "Only evals of this dataset")
-	evalListCmd.Flags().IntVar(&evalListOpts.release, "release", 0, "Only evals of this release")
-	evalListCmd.Flags().StringVar(&evalListOpts.status, "status", "", "Only evals in this status: queued, running, grading, completed, errored, cancelled")
-	evalListCmd.Flags().IntVar(&evalListOpts.limit, "limit", 20, "Maximum number of evals (max 100)")
+	evalListCmd.Flags().StringVar(&evalListDataset, "dataset", "", "Only evals of this dataset")
+	evalListCmd.Flags().IntVar(&evalListRelease, "release", 0, "Only evals of this release")
+	evalListCmd.Flags().StringVar(&evalListStatus, "status", "", "Only evals in this status: queued, running, grading, completed, errored, cancelled")
+	evalListCmd.Flags().IntVar(&evalListLimit, "limit", 20, "Maximum number of evals (max 100)")
 
 	evalShowCmd.Flags().StringVar(&evalShowCases, "cases", "", "Also list cases: all, fail or errored")
 
