@@ -82,6 +82,10 @@ var notControlPlaneCodes = map[string]string{
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
 
+	// A secret NAME, not a code: an llm_judge grader names the customer's key by
+	// it (api_key_secret), in the `afy datasets push` fixtures.
+	"ANTHROPIC_API_KEY": "secret name: an llm_judge grader's api_key_secret in cmd/datasets_test.go",
+
 	// The vector commands' environment, the vectors SDKs' names, read by
 	// internal/vectors/resolve.go.
 	"AETHERFY_VECTORS_URL":        "env var: the vectors endpoint, as the SDKs read it",
