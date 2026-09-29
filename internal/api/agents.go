@@ -163,14 +163,37 @@ func (c *Client) StopAgent(idOrName string) error {
 // "serving", "starting", "load_failed" or "unconfirmed". It is nil for an agent
 // that serves no requests, and for a control plane older than the field -- so a
 // nil never means "serving".
+//
+// MachinesRecreated counts the machines the resume could not wake where they
+// were -- their host had no room -- and replaced with new ones from the
+// agent's current release: a cold start rather than a resume. 0 when absent.
 type StartAgentResult struct {
-	Status    string  `json:"status"`
-	AgentID   string  `json:"agent_id"`
-	Readiness *string `json:"readiness"`
+	Status            string  `json:"status"`
+	AgentID           string  `json:"agent_id"`
+	Readiness         *string `json:"readiness"`
+	MachinesRecreated int     `json:"machines_recreated"`
 }
+
+// StartAgentTimeout bounds one resume call, in place of the client's 30s.
+//
+// A resume can take longer than that on the server's side: a machine whose
+// host is full is retried for about 30s (the control plane's
+// RESUME_CAPACITY_RETRY_DELAYS) and then recreated from the agent's current
+// release. At 30s the CLI gave up on exactly the resumes it had most to say
+// about -- reporting a failure for one that went on to succeed, and never
+// printing the cold start. 120s is past the 100s after which the edge in
+// front of the control plane answers for it, so what the CLI prints is the
+// server's answer, or the edge's, never its own guess. A var so a test can
+// shorten it.
+var StartAgentTimeout = 120 * time.Second
 
 // StartAgent resumes a paused agent.
 func (c *Client) StartAgent(idOrName string) (*StartAgentResult, error) {
+	// One command, one call at a time: the client's bound is swapped for this
+	// call and put back.
+	previous := c.http.GetClient().Timeout
+	c.http.SetTimeout(StartAgentTimeout)
+	defer c.http.SetTimeout(previous)
 	var result StartAgentResult
 	if err := c.postLifecycle(fmt.Sprintf("/agents/%s/start", idOrName), &result); err != nil {
 		return nil, err

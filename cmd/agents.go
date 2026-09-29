@@ -418,11 +418,28 @@ func startAgent(client *api.Client, idOrName string) error {
 	}
 
 	var readiness *string
+	recreated := 0
 	if result != nil {
 		readiness = result.Readiness
+		recreated = result.MachinesRecreated
 	}
 	printStartOutcome(idOrName, readiness)
+	printColdStart(recreated)
 	return nil
+}
+
+// printColdStart names a resume that could not wake a machine where it was.
+// The control plane replaces a machine whose host has no room left with a new
+// one from the agent's current release, so the agent came up from a cold
+// start: said here, so a slower first request or a fresh process is not a
+// mystery.
+func printColdStart(recreated int) {
+	switch {
+	case recreated == 1:
+		output.PrintInfo("Its machine's host had no room to resume it, so it was started on a new machine from its current release: a cold start.")
+	case recreated > 1:
+		output.PrintInfo("%d of its machines' hosts had no room to resume them, so they were started on new machines from its current release: a cold start.", recreated)
+	}
 }
 
 // codeAgentStillStopping is the control plane's answer to a start whose

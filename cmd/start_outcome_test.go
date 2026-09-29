@@ -196,3 +196,32 @@ func TestStartWithoutReadinessClaimsNothing(t *testing.T) {
 		})
 	}
 }
+
+// A resume the control plane carried out by recreating a machine (its host
+// was full) is named as a cold start; one that woke its machines is not.
+func TestStartNamesARecreatedMachineAsAColdStart(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		cold bool
+		want string
+	}{
+		"one":    {`{"status":"running","agent_id":"a","readiness":"serving","machines_recreated":1}`, true, "a new machine"},
+		"two":    {`{"status":"running","agent_id":"a","readiness":"serving","machines_recreated":2}`, true, "2 of its machines"},
+		"zero":   {`{"status":"running","agent_id":"a","readiness":"serving","machines_recreated":0}`, false, ""},
+		"absent": {`{"status":"running","agent_id":"a","readiness":"serving"}`, false, ""},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			out := startAgainst(t, tc.body)
+			if got := strings.Contains(out, "cold start"); got != tc.cold {
+				t.Errorf("machines_recreated %s: cold start named=%v, want %v:\n%s", name, got, tc.cold, out)
+			}
+			if !strings.Contains(out, tc.want) {
+				t.Errorf("machines_recreated %s: want %q in:\n%s", name, tc.want, out)
+			}
+			if !strings.Contains(out, "serving requests") {
+				t.Errorf("machines_recreated %s: the readiness line was lost:\n%s", name, out)
+			}
+		})
+	}
+}
