@@ -163,7 +163,7 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_STILL_STOPPING": {
+    "AGENT_SPAWN_WORKERS_REQUIRED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -82,6 +82,11 @@ var notControlPlaneCodes = map[string]string{
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
 
+	// Names of control-plane Python tuples the cpresume reader looks for
+	// (workers/lifecycle_decisions.py), not codes a response carries.
+	"RESUME_DROP_REASONS": "tuple name: the drop reasons cpresume.Extract reads",
+	"RESUME_CAUSES":       "tuple name: the accepted-start causes cpresume.ExtractCauses reads",
+
 	// The vector commands' environment, the vectors SDKs' names, read by
 	// internal/vectors/resolve.go.
 	"AETHERFY_VECTORS_URL":        "env var: the vectors endpoint, as the SDKs read it",
