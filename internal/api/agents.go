@@ -167,11 +167,21 @@ func (c *Client) StopAgent(idOrName string) error {
 // MachinesRecreated counts the machines the resume could not wake where they
 // were -- their host had no room -- and replaced with new ones from the
 // agent's current release: a cold start rather than a resume. 0 when absent.
+// Resume is set when the start arrived while the agent's previous stop was
+// still finishing: the control plane ACCEPTED it (status still "paused",
+// nothing started yet) and starts the agent itself once that stop completes.
+// StopBoundSeconds is then the longest the stop can still take, and
+// WaitBoundSeconds the longest until the agent runs or the start is given up
+// -- the server's number, the only bound `afy start --wait` waits by. Nothing
+// needs re-sending. Resume is nil on an ordinary start.
 type StartAgentResult struct {
-	Status            string  `json:"status"`
-	AgentID           string  `json:"agent_id"`
-	Readiness         *string `json:"readiness"`
-	MachinesRecreated int     `json:"machines_recreated"`
+	Status            string       `json:"status"`
+	AgentID           string       `json:"agent_id"`
+	Readiness         *string      `json:"readiness"`
+	Resume            *ResumeState `json:"resume"`
+	StopBoundSeconds  *int         `json:"stop_bound_seconds"`
+	WaitBoundSeconds  *int         `json:"wait_bound_seconds"`
+	MachinesRecreated int          `json:"machines_recreated"`
 }
 
 // StartAgentTimeout bounds one resume call, in place of the client's 30s.

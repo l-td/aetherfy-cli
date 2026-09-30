@@ -32,6 +32,11 @@ type Agent struct {
 	// carrying a fragment of the owner's account id.
 	Deployed bool   `json:"deployed"`
 	URL      string `json:"url,omitempty"`
+	// Resume: a start asked for while the agent's previous stop was still
+	// finishing (server AgentResponse.resume) -- pending, queued, or dropped
+	// with a reason. nil when there is none. No omitempty: `-o json` readers
+	// see an explicit null.
+	Resume *ResumeState `json:"resume"`
 	// AllowedWorkers pulls through from the server's AgentResponse: the agent
 	// names this agent may spawn. There is no parent field: who spawned a run
 	// is recorded on the run, never on the agent.
@@ -497,4 +502,20 @@ type GitHubLinkStatus struct {
 	// they find their agent inert. Null covers both a branch that was never
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
+}
+
+// ResumeState is a start asked for while the agent's previous stop was still
+// finishing (server ResumeStateResponse). State is "pending" (the stop is
+// still being carried out), "queued" (the platform is starting the agent) or
+// "dropped", when Reason -- one of the server's RESUME_DROP_REASONS -- says
+// why it was not carried out.
+type ResumeState struct {
+	State       string  `json:"state"`
+	Reason      *string `json:"reason"`
+	RequestedAt string  `json:"requested_at"`
+}
+
+// UnderWay: accepted, and neither carried out nor dropped.
+func (r *ResumeState) UnderWay() bool {
+	return r != nil && (r.State == "pending" || r.State == "queued")
 }

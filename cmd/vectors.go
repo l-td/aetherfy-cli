@@ -81,11 +81,16 @@ func refuseArgs(rule cobra.PositionalArgs) cobra.PositionalArgs {
 func refuseFlag(_ *cobra.Command, err error) error { return &inputError{msg: err.Error()} }
 
 // ExitCode is the process exit code for an error Execute returned: 2 for
-// input refused before any request, 1 for anything else.
+// input refused before any request, 4 for `afy start --wait` reaching the
+// server's bound with the start still pending, 1 for anything else.
 func ExitCode(err error) int {
 	var in *inputError
 	if errors.As(err, &in) {
 		return exitInputRefused
+	}
+	var pending *stillPendingError
+	if errors.As(err, &pending) {
+		return exitStillPending
 	}
 	return exitRequestFailed
 }
