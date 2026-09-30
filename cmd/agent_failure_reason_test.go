@@ -40,6 +40,32 @@ func statusWith(t *testing.T, status, extra string) string {
 	return out
 }
 
+// A start the platform accepted is Pending in `afy status`, worded by WHY it
+// was accepted: a full host is being started on a new machine, a start during
+// a stop waits for that stop. Each wording is the control for the other.
+func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
+	resume := func(cause string) string {
+		return `,"resume":{"state":"queued","reason":null,` +
+			`"requested_at":"2026-09-30T10:00:00Z","cause":` + cause + `}`
+	}
+	full := statusWith(t, "paused", resume(`"host_full"`))
+	stop := statusWith(t, "paused", resume(`null`))
+	unknown := statusWith(t, "paused", resume(`"some_future_cause"`))
+
+	if !strings.Contains(full, "starting on a new machine (its host was full)") ||
+		strings.Contains(full, "once its stop finishes") {
+		t.Errorf("a full host's pending start is not named as one:\n%s", full)
+	}
+	if !strings.Contains(stop, "starting once its stop finishes") ||
+		strings.Contains(stop, "new machine") {
+		t.Errorf("a start during a stop is not named as one:\n%s", stop)
+	}
+	if !strings.Contains(unknown, "Pending") || strings.Contains(unknown, "stop finishes") ||
+		strings.Contains(unknown, "new machine") {
+		t.Errorf("a cause this binary does not know must read neutral, not as a stop or a full host:\n%s", unknown)
+	}
+}
+
 func TestStatusPrintsTheRecordedFailureReason(t *testing.T) {
 	out := statusWithFailure(t, `,"failure_code":"image_lost_on_provider",`+
 		`"failure_message":"The image this agent runs is no longer available on the compute plane, so it cannot start. Deploy again to rebuild the image and bring it back."`)

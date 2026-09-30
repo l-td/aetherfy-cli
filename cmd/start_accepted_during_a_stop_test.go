@@ -291,6 +291,18 @@ func TestAFullHostIsAnAcceptedStartThatNamesItsCause(t *testing.T) {
 	}
 }
 
+func TestAStartAcceptedForACauseThisBinaryDoesNotKnowReadsNeutral(t *testing.T) {
+	srv, _ := newStartServer(t, strings.Replace(acceptedOnAFullHost, `"host_full"`, `"some_future_cause"`, 1), nil)
+	recordStartWaits(t)
+
+	out, err := runStart(t, srv, false)
+
+	if err != nil || !strings.Contains(out, "will be started by aetherfy (at most 413s)") ||
+		strings.Contains(out, "previous stop") || strings.Contains(out, "new machine") {
+		t.Fatalf("an unknown cause must read neutral, not as a stop or a full host (err=%v):\n%s", err, out)
+	}
+}
+
 func TestWaitFollowsAFullHostAndNamesTheColdStartOnceAtTheEnd(t *testing.T) {
 	srv, s := newStartServer(t, acceptedOnAFullHost, []string{
 		agentReadQueuedOnAFullHost, agentReadQueuedOnAFullHost, agentReadRecreated(1),
@@ -348,7 +360,7 @@ func TestWaitFailsFastWhenAFullHostsStartIsDropped(t *testing.T) {
 }
 
 // THE PIN. The keys of resumeDropSentences must be exactly the control plane's
-// RESUME_DROP_REASONS, and the keys of resumeCauseSentences its RESUME_CAUSES
+// RESUME_DROP_REASONS, and the keys of resumeCauses its RESUME_CAUSES
 // (both halves of the vocabulary an accepted start is described in). Live against the sibling checkout, like the readiness
 // pin: skipped where there is none, FAILED where cperrors.RequireEnv says there
 // must be (the e2e nightly).
@@ -377,12 +389,12 @@ func TestStartDescribesExactlyTheControlPlanesDropReasons(t *testing.T) {
 	require.NoError(t, err, "reading RESUME_CAUSES from %s", cpRoot)
 	require.NotEmpty(t, causes, "RESUME_CAUSES read as empty -- refusing to treat that as agreement")
 	var described []string
-	for k := range resumeCauseSentences {
+	for k := range resumeCauses {
 		described = append(described, k)
 	}
 	sort.Strings(described)
 	assert.Equal(t, cpresume.Set(causes), described,
 		"`afy start` names the causes %v, and the control plane publishes %v (%s in %s). "+
-			"Add or rename the entry in resumeCauseSentences -- and docs-site's agents/api-lifecycle.mdx.",
+			"Add or rename the entry in resumeCauses -- and docs-site's agents/api-lifecycle.mdx.",
 		described, cpresume.Set(causes), cpresume.SourcePath, cpRoot)
 }

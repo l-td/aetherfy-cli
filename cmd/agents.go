@@ -408,8 +408,10 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		if result.WaitBoundSeconds != nil && *result.WaitBoundSeconds > 0 {
 			within = fmt.Sprintf(" (at most %ds)", *result.WaitBoundSeconds)
 		}
-		if say, ok := resumeCauseSentences[resumeCause(result.Resume)]; ok {
-			output.PrintSuccess(say, idOrName, within)
+		if words, ok := resumeCauses[resumeCause(result.Resume)]; ok {
+			output.PrintSuccess(words.accepted, idOrName, within)
+		} else if resumeCause(result.Resume) != "" {
+			output.PrintSuccess("Agent '%s' will be started by Aetherfy%s.", idOrName, within)
 		} else {
 			output.PrintSuccess("Agent '%s' will start once its previous stop finishes%s.", idOrName, within)
 		}
@@ -435,13 +437,32 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 	return nil
 }
 
-// resumeCauseSentences: what `afy start` says for an accepted start that is
-// not waiting on a stop, by the server's `resume.cause` (its RESUME_CAUSES;
-// TestStartDescribesExactlyTheControlPlanesDropReasons pins the keys). Each
-// takes the agent's name and the " (at most Ns)" of the server's bound.
-var resumeCauseSentences = map[string]string{
-	"host_full": "Agent '%s' is being started on a new machine: its machine's host " +
-		"has no room to resume it, so Aetherfy recreates it from the current release%s.",
+// resumeCauses: the words for an accepted start that is not waiting on a stop,
+// by the server's `resume.cause` (its RESUME_CAUSES;
+// TestStartDescribesExactlyTheControlPlanesDropReasons pins the keys).
+// `accepted` is what `afy start` says, given the agent's name and the
+// " (at most Ns)" of the server's bound; `pending` is `afy status`'s Pending
+// line while it is under way.
+type resumeCauseWords struct{ accepted, pending string }
+
+var resumeCauses = map[string]resumeCauseWords{
+	"host_full": {
+		accepted: "Agent '%s' is being started on a new machine: its machine's host " +
+			"has no room to resume it, so Aetherfy recreates it from the current release%s.",
+		pending: "starting on a new machine (its host was full)",
+	},
+}
+
+// resumePendingLine is `afy status`'s Pending line for a start under way:
+// its cause's wording, or -- a start accepted during a stop -- the stop's.
+func resumePendingLine(r *api.ResumeState) string {
+	if words, ok := resumeCauses[resumeCause(r)]; ok {
+		return words.pending
+	}
+	if resumeCause(r) != "" {
+		return "starting"
+	}
+	return "starting once its stop finishes"
 }
 
 func resumeCause(r *api.ResumeState) string {
@@ -805,7 +826,7 @@ func showAgentStatus(client *api.Client, name string) error {
 	// paused until the platform starts it, and this says one is on its way --
 	// or, when it was dropped, why.
 	if agent.Resume.UnderWay() {
-		output.KeyValue("Pending", "starting once its stop finishes")
+		output.KeyValue("Pending", resumePendingLine(agent.Resume))
 	} else if agent.Resume != nil && agent.Resume.State == "dropped" {
 		output.KeyValue("Start dropped", resumeDropSentence(agent.Resume.Reason))
 	}

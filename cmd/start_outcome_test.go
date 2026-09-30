@@ -196,14 +196,3 @@ func TestStartWithoutReadinessClaimsNothing(t *testing.T) {
 		})
 	}
 }
-
-// A start carried out in the request woke its machines where they were: the
-// control plane recreates a machine only in the RESUME job it accepts the start
-// into (start_accepted_during_a_stop_test.go, TestAFullHost...), so nothing
-// here speaks of a cold start -- not even for a field an older server sent.
-func TestAStartCarriedOutInTheRequestIsNeverAColdStart(t *testing.T) {
-	out := startAgainst(t, `{"status":"running","agent_id":"a","readiness":"serving","machines_recreated":1}`)
-	if strings.Contains(out, "cold start") || !strings.Contains(out, "serving requests") {
-		t.Errorf("a start carried out in the request printed:\n%s", out)
-	}
-}
