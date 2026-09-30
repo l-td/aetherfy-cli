@@ -164,46 +164,28 @@ func (c *Client) StopAgent(idOrName string) error {
 // that serves no requests, and for a control plane older than the field -- so a
 // nil never means "serving".
 //
-// MachinesRecreated counts the machines the resume could not wake where they
-// were -- their host had no room -- and replaced with new ones from the
-// agent's current release: a cold start rather than a resume. 0 when absent.
-// Resume is set when the start arrived while the agent's previous stop was
-// still finishing: the control plane ACCEPTED it (status still "paused",
-// nothing started yet) and starts the agent itself once that stop completes.
+// Resume is set when the control plane ACCEPTED the start rather than carrying
+// it out in the request (status still "paused", nothing started yet): the
+// agent's previous stop was still finishing, or its machine's host had no room
+// (Resume.Cause "host_full"). The platform starts the agent itself.
 // StopBoundSeconds is then the longest the stop can still take, and
 // WaitBoundSeconds the longest until the agent runs or the start is given up
 // -- the server's number, the only bound `afy start --wait` waits by. Nothing
 // needs re-sending. Resume is nil on an ordinary start.
 type StartAgentResult struct {
-	Status            string       `json:"status"`
-	AgentID           string       `json:"agent_id"`
-	Readiness         *string      `json:"readiness"`
-	Resume            *ResumeState `json:"resume"`
-	StopBoundSeconds  *int         `json:"stop_bound_seconds"`
-	WaitBoundSeconds  *int         `json:"wait_bound_seconds"`
-	MachinesRecreated int          `json:"machines_recreated"`
+	Status           string       `json:"status"`
+	AgentID          string       `json:"agent_id"`
+	Readiness        *string      `json:"readiness"`
+	Resume           *ResumeState `json:"resume"`
+	StopBoundSeconds *int         `json:"stop_bound_seconds"`
+	WaitBoundSeconds *int         `json:"wait_bound_seconds"`
 }
 
-// StartAgentTimeout bounds one resume call, in place of the client's 30s.
-//
-// A resume can take longer than that on the server's side: a machine whose
-// host is full is retried for about 30s (the control plane's
-// RESUME_CAPACITY_RETRY_DELAYS) and then recreated from the agent's current
-// release. At 30s the CLI gave up on exactly the resumes it had most to say
-// about -- reporting a failure for one that went on to succeed, and never
-// printing the cold start. 120s is past the 100s after which the edge in
-// front of the control plane answers for it, so what the CLI prints is the
-// server's answer, or the edge's, never its own guess. A var so a test can
-// shorten it.
-var StartAgentTimeout = 120 * time.Second
-
-// StartAgent resumes a paused agent.
+// StartAgent resumes a paused agent. The call is short: a start the control
+// plane cannot carry out in the request -- a stop still finishing, a full
+// host -- is ACCEPTED (Resume), and `afy start --wait` follows the agent's
+// status, so the client's own timeout applies.
 func (c *Client) StartAgent(idOrName string) (*StartAgentResult, error) {
-	// One command, one call at a time: the client's bound is swapped for this
-	// call and put back.
-	previous := c.http.GetClient().Timeout
-	c.http.SetTimeout(StartAgentTimeout)
-	defer c.http.SetTimeout(previous)
 	var result StartAgentResult
 	if err := c.postLifecycle(fmt.Sprintf("/agents/%s/start", idOrName), &result); err != nil {
 		return nil, err

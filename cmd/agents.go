@@ -408,7 +408,11 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		if result.WaitBoundSeconds != nil && *result.WaitBoundSeconds > 0 {
 			within = fmt.Sprintf(" (at most %ds)", *result.WaitBoundSeconds)
 		}
-		output.PrintSuccess("Agent '%s' will start once its previous stop finishes%s.", idOrName, within)
+		if say, ok := resumeCauseSentences[resumeCause(result.Resume)]; ok {
+			output.PrintSuccess(say, idOrName, within)
+		} else {
+			output.PrintSuccess("Agent '%s' will start once its previous stop finishes%s.", idOrName, within)
+		}
 		if !wait {
 			output.PrintInfo("Nothing more to do. Follow it with 'afy status %s', or use --wait.", idOrName)
 			return nil
@@ -424,14 +428,27 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 	}
 
 	var readiness *string
-	recreated := 0
 	if result != nil {
 		readiness = result.Readiness
-		recreated = result.MachinesRecreated
 	}
 	printStartOutcome(idOrName, readiness)
-	printColdStart(recreated)
 	return nil
+}
+
+// resumeCauseSentences: what `afy start` says for an accepted start that is
+// not waiting on a stop, by the server's `resume.cause` (its RESUME_CAUSES;
+// TestStartDescribesExactlyTheControlPlanesDropReasons pins the keys). Each
+// takes the agent's name and the " (at most Ns)" of the server's bound.
+var resumeCauseSentences = map[string]string{
+	"host_full": "Agent '%s' is being started on a new machine: its machine's host " +
+		"has no room to resume it, so Aetherfy recreates it from the current release%s.",
+}
+
+func resumeCause(r *api.ResumeState) string {
+	if r == nil || r.Cause == nil {
+		return ""
+	}
+	return *r.Cause
 }
 
 // printColdStart names a resume that could not wake a machine where it was.
@@ -517,6 +534,9 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 		if agent.Status == "running" {
 			sp.Stop()
 			output.PrintSuccess("Agent '%s' resumed.", name)
+			// ONCE, AT THE END: whether the start recreated a machine is
+			// known only once it is carried out, and the agent read keeps it.
+			printColdStart(agent.MachinesRecreated)
 			return nil
 		}
 		if !agent.Resume.UnderWay() {

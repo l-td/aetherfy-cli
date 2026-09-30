@@ -37,6 +37,12 @@ type Agent struct {
 	// with a reason. nil when there is none. No omitempty: `-o json` readers
 	// see an explicit null.
 	Resume *ResumeState `json:"resume"`
+	// MachinesRecreated: how many of the agent's machines its latest start
+	// replaced with new ones from its current release, because their host
+	// had no room to resume them -- a cold start rather than a resume (server
+	// AgentResponse.machines_recreated). 0 when that start recreated none, or
+	// when the agent's latest lifecycle step was not a start.
+	MachinesRecreated int `json:"machines_recreated"`
 	// AllowedWorkers pulls through from the server's AgentResponse: the agent
 	// names this agent may spawn. There is no parent field: who spawned a run
 	// is recorded on the run, never on the agent.
@@ -509,10 +515,16 @@ type GitHubLinkStatus struct {
 // still being carried out), "queued" (the platform is starting the agent) or
 // "dropped", when Reason -- one of the server's RESUME_DROP_REASONS -- says
 // why it was not carried out.
+//
+// Cause is set when the start was accepted for a reason other than a stop
+// still finishing: "host_full" -- the machine's host had no room to resume it,
+// so the platform is starting the agent on a new machine (one of the server's
+// RESUME_CAUSES). nil otherwise.
 type ResumeState struct {
 	State       string  `json:"state"`
 	Reason      *string `json:"reason"`
 	RequestedAt string  `json:"requested_at"`
+	Cause       *string `json:"cause"`
 }
 
 // UnderWay: accepted, and neither carried out nor dropped.

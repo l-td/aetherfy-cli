@@ -82,6 +82,24 @@ func agentRead(status, resumeState, reason string) string {
 		status, resume)
 }
 
+// The control plane's 202 for a start whose machine's host was full: accepted
+// into a RESUME job that retries, then recreates the machine (resume.cause
+// "host_full"); no stop to wait for.
+const acceptedOnAFullHost = `{"status":"paused","agent_id":"a","readiness":null,` +
+	`"resume":{"state":"queued","reason":null,"requested_at":"2026-09-30T10:00:00Z","cause":"host_full"},` +
+	`"stop_bound_seconds":0,"wait_bound_seconds":413}`
+
+// agentReadRecreated is a running agent whose latest start recreated n machines.
+func agentReadRecreated(n int) string {
+	return fmt.Sprintf(`{"id":"a","name":"api","status":"running","agent_type":"service",`+
+		`"resume":null,"machines_recreated":%d}`, n)
+}
+
+// agentReadQueuedOnAFullHost is the agent while its RESUME job is under way.
+const agentReadQueuedOnAFullHost = `{"id":"a","name":"api","status":"paused","agent_type":"service",` +
+	`"resume":{"state":"queued","reason":null,"requested_at":"2026-09-30T10:00:00Z","cause":"host_full"},` +
+	`"machines_recreated":0}`
+
 // recordStartWaits replaces the wait between reads with a recorder.
 func recordStartWaits(t *testing.T) *[]time.Duration {
 	t.Helper()
@@ -254,8 +272,84 @@ func TestWaitRefusesToGuessWhenTheServerStatesNoBound(t *testing.T) {
 	}
 }
 
+func TestAFullHostIsAnAcceptedStartThatNamesItsCause(t *testing.T) {
+	srv, s := newStartServer(t, acceptedOnAFullHost, nil)
+	waits := recordStartWaits(t)
+
+	out, err := runStart(t, srv, false)
+
+	if err != nil || s.starts != 1 || s.reads != 0 || len(*waits) != 0 {
+		t.Fatalf("an accepted start is one request and no waiting (err=%v, %d starts, %d reads):\n%s",
+			err, s.starts, s.reads, out)
+	}
+	if !strings.Contains(out, "is being started on a new machine") ||
+		!strings.Contains(out, "(at most 413s)") {
+		t.Fatalf("the full host is not named, with the server's bound:\n%s", out)
+	}
+	if strings.Contains(out, "previous stop") || strings.Contains(out, "cold start") {
+		t.Fatalf("a full host read as a stop, or claimed a cold start before one happened:\n%s", out)
+	}
+}
+
+func TestWaitFollowsAFullHostAndNamesTheColdStartOnceAtTheEnd(t *testing.T) {
+	srv, s := newStartServer(t, acceptedOnAFullHost, []string{
+		agentReadQueuedOnAFullHost, agentReadQueuedOnAFullHost, agentReadRecreated(1),
+	})
+	waits := recordStartWaits(t)
+
+	out, err := runStart(t, srv, true)
+
+	if err != nil {
+		t.Fatalf("a recreated start the platform carried out returned an error: %v\n%s", err, out)
+	}
+	if s.starts != 1 || s.reads != 3 || len(*waits) != 3 {
+		t.Fatalf("%d start(s), %d read(s), %d wait(s); want 1, 3, 3 -- it follows, never re-sends",
+			s.starts, s.reads, len(*waits))
+	}
+	if strings.Count(out, "cold start") != 1 || !strings.Contains(out, "a new machine") {
+		t.Fatalf("the cold start is not named exactly once:\n%s", out)
+	}
+	if strings.Index(out, "cold start") < strings.Index(out, "agent 'api' resumed") {
+		t.Fatalf("the cold start was named before the agent ran:\n%s", out)
+	}
+}
+
+func TestWaitNamesNoColdStartWhenTheStartRecreatedNothing(t *testing.T) {
+	// The retry got through: the host freed up, the machine resumed in place.
+	for _, read := range []string{
+		agentReadRecreated(0),
+		`{"id":"a","name":"api","status":"running","agent_type":"service","resume":null}`,
+	} {
+		srv, _ := newStartServer(t, acceptedOnAFullHost, []string{agentReadQueuedOnAFullHost, read})
+		recordStartWaits(t)
+		out, err := runStart(t, srv, true)
+		if err != nil || strings.Contains(out, "cold start") || !strings.Contains(out, "resumed") {
+			t.Fatalf("a start that recreated nothing (read %s) printed (err=%v):\n%s", read, err, out)
+		}
+	}
+}
+
+func TestWaitFailsFastWhenAFullHostsStartIsDropped(t *testing.T) {
+	srv, s := newStartServer(t, acceptedOnAFullHost, []string{
+		agentReadQueuedOnAFullHost, agentRead("paused", "dropped", "start_failed"),
+	})
+	recordStartWaits(t)
+
+	out, err := runStart(t, srv, true)
+
+	if err == nil || ExitCode(err) != 1 || s.reads != 2 {
+		t.Fatalf("a dropped start must exit 1 at the read that says so (err=%v, %d reads):\n%s",
+			err, s.reads, out)
+	}
+	if !strings.Contains(out, "was not started: "+resumeDropSentences["start_failed"]) ||
+		strings.Contains(out, "cold start") {
+		t.Fatalf("the drop is not explained by start_failed's sentence:\n%s", out)
+	}
+}
+
 // THE PIN. The keys of resumeDropSentences must be exactly the control plane's
-// RESUME_DROP_REASONS. Live against the sibling checkout, like the readiness
+// RESUME_DROP_REASONS, and the keys of resumeCauseSentences its RESUME_CAUSES
+// (both halves of the vocabulary an accepted start is described in). Live against the sibling checkout, like the readiness
 // pin: skipped where there is none, FAILED where cperrors.RequireEnv says there
 // must be (the e2e nightly).
 func TestStartDescribesExactlyTheControlPlanesDropReasons(t *testing.T) {
@@ -278,4 +372,17 @@ func TestStartDescribesExactlyTheControlPlanesDropReasons(t *testing.T) {
 			"Add or rename the entry in resumeDropSentences -- and the table in docs-site's "+
 			"agents/api-lifecycle.mdx, and the dashboard's RESUME_DROP_SENTENCES.",
 		known, cpresume.Set(reasons), cpresume.SourcePath, cpRoot)
+
+	causes, err := cpresume.ExtractCauses(cpRoot)
+	require.NoError(t, err, "reading RESUME_CAUSES from %s", cpRoot)
+	require.NotEmpty(t, causes, "RESUME_CAUSES read as empty -- refusing to treat that as agreement")
+	var described []string
+	for k := range resumeCauseSentences {
+		described = append(described, k)
+	}
+	sort.Strings(described)
+	assert.Equal(t, cpresume.Set(causes), described,
+		"`afy start` names the causes %v, and the control plane publishes %v (%s in %s). "+
+			"Add or rename the entry in resumeCauseSentences -- and docs-site's agents/api-lifecycle.mdx.",
+		described, cpresume.Set(causes), cpresume.SourcePath, cpRoot)
 }

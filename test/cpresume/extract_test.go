@@ -39,6 +39,18 @@ func TestAnEntryTheReaderCannotVouchForIsAnError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestTheCausesAreReadFromTheirOwnTuple(t *testing.T) {
+	root := fakeCP(t, realShape+"RESUME_CAUSES = (\r\n    \"host_full\",   # its host had no room\r\n)\r\n")
+	causes, err := ExtractCauses(root)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"host_full"}, causes)
+	reasons, err := Extract(root)
+	require.NoError(t, err)
+	assert.NotContains(t, reasons, "host_full")
+	_, err = ExtractCauses(fakeCP(t, realShape))
+	require.Error(t, err, "no RESUME_CAUSES tuple must be an error, not an empty agreement")
+}
+
 func TestNoTupleIsAnErrorNotAnEmptyAgreement(t *testing.T) {
 	_, err := Extract(fakeCP(t, "RESUME_DROP_REASONS = frozenset()\n"))
 	require.Error(t, err)
