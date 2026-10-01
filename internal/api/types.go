@@ -508,6 +508,18 @@ type GitHubLinkStatus struct {
 	// they find their agent inert. Null covers both a branch that was never
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
+	// The push WAITING for the deploy in progress, or null. An agent deploys
+	// one push at a time; a push that arrives while a deployment of the agent
+	// is in flight waits, and has no deployment row until it starts, so this
+	// is the only place a terminal can see it. Where several wait, it is the
+	// one that will deploy (the newest); the others end skipped.
+	WaitingPush *WaitingPush `json:"waiting_push"`
+}
+
+// WaitingPush is a push waiting for the deploy of its agent in progress.
+type WaitingPush struct {
+	SHA        string    `json:"sha"`
+	ReceivedAt time.Time `json:"received_at"`
 }
 
 // ResumeState is a start asked for while the agent's previous stop was still

@@ -979,6 +979,9 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.KeyValue("Directory", "repository root")
 	}
 	output.KeyValue("Webhook id", derefString(link.WebhookID))
+	if link.WaitingPush != nil {
+		output.KeyValue("Push waiting", formatWaitingPush(link.WaitingPush))
+	}
 
 	// LINKED, BUT INERT. Nothing on GitHub reports either of these — a skip is
 	// announced as a check on the commit, which needs the installation token
@@ -1011,6 +1014,18 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.Println("This agent is still linked, and pushes will not deploy until that branch exists again.")
 		output.Println("Recreate it and push — the link is kept, so deploys resume with nothing to set up again.")
 	}
+}
+
+// formatWaitingPush is one line for a push waiting for the deploy in progress,
+// the same words on `afy status` and `afy deployments`, and as the dashboard's
+// PUSH WAITING badge says them.
+func formatWaitingPush(w *api.WaitingPush) string {
+	sha := w.SHA
+	if len(sha) > 7 {
+		sha = sha[:7]
+	}
+	return fmt.Sprintf("%s, received %s — deploys when the deploy in progress ends",
+		sha, formatUTCTime(&w.ReceivedAt))
 }
 
 // derefString reads a nullable server string. The API's link fields are null
