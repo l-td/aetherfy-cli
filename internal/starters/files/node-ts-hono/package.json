@@ -1,0 +1,13 @@
+{
+  "name": "aetherfy-node-ts-hono",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "dependencies": {
+    "hono": "^4.6.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
