@@ -298,8 +298,8 @@ type AgentRun struct {
 }
 
 // RunsQuery bundles the GET /agents/{id}/runs query parameters. TriggerSource
-// narrows to 'cron' or 'manual' (empty = both); Before is an ISO cursor
-// (created_at < before).
+// narrows to 'cron' or 'manual' (empty = both); Before is the opaque `cursor`
+// of the last run of the previous page, sent as it was received.
 type RunsQuery struct {
 	TriggerSource string
 	Limit         int
