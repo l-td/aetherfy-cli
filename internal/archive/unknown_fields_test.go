@@ -58,7 +58,7 @@ func TestEveryUnknownFieldIsReportedInFileOrder(t *testing.T) {
 // here, the loop below says which.
 func TestAFileWithEveryFieldIsAccepted(t *testing.T) {
 	full := "name: full\nruntime: python3.11\ntype: service\ndescription: d\n" +
-		"tier: starter\nworkspace: ws\nspawn:\n  enabled: true\n  workers: [a]\n" +
+		"workspace: ws\nspawn:\n  enabled: true\n  workers: [a]\n" +
 		"regions: [us-east-1]\nmemory_mb: 512\nidle_timeout_minutes: 10\n" +
 		"keep_alive: false\nentrypoint: main.py\nschedule: '0 3 * * *'\n" +
 		"github_dependencies: ['o/r@v1']\n"
@@ -103,7 +103,7 @@ func TestParseAetherfyConfigRefusesBeforeAnyUpload(t *testing.T) {
 // Generated 2026-09-25 on CPython 3.12. The tie rows are the ones an
 // approximation gets wrong: equal scores go to the larger string.
 func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
-	top := []string{"name", "runtime", "type", "description", "tier", "workspace", "spawn", "regions",
+	top := []string{"name", "runtime", "type", "description", "workspace", "spawn", "regions",
 		"memory_mb", "idle_timeout_minutes", "keep_alive", "entrypoint", "schedule", "github_dependencies"}
 	spawn := []string{"enabled", "workers"}
 	cases := []struct {
@@ -119,7 +119,7 @@ func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 		{top, "entrypiont", "entrypoint"}, {top, "entry", "entrypoint"}, {top, "entry_point", "entrypoint"},
 		{top, "region", "regions"}, {top, "regoins", "regions"}, {top, "runtme", "runtime"},
 		{top, "nme", "name"}, {top, "names", "name"}, {top, "typ", "type"}, {top, "types", "type"},
-		{top, "descripton", "description"}, {top, "desc", ""}, {top, "teir", "tier"}, {top, "tiers", "tier"},
+		{top, "descripton", "description"}, {top, "desc", ""}, {top, "teir", ""}, {top, "tiers", ""},
 		{top, "workspce", "workspace"}, {top, "work_space", "workspace"}, {top, "spwan", "spawn"},
 		{top, "spawns", "spawn"}, {top, "github_dependency", "github_dependencies"},
 		{top, "dependencies", "github_dependencies"}, {top, "deps", ""}, {top, "zzzzzz", ""},

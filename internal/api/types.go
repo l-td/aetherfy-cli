@@ -134,7 +134,6 @@ type AgentCreateRequest struct {
 type AgentUpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
-	Tier        *string `json:"tier,omitempty"`
 	MemoryMB    *int    `json:"memory_mb,omitempty"`
 	KeepAlive   *bool   `json:"keep_alive,omitempty"`
 	// WorkspaceName is tri-state to match the backend PATCH /agents

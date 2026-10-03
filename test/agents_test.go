@@ -92,9 +92,6 @@ func TestAgentUpdateRequestOptionalFields(t *testing.T) {
 	if req.Description != nil {
 		t.Error("Expected Description to be nil when not set")
 	}
-	if req.Tier != nil {
-		t.Error("Expected Tier to be nil when not set")
-	}
 	if req.MemoryMB != nil {
 		t.Error("Expected MemoryMB to be nil when not set")
 	}
@@ -124,9 +121,6 @@ func TestAgentUpdateRequestPartialUpdate(t *testing.T) {
 	// Unset fields should be nil
 	if req.Description != nil {
 		t.Error("Expected Description to be nil")
-	}
-	if req.Tier != nil {
-		t.Error("Expected Tier to be nil")
 	}
 }
 
