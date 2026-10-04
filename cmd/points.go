@@ -307,7 +307,9 @@ const previewWidth = 60
 
 // reservedPayloadPrefix starts the payload keys vectordb writes itself (the
 // attested __aetherfy_agent_id and __aetherfy_deployment_id, returned on every
-// read).
+// read). It must equal vectordb's RESERVED_PREFIX (backend/utils/
+// reservedFields.js): aetherfy-e2e-tests tests/pyunit/test_index_timeouts_pair.py
+// reds if they differ, and reads this line as a literal `const`.
 const reservedPayloadPrefix = "__aetherfy_"
 
 // preview shortens raw JSON to width characters for a table cell. A payload
