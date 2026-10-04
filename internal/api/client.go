@@ -208,6 +208,21 @@ func (c *Client) Patch(path string, body interface{}, result interface{}) error 
 	return c.handleResponse(resp)
 }
 
+// Put performs a PUT request. Like every mutating verb it is not retried at
+// the transport (see retryableMethods).
+func (c *Client) Put(path string, body interface{}, result interface{}) error {
+	resp, err := c.http.R().
+		SetBody(body).
+		SetResult(result).
+		Put(c.url(path))
+
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+
+	return c.handleResponse(resp)
+}
+
 // Delete performs a DELETE request
 func (c *Client) Delete(path string) error {
 	resp, err := c.http.R().

@@ -542,3 +542,63 @@ type ResumeState struct {
 func (r *ResumeState) UnderWay() bool {
 	return r != nil && (r.State == "pending" || r.State == "queued")
 }
+
+// ---------------------------------------------------------------------------
+// AI Gateway (/api/v1/gateway/*)
+// ---------------------------------------------------------------------------
+//
+// MONEY IS A JSON NUMBER OF US DOLLARS, the control plane's wire form for
+// these routes (and for additional_monthly_usd before them), decoded as
+// float64. That is exact for up to 15 significant digits: every budget and
+// every single call's cost, and a spend total below $10,000,000; above that a
+// total's eighth decimal can differ.
+// Nothing is omitempty: a null budget means "no budget" and must survive
+// `-o json` as null.
+
+// GatewayAccountSettings is the account's budget and its spend this month.
+type GatewayAccountSettings struct {
+	MonthlyBudgetUSD *float64  `json:"monthly_budget_usd"`
+	MonthToDateUSD   float64   `json:"month_to_date_usd"`
+	MonthStart       time.Time `json:"month_start"`
+}
+
+// GatewayAgentSettings is one agent's budget, allowed models and spend this month.
+type GatewayAgentSettings struct {
+	AgentID          string   `json:"agent_id"`
+	Name             string   `json:"name"`
+	MonthlyBudgetUSD *float64 `json:"monthly_budget_usd"`
+	AllowedModels    []string `json:"allowed_models"`
+	MonthToDateUSD   float64  `json:"month_to_date_usd"`
+}
+
+// GatewayAgentList is GET /gateway/agents.
+type GatewayAgentList struct {
+	Agents     []GatewayAgentSettings `json:"agents"`
+	MonthStart time.Time              `json:"month_start"`
+}
+
+// GatewayUsageRow is one group of a usage report, or its totals (Key nil).
+type GatewayUsageRow struct {
+	Key                   *string `json:"key"`
+	AgentName             *string `json:"agent_name"`
+	Requests              int64   `json:"requests"`
+	InputTokens           int64   `json:"input_tokens"`
+	OutputTokens          int64   `json:"output_tokens"`
+	CacheReadInputTokens  int64   `json:"cache_read_input_tokens"`
+	CacheWriteInputTokens int64   `json:"cache_write_input_tokens"`
+	ReasoningOutputTokens int64   `json:"reasoning_output_tokens"`
+	CostUSD               float64 `json:"cost_usd"`
+	UnpricedRequests      int64   `json:"unpriced_requests"`
+	AbortedRequests       int64   `json:"aborted_requests"`
+	ErrorRequests         int64   `json:"error_requests"`
+}
+
+// GatewayUsageReport is GET /gateway/usage.
+type GatewayUsageReport struct {
+	Since   time.Time         `json:"since"`
+	Until   time.Time         `json:"until"`
+	GroupBy string            `json:"group_by"`
+	AgentID *string           `json:"agent_id"`
+	Rows    []GatewayUsageRow `json:"rows"`
+	Totals  GatewayUsageRow   `json:"totals"`
+}
