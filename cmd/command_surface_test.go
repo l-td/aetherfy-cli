@@ -248,11 +248,13 @@ func vectorLeaves() []*cobra.Command {
 
 func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// The surface the brief scoped, and no more: upsert, payload edits and
-	// aliases are the SDKs' job. A new one here is a decision, not a drive-by.
+	// aliases are the SDKs' job. A new one here is a decision, not a drive-by:
+	// points list and points delete were the owner's (2026-09-30), browsing
+	// and cleanup, with the dashboard's parity in mind.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
 		"afy index create", "afy index delete",
-		"afy points count", "afy points get", "afy points search",
+		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
 	}
 	var got []string
 	for _, c := range vectorLeaves() {

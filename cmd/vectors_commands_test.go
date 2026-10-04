@@ -565,6 +565,10 @@ func TestAnUnparseableVectorCommandLineExitsTwo(t *testing.T) {
 		{"collections", "get"},
 		{"index", "create", "a"},
 		{"points", "get", "a"},
+		{"points", "list", "a", "--limit", "x"},
+		{"points", "list"},
+		{"points", "delete"},
+		{"points", "delete", "a", "--yes=maybe"},
 		{"collections", "list", "--bogus"},
 	}
 	for _, args := range cases {
@@ -619,6 +623,10 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		"points count":  func(r *vecRun) int { return pointsCount(r, "articles", "") },
 		"points get":    func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
 		"points search": func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
+		"points list":   func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
+		"points delete": func(r *vecRun) int {
+			return pointsDelete(r, "articles", []string{"1"}, "", true, strings.NewReader(""), false)
+		},
 	}
 	if len(commands) != len(vectorLeaves()) {
 		t.Fatalf("%d commands here, %d vector commands registered: cover the new one", len(commands), len(vectorLeaves()))

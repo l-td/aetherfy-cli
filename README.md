@@ -246,7 +246,7 @@ Workspaces group related agents so they can share secrets and vector collections
 ### Vectors
 
 Read and manage the vector database with the same API key. Loading points is
-the SDKs' job. Every command takes `--json`, `--workspace` (default
+the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`, `--workspace` (default
 `AETHERFY_WORKSPACE`, else none), `--vectors-url` and `--api-region`.
 
 | Command | Description |
@@ -258,8 +258,10 @@ the SDKs' job. Every command takes `--json`, `--workspace` (default
 | `afy index create <collection> <field> --type keyword` | Index a payload field; returns once the index is built |
 | `afy index delete <collection> <field>` | Drop a payload index |
 | `afy points count <collection>` | Count points (`--filter` JSON) |
+| `afy points list <collection>` | Page through the points in a collection, with their payloads (`--limit`, at most 1000; `--offset` from the previous page's `next_page_offset`; `--filter`; `--with-vectors`) |
 | `afy points get <collection> <id>` | Read points by id |
 | `afy points search <collection> --vector '[0.1, 0.2]'` | Nearest points (`--limit`, `--filter`) |
+| `afy points delete <collection> <id>...` | Delete points by id, or the points a filter matches (`--filter` instead of ids; shows the count and asks first; `--yes` from a script; an empty filter is refused) |
 
 ### Deployment
 

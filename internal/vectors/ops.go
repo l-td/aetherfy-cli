@@ -9,7 +9,7 @@ import (
 // timeout, not retried: the CLI prints what the server said and a script
 // decides what to do next. Paths and bodies are the SDKs' (aetherfy_vectors/
 // client.py get_collections, get_collection, create_collection,
-// delete_collection, count, retrieve, search).
+// delete_collection, count, retrieve, search, scroll, delete).
 
 // VectorParams is a collection's vector configuration as vectordb stores it.
 type VectorParams struct {
@@ -101,11 +101,13 @@ func (c *Client) CountPoints(collection string, filter json.RawMessage) (int64, 
 	return out.Result.Count, nil
 }
 
-// Point is a stored point or a search hit. Score is set on hits only.
+// Point is a stored point or a search hit. Score is set on hits only, Vector
+// only on a scroll that asked for vectors.
 type Point struct {
 	ID      json.RawMessage `json:"id"`
 	Score   *float64        `json:"score,omitempty"`
 	Payload json.RawMessage `json:"payload"`
+	Vector  json.RawMessage `json:"vector,omitempty"`
 }
 
 // GetPoints retrieves points by id, with their payloads and without vectors.
@@ -146,4 +148,79 @@ func (c *Client) Search(collection string, vector []float64, limit int, filter j
 		return nil, err
 	}
 	return out.Result.Points, nil
+}
+
+// The page size of a scroll. ScrollLimitMax is the most the vectors API
+// returns in one read: vectordb's READ_LIMIT_MAX (backend/utils/
+// catchAllAllowlist.js), which refuses a larger limit 400. The default is the
+// SDKs' scroll default. aetherfy-e2e-tests tests/pyunit/
+// test_index_timeouts_pair.py reads both files and reds if the two differ.
+const (
+	ScrollLimitDefault = 10
+	ScrollLimitMax     = 1000
+)
+
+// ScrollPage is one page of a scroll. NextPageOffset is the id the next page
+// starts at, JSON null on the last page; it is passed back as Scroll's offset.
+type ScrollPage struct {
+	Points         []Point         `json:"points"`
+	NextPageOffset json.RawMessage `json:"next_page_offset"`
+}
+
+// Scroll reads one page of points in id order, filtered by filter (nil for
+// none), starting at offset (nil for the first page), with their payloads and,
+// when withVectors, their vectors. The SDKs' scroll: POST .../points/scroll.
+func (c *Client) Scroll(collection string, limit int, offset interface{}, filter json.RawMessage, withVectors bool) (*ScrollPage, error) {
+	body := map[string]interface{}{
+		"limit":        limit,
+		"with_payload": true,
+		"with_vector":  withVectors,
+	}
+	if offset != nil {
+		body["offset"] = offset
+	}
+	if len(filter) > 0 {
+		body["filter"] = filter
+	}
+	var out struct {
+		Result ScrollPage `json:"result"`
+	}
+	if err := c.do(http.MethodPost, c.collectionPath(collection, "/points/scroll"), body, c.timeout, &out); err != nil {
+		return nil, err
+	}
+	if len(out.Result.NextPageOffset) == 0 {
+		out.Result.NextPageOffset = json.RawMessage("null")
+	}
+	return &out.Result, nil
+}
+
+// ExistingPointIDs returns which of ids exist, as the server spells them: a
+// retrieve without payloads or vectors.
+func (c *Client) ExistingPointIDs(collection string, ids []interface{}) ([]json.RawMessage, error) {
+	body := map[string]interface{}{"ids": ids, "with_payload": false, "with_vector": false}
+	var out struct {
+		Result []Point `json:"result"`
+	}
+	if err := c.do(http.MethodPost, c.collectionPath(collection, "/points/retrieve"), body, c.timeout, &out); err != nil {
+		return nil, err
+	}
+	found := make([]json.RawMessage, 0, len(out.Result))
+	for _, p := range out.Result {
+		found = append(found, p.ID)
+	}
+	return found, nil
+}
+
+// DeletePoints deletes points by id, or every point filter matches: exactly
+// one of ids and filter is set. The SDKs' delete: POST .../points/delete with
+// {"points": ids} or {"filter": filter}. The write is applied when the answer
+// comes back (the SDKs' `wait` is accepted and changes nothing).
+func (c *Client) DeletePoints(collection string, ids []json.RawMessage, filter json.RawMessage) error {
+	body := map[string]interface{}{}
+	if len(filter) > 0 {
+		body["filter"] = filter
+	} else {
+		body["points"] = ids
+	}
+	return c.do(http.MethodPost, c.collectionPath(collection, "/points/delete"), body, c.timeout, nil)
 }
