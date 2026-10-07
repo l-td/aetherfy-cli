@@ -21,6 +21,9 @@ type VectorParams struct {
 // GET /collections/{name} describe it. Fields the list does not carry
 // (regions, updated_at) are empty there.
 type CollectionInfo struct {
+	// ID is the collection's UUID: what the control plane's routes address
+	// it by (afy collections regions / move).
+	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
 	Config      struct {

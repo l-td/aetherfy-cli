@@ -618,12 +618,18 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		"collections delete": func(r *vecRun) int {
 			return collectionsDelete(r, "articles", true, strings.NewReader(""), false)
 		},
-		"index create":  func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
-		"index delete":  func(r *vecRun) int { return indexDelete(r, "articles", "f") },
-		"points count":  func(r *vecRun) int { return pointsCount(r, "articles", "") },
-		"points get":    func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
-		"points search": func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
-		"points list":   func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
+		// regions and move find the collection through the vectors API first:
+		// its 404 is theirs, and nothing reaches the control plane.
+		"collections regions": func(r *vecRun) int {
+			return collectionsRegions(r, "articles", []string{"us-east-1"}, true, false, strings.NewReader(""), false)
+		},
+		"collections move": func(r *vecRun) int { return collectionsMove(r, "articles", "", true, false) },
+		"index create":     func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
+		"index delete":     func(r *vecRun) int { return indexDelete(r, "articles", "f") },
+		"points count":     func(r *vecRun) int { return pointsCount(r, "articles", "") },
+		"points get":       func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
+		"points search":    func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
+		"points list":      func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
 		"points delete": func(r *vecRun) int {
 			return pointsDelete(r, "articles", []string{"1"}, "", true, strings.NewReader(""), false)
 		},

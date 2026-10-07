@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 	"github.com/spf13/cobra"
@@ -117,6 +118,18 @@ type vecRun struct {
 	stderr  io.Writer
 	connect func() (*vectors.Client, error)
 	client  *vectors.Client
+	// cp is the control-plane client for the commands that change a
+	// collection's regions or workspace; nil means the logged-in one.
+	cp *api.Client
+}
+
+// controlPlane is the control-plane client: the injected one, or the logged-in
+// one built on first use.
+func (r *vecRun) controlPlane() *api.Client {
+	if r.cp == nil {
+		r.cp = api.NewClient()
+	}
+	return r.cp
 }
 
 // newVecRun builds the context from the command's flags and the environment.
@@ -205,11 +218,17 @@ func (r *vecRun) fail(err error) int {
 	}
 	var apiErr *vectors.APIError
 	isAPI := errors.As(err, &apiErr)
+	// The control plane's errors (afy collections regions / move) carry the
+	// same three things.
+	var cpErr *api.APIError
+	isCP := errors.As(err, &cpErr)
 	if r.json {
 		var out vecErrorJSON
 		out.Error.Message = err.Error()
 		if isAPI {
 			out.Error.Status, out.Error.Code, out.Error.Message = apiErr.Status, apiErr.Code, apiErr.Message
+		} else if isCP {
+			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
 		}
 		data, _ := json.Marshal(out)
 		fmt.Fprintln(r.stderr, string(data))

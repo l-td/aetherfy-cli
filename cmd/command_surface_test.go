@@ -250,9 +250,12 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// The surface the brief scoped, and no more: upsert, payload edits and
 	// aliases are the SDKs' job. A new one here is a decision, not a drive-by:
 	// points list and points delete were the owner's (2026-09-30), browsing
-	// and cleanup, with the dashboard's parity in mind.
+	// and cleanup, with the dashboard's parity in mind; collections regions
+	// and move were the collections brief's (item 9, 2026-10-07), the
+	// control-plane changes to one collection the dashboard already makes.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
+		"afy collections move", "afy collections regions",
 		"afy index create", "afy index delete",
 		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
 	}

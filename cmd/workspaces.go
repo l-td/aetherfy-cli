@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
@@ -417,6 +418,96 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// --- REGIONS ---
+
+var workspacesRegionsCmd = &cobra.Command{
+	Use:   "regions <name>",
+	Short: "Change the regions a workspace allows",
+	Long: `Change the regions a workspace allows.
+
+A workspace's regions are a ceiling for what is in it, not a placement: adding
+a region copies nothing, and removing one is refused while an agent or a
+collection of the workspace still uses it (move or narrow those first). So the
+change copies and deletes no data, and asks nothing.
+
+The change runs in the background. --wait follows it to the end: exit 1 if it
+fails, 4 if it is still running after 30 minutes.`,
+	Example: `  # Allow a second region
+  afy workspaces regions research --regions us-east-1,eu-central-1
+
+  # Narrow it again, following the change to its end
+  afy workspaces regions research --regions us-east-1 --wait`,
+	Args: cobra.ExactArgs(1),
+	RunE: runWorkspacesRegions,
+}
+
+var (
+	workspaceRegions     []string
+	workspaceRegionsWait bool
+)
+
+func init() {
+	workspacesRegionsCmd.Flags().StringSliceVar(&workspaceRegions, "regions", nil, "Regions the workspace allows, comma-separated, required")
+	workspacesRegionsCmd.Flags().BoolVar(&workspaceRegionsWait, "wait", false, "Follow the change to the end (exit 1 if it fails, 4 if still running after 30 minutes)")
+	_ = workspacesRegionsCmd.MarkFlagRequired("regions")
+}
+
+func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	name := args[0]
+
+	sp := output.NewSpinner(fmt.Sprintf("Changing the regions of workspace '%s'...", name))
+	sp.Start()
+
+	client := api.NewClient()
+	change, err := client.UpdateWorkspaceRegions(name, workspaceRegions)
+	sp.Stop()
+
+	if err != nil {
+		output.PrintError("Failed to change workspace regions: %v", err)
+		return err
+	}
+
+	var op *api.Operation
+	if workspaceRegionsWait && change.OperationID != "" {
+		sp := output.NewSpinner(fmt.Sprintf("Waiting for operation %s...", change.OperationID))
+		sp.Start()
+		op, err = pollOperation(client, change.OperationID)
+		sp.Stop()
+		if err != nil {
+			output.PrintError("%v", err)
+			return err
+		}
+	}
+
+	if config.Get().OutputFormat == "json" {
+		return output.JSON(struct {
+			Workspace string                      `json:"workspace"`
+			Change    *api.WorkspaceRegionsChange `json:"change"`
+			Operation *api.Operation              `json:"operation"`
+		}{name, change, op})
+	}
+
+	if change.Status == "no_op" {
+		output.PrintInfo("No change: workspace '%s' already allows %s.", name, strings.Join(change.CurrentRegions, ", "))
+		return nil
+	}
+	if op != nil {
+		output.PrintSuccess("Workspace '%s' now allows %s.", name, strings.Join(change.ToRegions, ", "))
+		return nil
+	}
+	output.PrintSuccess("Regions change for workspace '%s' accepted.", name)
+	output.KeyValue("Operation", change.OperationID)
+	output.KeyValue("Regions", strings.Join(change.ToRegions, ", "))
+	output.Println("")
+	output.Println("It runs in the background. See the result with:")
+	output.Println("  afy workspaces info " + name)
+	return nil
+}
+
 func init() {
 	workspacesCmd.AddCommand(workspacesCreateCmd)
 	workspacesCmd.AddCommand(workspacesListCmd)
@@ -424,4 +515,5 @@ func init() {
 	workspacesCmd.AddCommand(workspacesUpdateCmd)
 	workspacesCmd.AddCommand(workspacesDeleteCmd)
 	workspacesCmd.AddCommand(workspacesAgentsCmd)
+	workspacesCmd.AddCommand(workspacesRegionsCmd)
 }
