@@ -46,6 +46,24 @@ func TestWorkspacesRegionsPatchesTheWorkspacesRegions(t *testing.T) {
 	}
 }
 
+// afy workspaces info is where an accepted change says to see its result, so
+// the workspace it reads carries the regions.
+func TestWorkspaceInfoReadsTheRegions(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"w-9","name":"research","description":null,"regions":["us-east-1","eu-central-1"],"agent_count":0,"created_at":"2026-10-07T22:26:13Z","updated_at":"2026-10-07T22:33:34Z"}`))
+	}))
+	defer srv.Close()
+
+	ws, err := api.NewClientWithURL(srv.URL, "afy_test_key").GetWorkspace("research")
+	if err != nil {
+		t.Fatalf("GetWorkspace: %v", err)
+	}
+	if want := []string{"us-east-1", "eu-central-1"}; !reflect.DeepEqual(ws.Regions, want) {
+		t.Errorf("regions: want %v, got %v", want, ws.Regions)
+	}
+}
+
 func TestWorkspacesRegionsSurfacesTheRefusalsCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

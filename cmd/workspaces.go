@@ -195,6 +195,7 @@ func runWorkspacesInfo(cmd *cobra.Command, args []string) error {
 	if workspace.Description != "" {
 		output.KeyValue("Description", workspace.Description)
 	}
+	output.KeyValue("Regions", strings.Join(workspace.Regions, ", "))
 	output.KeyValue("Agents", fmt.Sprintf("%d", workspace.AgentCount))
 	output.KeyValue("Created", workspace.CreatedAt.Format("2006-01-02 15:04"))
 	output.KeyValue("Updated", workspace.UpdatedAt.Format("2006-01-02 15:04"))
