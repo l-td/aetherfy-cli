@@ -19,7 +19,8 @@ var collectionsCmd = &cobra.Command{
 	Short:   "Inspect and manage vector collections",
 	Long: `Inspect and manage vector collections in the vectors API.
 
-Collection names are scoped to a workspace. The workspace is --workspace when
+A collection is reachable only through its workspace (names are unique per
+account). The workspace is --workspace when
 given, else AETHERFY_WORKSPACE, else none, the same default as the SDKs. The
 endpoint is --vectors-url, else AETHERFY_VECTORS_URL, else the one region
 discovery names for --api-region, else the global endpoint.
