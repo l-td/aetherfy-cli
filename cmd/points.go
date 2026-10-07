@@ -284,7 +284,12 @@ vectors API returns in one read). When there are more, the page ends with the
 id the next one starts at: pass it as --offset to read the next page, with
 the same --filter. --json prints it as next_page_offset, null on the last page.
 
---with-vectors adds each point's vector.`, vectors.ScrollLimitDefault, vectors.ScrollLimitMax),
+--with-vectors adds each point's vector.
+
+Every point comes back with __aetherfy_agent_id, the agent that wrote it, null
+when one of your own keys did. To filter on it, test is_empty, not is_null: a
+point you wrote may hold no author key at all (the payload merge cannot store a
+null), and is_empty matches a missing key and a null alike.`, vectors.ScrollLimitDefault, vectors.ScrollLimitMax),
 	Example: `  # The first ten points
   afy points list articles
 
@@ -292,7 +297,10 @@ the same --filter. --json prints it as next_page_offset, null on the last page.
   afy points list articles --offset 42
 
   # The points a filter matches, 100 at a time, as JSON
-  afy points list articles --limit 100 --filter '{"must":[{"key":"lang","match":{"value":"en"}}]}' --json`,
+  afy points list articles --limit 100 --filter '{"must":[{"key":"lang","match":{"value":"en"}}]}' --json
+
+  # The points any agent wrote
+  afy points list articles --filter '{"must_not":[{"is_empty":{"key":"__aetherfy_agent_id"}}]}'`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runVec(cmd, func(r *vecRun) int {
