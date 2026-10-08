@@ -5,7 +5,7 @@
   "source": {
     "path": "api/routes/github.py",
     "model": "GitHubLinkStatusResponse",
-    "branch": "integration/2026-09-29",
+    "branch": "main",
     "dirty": false,
     "unpushed": false
   },
