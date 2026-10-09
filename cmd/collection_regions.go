@@ -223,7 +223,8 @@ var collectionsMoveCmd = &cobra.Command{
 	Use:   "move <name>",
 	Short: "Move a collection to another workspace, or out of any",
 	Long: `Move a collection to another workspace, or out of any (--to ""; on
-Windows PowerShell 5.1, which drops an empty argument, write --to= instead).
+Windows PowerShell 5.1, which drops an empty argument, write --to= instead; a
+--to value starting with "-" is refused, exit 2, as what a dropped "" leaves).
 
 A move changes only which workspace reaches the collection: its regions and
 its data stay where they are, so the target must allow every region it is
@@ -255,6 +256,9 @@ var (
 func collectionsMove(r *vecRun, name, to string, toSet, wait bool) int {
 	if !toSet {
 		return r.fail(refuse("--to is required: the workspace to move collection '%s' to, or \"\" for none", name))
+	}
+	if err := refuseFlagLikeValue("to", to); err != nil {
+		return r.fail(err)
 	}
 	client, code := r.open()
 	if code != 0 {

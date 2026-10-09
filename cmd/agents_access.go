@@ -44,7 +44,8 @@ An agent reaches the collections of its own workspace, and of the workspaces
 you grant it; any other workspace is refused to it. --add grants a workspace,
 --remove revokes one; each takes a name, repeats, or takes a comma-separated
 list. "" names the collections in no workspace; Windows PowerShell 5.1 drops an
-empty argument, so there write --add= or --remove= instead. Your own key is
+empty argument, so there write --add= or --remove= instead; a value starting
+with "-" is refused, exit 2, as what a dropped "" leaves. Your own key is
 unaffected.
 
 Adding access lets the agent's code read, write, create and delete every
@@ -129,6 +130,17 @@ func granted(a *api.AgentAccess, scope string) bool {
 }
 
 func agentsAccess(r *vecRun, agent string, add, remove []string, yes bool, stdin io.Reader, interactive bool) int {
+	if err := refuseFlagLikeValue("add", add...); err != nil {
+		return r.fail(err)
+	}
+	if err := refuseFlagLikeValue("remove", remove...); err != nil {
+		return r.fail(err)
+	}
+	return changeAgentAccess(r, agent, add, remove, yes, stdin, interactive)
+}
+
+// changeAgentAccess is agentsAccess once its flag values were checked.
+func changeAgentAccess(r *vecRun, agent string, add, remove []string, yes bool, stdin io.Reader, interactive bool) int {
 	adds, removes := scopes(add), scopes(remove)
 	for _, s := range adds {
 		for _, t := range removes {
