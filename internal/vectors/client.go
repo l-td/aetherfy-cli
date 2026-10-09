@@ -10,7 +10,8 @@
 // Where the SDKs already settled a behaviour (endpoint resolution, the
 // workspace default, waiting for a payload index) this package copies it, and
 // each copy names the SDK code it copies. The CLI covers a small read-mostly
-// subset: bulk writes stay the SDKs' job.
+// subset plus a plain upsert: bulk loads, with the SDKs' byte-size chunking
+// and retries, stay the SDKs' job.
 package vectors
 
 import (

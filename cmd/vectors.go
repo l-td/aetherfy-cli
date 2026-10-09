@@ -196,12 +196,15 @@ func (r *vecRun) printJSON(v interface{}) int {
 }
 
 // vecErrorJSON is what --json prints on stderr for a failure. status and code
-// are the API's, present only when the API answered.
+// are the API's, present only when the API answered. written is set when an
+// afy points upsert request failed after earlier ones were written: the
+// points those held.
 type vecErrorJSON struct {
 	Error struct {
 		Status  int    `json:"status,omitempty"`
 		Code    string `json:"code,omitempty"`
 		Message string `json:"message"`
+		Written *int   `json:"written,omitempty"`
 	} `json:"error"`
 }
 
@@ -229,6 +232,10 @@ func (r *vecRun) fail(err error) int {
 			out.Error.Status, out.Error.Code, out.Error.Message = apiErr.Status, apiErr.Code, apiErr.Message
 		} else if isCP {
 			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
+		}
+		var partial *partialWriteError
+		if errors.As(err, &partial) {
+			out.Error.Written = &partial.written
 		}
 		data, _ := json.Marshal(out)
 		fmt.Fprintln(r.stderr, string(data))
