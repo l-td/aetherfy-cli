@@ -91,7 +91,7 @@ func TestTheAgentVerbsAreAllAtTheRoot(t *testing.T) {
 	for _, name := range []string{
 		"list", "create", "delete", "stop", "start", "archive", "restore",
 		"cancel", "status", "rename", "update", "pull", "diff", "run", "runs",
-		"schedule",
+		"schedule", "access",
 		// already flat before the flatten; here so the list reads as the whole
 		// agent surface rather than as "the ones that moved"
 		"deploy", "logs", "rollback", "redeploy", "deployments", "spawn",

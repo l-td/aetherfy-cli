@@ -1367,7 +1367,7 @@ func init() {
 	for _, c := range []*cobra.Command{
 		agentsCreateCmd, agentsDeleteCmd, agentsStopCmd, agentsStartCmd,
 		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd, agentsRenameCmd,
-		agentsUpdateCmd,
+		agentsUpdateCmd, agentsAccessCmd,
 	} {
 		c.GroupID = groupAgentLifecycle
 	}
@@ -1406,6 +1406,7 @@ func init() {
 	rootCmd.AddCommand(agentsRunCmd)
 	rootCmd.AddCommand(agentsRunsCmd)
 	rootCmd.AddCommand(agentsScheduleCmd)
+	rootCmd.AddCommand(agentsAccessCmd)
 
 	// `schedule` KEEPS ITS SUBCOMMANDS. Flattening removes the group around the
 	// DEFAULT noun; it does not flatten every group. pause/resume are two verbs
