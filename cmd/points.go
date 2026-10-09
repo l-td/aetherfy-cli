@@ -560,8 +560,8 @@ error is printed as it came. More than %d points (the most one request may
 carry) are sent as several requests, in order; if one fails, the points
 already written stay written and the error says how many they were.
 
-Points written with your key carry no agent in __aetherfy_agent_id: they are
-yours.`, vectors.UpsertPointsMax),
+Points written with your key read back with __aetherfy_agent_id null: a
+person's write, not an agent's.`, vectors.UpsertPointsMax),
 	Example: `  # One point, inline
   afy points upsert articles --points '{"id": 1, "vector": [0.12, -0.03, 0.88], "payload": {"lang": "en"}}'
 
