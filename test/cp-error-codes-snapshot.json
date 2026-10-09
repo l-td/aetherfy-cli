@@ -171,6 +171,22 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_TOKENS_UNCONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKEN_AUDIENCE_UNKNOWN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKEN_REQUIRES_AGENT_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_TOKEN_SCOPE_NOT_GRANTED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AGENT_WORKER_NOT_ALLOWED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -476,6 +492,10 @@
       "tier": "top-level"
     },
     "TARGET_WORKSPACE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "TEST_POOL_ONLY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
