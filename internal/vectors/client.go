@@ -41,6 +41,8 @@ type Client struct {
 	apiKey    string
 	workspace string
 	timeout   time.Duration
+	// upsertTimeout is UpsertTimeout; a field so a test can shorten it.
+	upsertTimeout time.Duration
 
 	// Seams, so the index wait runs on a fake clock in tests. now must be
 	// monotonic: time.Now carries Go's monotonic reading and Sub uses it, so a
@@ -59,14 +61,15 @@ type sender func(method, url string, body []byte, headers http.Header, timeout t
 // workspace "" means no workspace: collections are not namespaced.
 func New(endpoint, apiKey, workspace string) *Client {
 	return &Client{
-		endpoint:  strings.TrimRight(endpoint, "/"),
-		apiKey:    apiKey,
-		workspace: workspace,
-		timeout:   DefaultTimeout,
-		now:       time.Now,
-		sleep:     time.Sleep,
-		jitter:    rand.Float64,
-		send:      httpSend,
+		endpoint:      strings.TrimRight(endpoint, "/"),
+		apiKey:        apiKey,
+		workspace:     workspace,
+		timeout:       DefaultTimeout,
+		upsertTimeout: UpsertTimeout,
+		now:           time.Now,
+		sleep:         time.Sleep,
+		jitter:        rand.Float64,
+		send:          httpSend,
 	}
 }
 

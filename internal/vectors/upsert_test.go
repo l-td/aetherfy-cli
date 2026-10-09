@@ -93,20 +93,22 @@ func batchSizes(batches []UpsertBatch) []int {
 	return out
 }
 
-func TestUpsertTimeoutIsTheSDKsBodyAwareTimeout(t *testing.T) {
-	base := 30 * time.Second
-	const mib = 1024 * 1024
-	cases := map[int]time.Duration{
-		0:                                 base,
-		UpsertTimeoutThresholdBytes:       base,
-		UpsertTimeoutThresholdBytes + 1:   base + time.Second,
-		UpsertTimeoutThresholdBytes + mib: base + time.Second,
-		UpsertMaxRequestBytes:             base + 19*time.Second,
+func TestUpsertWaitsLongerThanVectordbMayTakeOverARequest(t *testing.T) {
+	if UpsertTimeout != 100*time.Second || UpsertTimeout <= UpsertServerRequestTimeout {
+		t.Errorf("UpsertTimeout %s, vectordb's request timeout %s", UpsertTimeout, UpsertServerRequestTimeout)
 	}
-	for size, want := range cases {
-		if got := upsertTimeout(base, size); got != want {
-			t.Errorf("%d bytes: %s, want %s", size, got, want)
+	// Every request, small or a full 24 MiB, gets it; nothing else does.
+	f := &fakeUpsert{}
+	if _, err := clientWith(f).Upsert("articles", append(manyPoints(30, 60000), manyPoints(1, 1)...)); err != nil {
+		t.Fatal(err)
+	}
+	for i, got := range f.timeouts {
+		if got != UpsertTimeout {
+			t.Errorf("request %d waited %s, want %s", i+1, got, UpsertTimeout)
 		}
+	}
+	if New("http://x", "k", "").timeout != DefaultTimeout {
+		t.Error("the other calls' timeout changed")
 	}
 }
 
@@ -179,14 +181,6 @@ func TestUpsertReportsTheOutcomeOfTheFailedRequest(t *testing.T) {
 			}
 		})
 	}
-	// Each request is given the SDKs' timeout for its size.
-	f := &fakeUpsert{}
-	if _, err := clientWith(f).Upsert("articles", manyPoints(30, 60000)); err != nil {
-		t.Fatal(err)
-	}
-	if f.timeouts[0] != upsertTimeout(DefaultTimeout, 23*(100+60000*18)) || f.timeouts[0] <= DefaultTimeout {
-		t.Errorf("timeouts %v", f.timeouts)
-	}
 }
 
 // A real timeout, over HTTP: the second request gets no answer in time. The
@@ -208,7 +202,7 @@ func TestUpsertTimeoutOnTheSecondRequestIsUnconfirmed(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 	c := New(srv.URL, "k", "")
-	c.timeout = 200 * time.Millisecond
+	c.upsertTimeout = 200 * time.Millisecond
 	progress, err := c.Upsert("articles", manyPoints(UpsertPointsMax+5, 1))
 	var te *TimeoutError
 	if !errors.As(err, &te) {

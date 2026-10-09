@@ -559,14 +559,16 @@ other rule (the vector's size, payload keys, sizes) is the server's, and its
 error is printed as it came.
 
 Points are sent in order, in requests of at most %d points or %d MiB, as the
-SDKs split them. If a request fails, the error says how many points were
-written before it. When its own outcome cannot be known (no answer, a server
-error, or a refusal of a request vectordb writes in parts), the error also
-says how many points it held: they may or may not have been written. Re-running
-the same upsert is safe either way, since points are replaced by id.
+SDKs split them. Each request waits up to %d s, longer than the server lets any
+request run, so the server always answers or ends it first. If a request fails,
+the error says how many points were written before it. When its own outcome
+cannot be known (a lost connection, a server error, or a refusal of a request
+the server writes in parts), the error also says how many points it held: they
+may or may not have been written. Re-running the same upsert is safe either
+way, since points are replaced by id.
 
 Points written with your key read back with __aetherfy_agent_id null: a
-person's write, not an agent's.`, vectors.UpsertPointsMax, vectors.UpsertMaxRequestBytes/(1024*1024)),
+person's write, not an agent's.`, vectors.UpsertPointsMax, vectors.UpsertMaxRequestBytes/(1024*1024), int(vectors.UpsertTimeout.Seconds())),
 	Example: `  # One point, inline
   afy points upsert articles --points '{"id": 1, "vector": [0.12, -0.03, 0.88], "payload": {"lang": "en"}}'
 

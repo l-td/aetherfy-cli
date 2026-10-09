@@ -10,8 +10,8 @@ import (
 )
 
 // Upsert: the SDKs' upsert (PUT .../points with {"points": [...]}), split into
-// requests the way the SDKs split them, each with the SDKs' timeout, and
-// reporting what is known to be written when one fails.
+// requests the way the SDKs split them, each waiting longer than vectordb may
+// take over it, and reporting what is known to be written when one fails.
 //
 // Each number below is a copy, pinned to its source by aetherfy-e2e-tests
 // tests/pyunit/test_index_timeouts_pair.py (the upsert gates), which reads
@@ -43,13 +43,18 @@ const UpsertFloatJSONBytes = 18
 // was written only for a request no larger than one chunk.
 const UpsertServerChunkBytes = 12 * 1024 * 1024
 
-// An upsert request's timeout is the client's base timeout, plus
-// UpsertTimeoutPerMBOverThreshold for each MiB its estimated size is over
-// UpsertTimeoutThresholdBytes: the SDKs' _compute_body_aware_timeout
-// (python client.py TIMEOUT_THRESHOLD_BYTES / TIMEOUT_PER_MB_OVER_THRESHOLD_S,
-// js src/http/client.ts the _MS twin). A full 24 MiB request waits 49 s.
-const UpsertTimeoutThresholdBytes = 5 * 1024 * 1024
-const UpsertTimeoutPerMBOverThreshold = 1 * time.Second
+// UpsertServerRequestTimeout is vectordb's server.requestTimeout
+// (backend/server.js): the longest vectordb lets any one request run before
+// it ends it. Every upsert request waits that long plus UpsertTimeoutMargin
+// (the client's own hop), so vectordb always answers or ends the request
+// before the CLI gives up: an upsert the server completes is never reported
+// as unconfirmed for want of waiting. A dropped connection or a server error
+// still is.
+const UpsertServerRequestTimeout = 90 * time.Second
+const UpsertTimeoutMargin = 10 * time.Second
+
+// UpsertTimeout is each upsert request's timeout.
+const UpsertTimeout = UpsertServerRequestTimeout + UpsertTimeoutMargin
 
 // jsNumberMaxLen is the longest JSON.stringify writes a number in
 // ("-1.7976931348623157e+308"). vectordb measures a payload as
@@ -132,16 +137,6 @@ func UpsertBatches(points []json.RawMessage) []UpsertBatch {
 	return out
 }
 
-// upsertTimeout is a request's timeout for an estimated body of size bytes.
-func upsertTimeout(base time.Duration, size int) time.Duration {
-	if size <= UpsertTimeoutThresholdBytes {
-		return base
-	}
-	const mib = 1024 * 1024
-	over := (size - UpsertTimeoutThresholdBytes + mib - 1) / mib
-	return base + time.Duration(over)*UpsertTimeoutPerMBOverThreshold
-}
-
 // UpsertProgress is what an upsert is known to have done. Written points were
 // confirmed by the server. Unconfirmed points were in the request that failed
 // with an outcome nobody can know from here: some, all or none of them may be
@@ -177,7 +172,7 @@ func (c *Client) Upsert(collection string, points []json.RawMessage) (UpsertProg
 	var progress UpsertProgress
 	for _, batch := range UpsertBatches(points) {
 		body := map[string]interface{}{"points": batch.Points}
-		err := c.do(http.MethodPut, c.collectionPath(collection, "/points"), body, upsertTimeout(c.timeout, batch.Bytes), nil)
+		err := c.do(http.MethodPut, c.collectionPath(collection, "/points"), body, c.upsertTimeout, nil)
 		if err != nil {
 			if outcomeUnknown(err, batch.Bytes) {
 				progress.Unconfirmed = len(batch.Points)
