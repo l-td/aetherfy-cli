@@ -80,7 +80,7 @@ func TestAccessAddShowsWhatBecomesReachableAndAsks(t *testing.T) {
 	if len(reqs) != 1 || reqs[0].Body["workspace"] != "gamma" {
 		t.Fatalf("grant requests = %v", reqs)
 	}
-	if !strings.Contains(out.String(), "takes effect within 60 seconds") {
+	if !strings.Contains(out.String(), "takes effect within "+accessChangeWindow) {
 		t.Errorf("result:\n%s", out.String())
 	}
 }

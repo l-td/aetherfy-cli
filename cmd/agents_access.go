@@ -29,6 +29,12 @@ import (
 	"golang.org/x/term"
 )
 
+// accessChangeWindow is how soon a change reaches the agent's key: vectordb
+// re-reads the allowed set with the key, every KEY_LIVENESS_INTERVAL_MS
+// (vectordb backend/services/keyLiveness.js). aetherfy-e2e-tests
+// tests/pyunit/test_agent_access_window_pair.py holds it to that constant.
+const accessChangeWindow = "60 seconds"
+
 var agentsAccessCmd = &cobra.Command{
 	Use:   "access <agent>",
 	Short: "Show or change the workspaces an agent's key can use",
@@ -43,7 +49,7 @@ Adding access lets the agent's code read, write, create and delete every
 collection there, including ones added later, so the command shows what would
 become reachable and asks before granting. --yes skips the question; it is
 required when stdin is not a terminal and with --json. Removing asks nothing.
-A change takes effect within 60 seconds.`,
+A change takes effect within ` + accessChangeWindow + `.`,
 	Example: `  # What can the agent reach?
   afy access support-bot
 
@@ -222,7 +228,7 @@ func agentsAccess(r *vecRun, agent string, add, remove []string, yes bool, stdin
 	if r.json {
 		return r.printJSON(accessJSON(final, added, removed))
 	}
-	fmt.Fprintf(r.stdout, "Access of agent '%s' changed; it takes effect within 60 seconds.\n", agent)
+	fmt.Fprintf(r.stdout, "Access of agent '%s' changed; it takes effect within %s.\n", agent, accessChangeWindow)
 	printAccess(r.stdout, final)
 	return 0
 }
