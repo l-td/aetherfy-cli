@@ -146,7 +146,7 @@ func manyPoints(n, dim int) []json.RawMessage {
 func TestUpsertReportsTheOutcomeOfTheFailedRequest(t *testing.T) {
 	refuse := func(status int) func() (int, []byte, error) {
 		return func() (int, []byte, error) {
-			return status, []byte(`{"error":{"code":"X","message":"refused"}}`), nil
+			return status, []byte(`{"error":{"code":"NOT_FOUND","message":"refused"}}`), nil
 		}
 	}
 	lost := func() (int, []byte, error) { return 0, nil, fmt.Errorf("read: connection reset by peer") }
