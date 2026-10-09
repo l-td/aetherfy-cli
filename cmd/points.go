@@ -19,14 +19,15 @@ import (
 
 var pointsCmd = &cobra.Command{
 	Use:   "points",
-	Short: "Count, browse, read, search and delete the points in a collection",
-	Long: `Count, browse, read, search and delete the points in a collection.
-Writing points is the SDKs' job, with the chunking and retries a bulk load
-needs; deleting them is here, for cleanup.
+	Short: "Count, browse, read, search, upsert and delete the points in a collection",
+	Long: `Count, browse, read, search, upsert and delete the points in a collection.
+afy points upsert writes a few points, to try or fix a collection; a bulk
+load is the SDKs' job, with the chunking and retries it needs.
 
 afy points list <collection> pages through them;
 afy points get <collection> <id> reads points by id;
 afy points search <collection> finds the nearest ones to a vector;
+afy points upsert <collection> adds or replaces the points --points gives;
 afy points delete <collection> <id> removes points by id or by --filter.
 
 --filter takes a filter object as JSON, in the shape the SDKs send, e.g.
@@ -57,6 +58,7 @@ var (
 	pointsListOffset   string
 	pointsListVectors  bool
 	pointsDeleteYes    bool
+	pointsUpsertPoints string
 )
 
 // parseFilter reads --filter: "" for none, else a JSON object sent as given.
@@ -538,6 +540,136 @@ func pointsDelete(r *vecRun, collection string, rawIDs []string, filterRaw strin
 	return 0
 }
 
+// --- UPSERT ---
+
+var pointsUpsertCmd = &cobra.Command{
+	Use:   "upsert <collection>",
+	Short: "Add points, or replace them by id",
+	Long: fmt.Sprintf(`Add points to a collection, or replace them by id: a point whose id already
+exists is REPLACED, vector and payload, without a question, as the SDKs'
+upsert does.
+
+--points is one point or a JSON array of them, or @path to read them from a
+file. A point is the vectors API's own shape: an id (a whole number or a
+UUID), a vector, and an optional payload object, e.g.
+'{"id": 1, "vector": [0.12, -0.03, 0.88], "payload": {"lang": "en"}}'.
+
+A point without an id or a vector is refused before anything is sent; every
+other rule (the vector's size, payload keys, sizes) is the server's, and its
+error is printed as it came. More than %d points (the most one request may
+carry) are sent as several requests, in order; if one fails, the points
+already written stay written and the error says how many they were.
+
+Points written with your key read back with __aetherfy_agent_id null: a
+person's write, not an agent's.`, vectors.UpsertPointsMax),
+	Example: `  # One point, inline
+  afy points upsert articles --points '{"id": 1, "vector": [0.12, -0.03, 0.88], "payload": {"lang": "en"}}'
+
+  # An array of points from a file, as JSON
+  afy points upsert articles --points @points.json --json`,
+	Args: refuseArgs(cobra.ExactArgs(1)),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runVec(cmd, func(r *vecRun) int { return pointsUpsert(r, args[0], pointsUpsertPoints) })
+	},
+}
+
+// parsePoints reads --points: one point object or an array of them, inline or
+// @path to them. Each point is kept as the bytes given, so the server reads
+// exactly what was typed. Only what makes a request meaningless is checked
+// here: no input, input that is not JSON, and a point without an id or a
+// vector. Every other rule is the server's.
+func parsePoints(raw string) ([]json.RawMessage, error) {
+	text := raw
+	if strings.HasPrefix(raw, "@") {
+		data, err := os.ReadFile(raw[1:])
+		if err != nil {
+			return nil, refuse("--points %s: %v", raw, err)
+		}
+		text = string(data)
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil, refuse("--points is required: a point object or a JSON array of them, or @path to them")
+	}
+	var points []json.RawMessage
+	if strings.HasPrefix(text, "[") {
+		if err := json.Unmarshal([]byte(text), &points); err != nil {
+			return nil, refuse("--points is not valid JSON: %v", err)
+		}
+		if len(points) == 0 {
+			return nil, refuse("--points is an empty array: give at least one point")
+		}
+	} else {
+		var one json.RawMessage
+		if err := json.Unmarshal([]byte(text), &one); err != nil {
+			return nil, refuse("--points is not valid JSON: %v", err)
+		}
+		points = []json.RawMessage{one}
+	}
+	for i, p := range points {
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal(p, &obj); err != nil || obj == nil {
+			return nil, refuse("--points: point %d is not a JSON object", i+1)
+		}
+		for _, key := range []string{"id", "vector"} {
+			if v, ok := obj[key]; !ok || string(v) == "null" {
+				return nil, refuse("--points: point %d has no %s", i+1, key)
+			}
+		}
+	}
+	return points, nil
+}
+
+// partialWriteError is a failed upsert request after earlier ones of the same
+// command were written: fail reports how many points those held.
+type partialWriteError struct {
+	err     error
+	written int
+	total   int
+}
+
+func (e *partialWriteError) Error() string {
+	return fmt.Sprintf("%v; %d of %d point(s) were written before it", e.err, e.written, e.total)
+}
+
+func (e *partialWriteError) Unwrap() error { return e.err }
+
+func pointsUpsert(r *vecRun, collection, pointsRaw string) int {
+	points, err := parsePoints(pointsRaw)
+	if err != nil {
+		return r.fail(err)
+	}
+	client, code := r.open()
+	if code != 0 {
+		return code
+	}
+	// In order, at most UpsertPointsMax per request, stopping at the first
+	// failure: what was written before it is said, never left silent.
+	written := 0
+	for written < len(points) {
+		end := written + vectors.UpsertPointsMax
+		if end > len(points) {
+			end = len(points)
+		}
+		if err := client.UpsertPoints(collection, points[written:end]); err != nil {
+			if written > 0 {
+				err = &partialWriteError{err: err, written: written, total: len(points)}
+			}
+			return r.fail(err)
+		}
+		written = end
+	}
+	if r.json {
+		return r.printJSON(struct {
+			vecEnvelope
+			Collection string `json:"collection"`
+			Upserted   int    `json:"upserted"`
+		}{r.envelope(), collection, written})
+	}
+	fmt.Fprintf(r.stdout, "Upserted %d point(s) into collection '%s'.\n", written, collection)
+	return 0
+}
+
 func init() {
 	pointsCountCmd.Flags().StringVar(&pointsFilter, "filter", "", "Only count the points this filter (a JSON object) matches")
 
@@ -553,9 +685,12 @@ func init() {
 	pointsDeleteCmd.Flags().StringVar(&pointsFilter, "filter", "", "Delete the points this filter (a JSON object) matches, instead of ids")
 	pointsDeleteCmd.Flags().BoolVarP(&pointsDeleteYes, "yes", "y", false, "Delete without asking")
 
+	pointsUpsertCmd.Flags().StringVar(&pointsUpsertPoints, "points", "", "The points: one point object or a JSON array of them, or @path to them; required")
+
 	pointsCmd.AddCommand(pointsCountCmd)
 	pointsCmd.AddCommand(pointsListCmd)
 	pointsCmd.AddCommand(pointsGetCmd)
 	pointsCmd.AddCommand(pointsSearchCmd)
+	pointsCmd.AddCommand(pointsUpsertCmd)
 	pointsCmd.AddCommand(pointsDeleteCmd)
 }
