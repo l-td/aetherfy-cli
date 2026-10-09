@@ -46,7 +46,7 @@ const (
 	vecJSONHelp       = "Print one JSON object with stable field names (same as --output json)"
 	vecVectorsURLHelp = "Vectors API endpoint (overrides " + vectors.EnvVectorsURL + " and --api-region)"
 	vecAPIRegionHelp  = "API region to connect to: us-east-1, eu-central-1 or ap-southeast-1, resolved by region discovery (or " + vectors.EnvAPIRegion + ")"
-	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none)"
+	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none, written --workspace= on Windows PowerShell 5.1)"
 )
 
 // inputError is input refused before any request was sent: exit 2.

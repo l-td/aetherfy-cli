@@ -222,7 +222,8 @@ func regionsJSON(r *vecRun, name string, p *api.RegionsChangePreview, change *ap
 var collectionsMoveCmd = &cobra.Command{
 	Use:   "move <name>",
 	Short: "Move a collection to another workspace, or out of any",
-	Long: `Move a collection to another workspace, or out of any (--to "").
+	Long: `Move a collection to another workspace, or out of any (--to ""; on
+Windows PowerShell 5.1, which drops an empty argument, write --to= instead).
 
 A move changes only which workspace reaches the collection: its regions and
 its data stay where they are, so the target must allow every region it is
@@ -379,7 +380,7 @@ func init() {
 	collectionsRegionsCmd.Flags().BoolVarP(&collectionRegionsYes, "yes", "y", false, "Make the change without asking")
 	collectionsRegionsCmd.Flags().BoolVar(&collectionRegionsWait, "wait", false, "Follow the change to the end (exit 1 if it fails, 4 if still running after 30 minutes)")
 
-	collectionsMoveCmd.Flags().StringVar(&collectionMoveTo, "to", "", "Workspace to move the collection to (\"\" for none), required")
+	collectionsMoveCmd.Flags().StringVar(&collectionMoveTo, "to", "", "Workspace to move the collection to (\"\" for none, written --to= on Windows PowerShell 5.1), required")
 	collectionsMoveCmd.Flags().BoolVar(&collectionMoveWait, "wait", false, "Follow the move to the end (exit 1 if it fails, 4 if still running after 30 minutes)")
 
 	collectionsCmd.AddCommand(collectionsRegionsCmd)

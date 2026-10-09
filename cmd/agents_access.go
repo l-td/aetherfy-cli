@@ -43,7 +43,9 @@ var agentsAccessCmd = &cobra.Command{
 An agent reaches the collections of its own workspace, and of the workspaces
 you grant it; any other workspace is refused to it. --add grants a workspace,
 --remove revokes one; each takes a name, repeats, or takes a comma-separated
-list. "" names the collections in no workspace. Your own key is unaffected.
+list. "" names the collections in no workspace; Windows PowerShell 5.1 drops an
+empty argument, so there write --add= or --remove= instead. Your own key is
+unaffected.
 
 Adding access lets the agent's code read, write, create and delete every
 collection there, including ones added later, so the command shows what would
@@ -326,8 +328,8 @@ func accessJSON(a *api.AgentAccess, added, removed []string) interface{} {
 }
 
 func init() {
-	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated; \"\" for the collections in no workspace)")
-	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated; \"\" for the collections in no workspace)")
+	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated; \"\" for the collections in no workspace, written --add= on Windows PowerShell 5.1)")
+	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated; \"\" for the collections in no workspace, written --remove= on Windows PowerShell 5.1)")
 	agentsAccessCmd.Flags().BoolVarP(&agentsAccessYes, "yes", "y", false, "Grant access without asking")
 	agentsAccessCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 }
