@@ -196,15 +196,17 @@ func (r *vecRun) printJSON(v interface{}) int {
 }
 
 // vecErrorJSON is what --json prints on stderr for a failure. status and code
-// are the API's, present only when the API answered. written is set when an
-// afy points upsert request failed after earlier ones were written: the
-// points those held.
+// are the API's, present only when the API answered. On an afy points upsert
+// that may have written something, written is the points confirmed written
+// before the failed request, and unconfirmed (when not 0) the points of that
+// request whose outcome is unknown.
 type vecErrorJSON struct {
 	Error struct {
-		Status  int    `json:"status,omitempty"`
-		Code    string `json:"code,omitempty"`
-		Message string `json:"message"`
-		Written *int   `json:"written,omitempty"`
+		Status      int    `json:"status,omitempty"`
+		Code        string `json:"code,omitempty"`
+		Message     string `json:"message"`
+		Written     *int   `json:"written,omitempty"`
+		Unconfirmed *int   `json:"unconfirmed,omitempty"`
 	} `json:"error"`
 }
 
@@ -233,9 +235,12 @@ func (r *vecRun) fail(err error) int {
 		} else if isCP {
 			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
 		}
-		var partial *partialWriteError
-		if errors.As(err, &partial) {
-			out.Error.Written = &partial.written
+		var upsert *upsertFailure
+		if errors.As(err, &upsert) {
+			out.Error.Written = &upsert.progress.Written
+			if upsert.progress.Unconfirmed > 0 {
+				out.Error.Unconfirmed = &upsert.progress.Unconfirmed
+			}
 		}
 		data, _ := json.Marshal(out)
 		fmt.Fprintln(r.stderr, string(data))

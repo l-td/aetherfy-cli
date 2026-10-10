@@ -556,12 +556,19 @@ UUID), a vector, and an optional payload object, e.g.
 
 A point without an id or a vector is refused before anything is sent; every
 other rule (the vector's size, payload keys, sizes) is the server's, and its
-error is printed as it came. More than %d points (the most one request may
-carry) are sent as several requests, in order; if one fails, the points
-already written stay written and the error says how many they were.
+error is printed as it came.
+
+Points are sent in order, in requests of at most %d points or %d MiB, as the
+SDKs split them. Each request waits up to %d s, longer than the server lets any
+request run, so the server always answers or ends it first. If a request fails,
+the error says how many points were written before it. When its own outcome
+cannot be known (a lost connection, a server error, or a refusal of a request
+the server writes in parts), the error also says how many points it held: they
+may or may not have been written. Re-running the same upsert is safe either
+way, since points are replaced by id.
 
 Points written with your key read back with __aetherfy_agent_id null: a
-person's write, not an agent's.`, vectors.UpsertPointsMax),
+person's write, not an agent's.`, vectors.UpsertPointsMax, vectors.UpsertMaxRequestBytes/(1024*1024), int(vectors.UpsertTimeout.Seconds())),
 	Example: `  # One point, inline
   afy points upsert articles --points '{"id": 1, "vector": [0.12, -0.03, 0.88], "payload": {"lang": "en"}}'
 
@@ -620,19 +627,26 @@ func parsePoints(raw string) ([]json.RawMessage, error) {
 	return points, nil
 }
 
-// partialWriteError is a failed upsert request after earlier ones of the same
-// command were written: fail reports how many points those held.
-type partialWriteError struct {
-	err     error
-	written int
-	total   int
+// upsertFailure is a failed upsert request with what is known of the upsert
+// so far: the points confirmed written before it, and the points of the
+// failed request whose outcome is unknown. fail reports both.
+type upsertFailure struct {
+	err      error
+	progress vectors.UpsertProgress
+	total    int
 }
 
-func (e *partialWriteError) Error() string {
-	return fmt.Sprintf("%v; %d of %d point(s) were written before it", e.err, e.written, e.total)
+func (e *upsertFailure) Error() string {
+	msg := fmt.Sprintf("%v; %d of %d point(s) were written before it", e.err, e.progress.Written, e.total)
+	if e.progress.Unconfirmed > 0 {
+		msg += fmt.Sprintf(", and the outcome of the %d point(s) in the request that failed is unknown: "+
+			"they may or may not have been written. Re-running the same upsert is safe: points are replaced by id",
+			e.progress.Unconfirmed)
+	}
+	return msg
 }
 
-func (e *partialWriteError) Unwrap() error { return e.err }
+func (e *upsertFailure) Unwrap() error { return e.err }
 
 func pointsUpsert(r *vecRun, collection, pointsRaw string) int {
 	points, err := parsePoints(pointsRaw)
@@ -643,22 +657,15 @@ func pointsUpsert(r *vecRun, collection, pointsRaw string) int {
 	if code != 0 {
 		return code
 	}
-	// In order, at most UpsertPointsMax per request, stopping at the first
-	// failure: what was written before it is said, never left silent.
-	written := 0
-	for written < len(points) {
-		end := written + vectors.UpsertPointsMax
-		if end > len(points) {
-			end = len(points)
+	progress, err := client.Upsert(collection, points)
+	if err != nil {
+		// Said whenever anything may have been written: never left silent.
+		if progress.Written > 0 || progress.Unconfirmed > 0 {
+			err = &upsertFailure{err: err, progress: progress, total: len(points)}
 		}
-		if err := client.UpsertPoints(collection, points[written:end]); err != nil {
-			if written > 0 {
-				err = &partialWriteError{err: err, written: written, total: len(points)}
-			}
-			return r.fail(err)
-		}
-		written = end
+		return r.fail(err)
 	}
+	written := progress.Written
 	if r.json {
 		return r.printJSON(struct {
 			vecEnvelope

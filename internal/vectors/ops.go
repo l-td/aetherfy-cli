@@ -228,17 +228,3 @@ func (c *Client) DeletePoints(collection string, ids []json.RawMessage, filter j
 	return c.do(http.MethodPost, c.collectionPath(collection, "/points/delete"), body, c.timeout, nil)
 }
 
-// UpsertPointsMax is the most points one upsert request may carry: vectordb's
-// DEFAULT_MAX_POINTS (backend/middleware/streamingPointsParser.js), which
-// refuses a larger body 400 TOO_MANY_POINTS. afy points upsert sends a larger
-// input as sequential requests of at most this many.
-const UpsertPointsMax = 10000
-
-// UpsertPoints adds or replaces points by id: the SDKs' upsert, PUT
-// .../points with {"points": [...]}. Each point is sent as given (id, vector,
-// optional payload); every rule on its contents is the server's. ONE request,
-// not retried, at most UpsertPointsMax points.
-func (c *Client) UpsertPoints(collection string, points []json.RawMessage) error {
-	body := map[string]interface{}{"points": points}
-	return c.do(http.MethodPut, c.collectionPath(collection, "/points"), body, c.timeout, nil)
-}

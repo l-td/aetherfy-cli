@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -197,6 +199,11 @@ func TestPointsUpsertReportsWhatWasWrittenBeforeAFailure(t *testing.T) {
 		e["written"] != float64(vectors.UpsertPointsMax) {
 		t.Errorf("--json error = %v", e)
 	}
+	// A refusal of a request no larger than one vectordb chunk wrote nothing
+	// of it: no unconfirmed points.
+	if _, has := e["unconfirmed"]; has {
+		t.Errorf("--json error = %v; a refused one-chunk request is not unconfirmed", e)
+	}
 
 	s = failing()
 	r, _, stderr, _ = s.run("", false)
@@ -218,5 +225,62 @@ func TestPointsUpsertFailingFirstRequestReportsNoWrittenCount(t *testing.T) {
 	e := decode(t, stderr.String())["error"].(map[string]interface{})
 	if _, has := e["written"]; has || len(s.got()) != 1 {
 		t.Errorf("error = %v after %d requests", e, len(s.got()))
+	}
+}
+
+// A request that gets no answer has an unknown outcome. Here the connection
+// is dropped on the second request: the first request's points are reported
+// written, the second's as unconfirmed (never as not written), with the
+// advice that re-running is safe. The same classification covers a timeout
+// (internal/vectors TestUpsertTimeoutOnTheSecondRequestIsUnconfirmed drives a
+// real one; the client's timeout is not settable from here).
+func TestPointsUpsertReportsTheLostRequestAsUnconfirmed(t *testing.T) {
+	total := vectors.UpsertPointsMax + 5
+	dropping := func() (*vecServer, *int) {
+		n := 0
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			n++
+			if n == 2 {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					conn.Close()
+				}
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(upsertOK))
+		}))
+		t.Cleanup(srv.Close)
+		return &vecServer{t: t, srv: srv}, &n
+	}
+
+	s, n := dropping()
+	r, stdout, stderr, _ := s.run("", true)
+	if code := pointsUpsert(r, "articles", manyPoints(total)); code != exitRequestFailed {
+		t.Errorf("exit %d", code)
+	}
+	if *n != 2 || stdout.Len() != 0 {
+		t.Errorf("%d requests, stdout %q", *n, stdout.String())
+	}
+	e := decode(t, stderr.String())["error"].(map[string]interface{})
+	if e["written"] != float64(vectors.UpsertPointsMax) || e["unconfirmed"] != 5.0 {
+		t.Errorf("--json error = %v; want written %d, unconfirmed 5", e, vectors.UpsertPointsMax)
+	}
+	if _, has := e["status"]; has {
+		t.Errorf("--json error = %v; no answer means no status", e)
+	}
+	msg, _ := e["message"].(string)
+	if !strings.Contains(msg, "Re-running the same upsert is safe") {
+		t.Errorf("message %q does not say re-running is safe", msg)
+	}
+
+	s, _ = dropping()
+	r, _, stderr, _ = s.run("", false)
+	pointsUpsert(r, "articles", manyPoints(total))
+	want := fmt.Sprintf("; %d of %d point(s) were written before it, and the outcome of the 5 point(s) in the request "+
+		"that failed is unknown: they may or may not have been written. Re-running the same upsert is safe: points are "+
+		"replaced by id\n", vectors.UpsertPointsMax, total)
+	if got := stderr.String(); !strings.HasPrefix(got, "Error: Network connection failed: ") || !strings.HasSuffix(got, want) {
+		t.Errorf("stderr %q\nwant suffix %q", got, want)
 	}
 }
