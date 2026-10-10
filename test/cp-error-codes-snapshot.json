@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 127
+      "count": 128
     },
     {
       "path": "api/routes/regions.py",
@@ -176,6 +176,10 @@
       "tier": "top-level"
     },
     "AGENT_WORKER_PAUSED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_WORKSPACE_GRANT_REDUNDANT": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
