@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
@@ -46,7 +47,7 @@ const (
 	vecJSONHelp       = "Print one JSON object with stable field names (same as --output json)"
 	vecVectorsURLHelp = "Vectors API endpoint (overrides " + vectors.EnvVectorsURL + " and --api-region)"
 	vecAPIRegionHelp  = "API region to connect to: us-east-1, eu-central-1 or ap-southeast-1, resolved by region discovery (or " + vectors.EnvAPIRegion + ")"
-	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none)"
+	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none, written --workspace= on Windows PowerShell 5.1)"
 )
 
 // inputError is input refused before any request was sent: exit 2.
@@ -56,6 +57,22 @@ func (e *inputError) Error() string { return e.msg }
 
 func refuse(format string, args ...interface{}) error {
 	return &inputError{msg: fmt.Sprintf(format, args...)}
+}
+
+// refuseFlagLikeValue refuses a workspace flag's value that starts with "-".
+// No workspace is named so (the control plane's rule starts a name with a
+// letter or a digit), and the usual cause is a shell that dropped an empty
+// argument: Windows PowerShell 5.1 turns `--add "" --yes` into `--add --yes`,
+// and the flag takes "--yes" as its value. Called before anything is sent.
+func refuseFlagLikeValue(flag string, values ...string) error {
+	for _, v := range values {
+		if strings.HasPrefix(v, "-") {
+			return refuse("--%s got %q as its value, and no workspace name starts with \"-\": the shell "+
+				"probably dropped an empty argument (Windows PowerShell 5.1 drops \"\"). For no workspace, "+
+				"write --%s= instead. Nothing was sent.", flag, v, flag)
+		}
+	}
+	return nil
 }
 
 // notLoggedIn is checkAuth's refusal, reported through fail so --json gets
@@ -99,7 +116,20 @@ func ExitCode(err error) int {
 // runVec is every vector command's RunE: the login check, then op, then the
 // process exit with op's code.
 func runVec(cmd *cobra.Command, op func(r *vecRun) int) error {
-	return exitWith(vecMain(newVecRun(cmd), op))
+	r := newVecRun(cmd)
+	if err := workspaceFlagRefusal(cmd); err != nil {
+		return exitWith(r.fail(err))
+	}
+	return exitWith(vecMain(r, op))
+}
+
+// workspaceFlagRefusal is refuseFlagLikeValue for a vector command's
+// --workspace, when it was given.
+func workspaceFlagRefusal(cmd *cobra.Command) error {
+	if f := cmd.Flags().Lookup("workspace"); f != nil && f.Changed {
+		return refuseFlagLikeValue("workspace", vecWorkspace)
+	}
+	return nil
 }
 
 func vecMain(r *vecRun, op func(r *vecRun) int) int {
