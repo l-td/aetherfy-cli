@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/vectors"
@@ -176,10 +177,9 @@ func TestPointsUpsertSplitsAtTheAPIsPointCap(t *testing.T) {
 func TestPointsUpsertReportsWhatWasWrittenBeforeAFailure(t *testing.T) {
 	total := 2*vectors.UpsertPointsMax + 5
 	failing := func() *vecServer {
-		n := 0
+		var n atomic.Int32 // the handler runs on the server's goroutines
 		return newVecServer(t, func(vecRequest) (int, string) {
-			n++
-			if n == 2 {
+			if n.Add(1) == 2 {
 				return 413, `{"error":{"code":"PAYLOAD_TOO_LARGE","message":"Upsert body too large"}}`
 			}
 			return 200, upsertOK
@@ -236,11 +236,12 @@ func TestPointsUpsertFailingFirstRequestReportsNoWrittenCount(t *testing.T) {
 // real one; the client's timeout is not settable from here).
 func TestPointsUpsertReportsTheLostRequestAsUnconfirmed(t *testing.T) {
 	total := vectors.UpsertPointsMax + 5
-	dropping := func() (*vecServer, *int) {
-		n := 0
+	// The handler runs on the server's goroutines and the test reads the count
+	// from its own, so the count is atomic (CI runs go test -race).
+	dropping := func() (*vecServer, *atomic.Int32) {
+		n := new(atomic.Int32)
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			n++
-			if n == 2 {
+			if n.Add(1) == 2 {
 				conn, _, err := w.(http.Hijacker).Hijack()
 				if err == nil {
 					conn.Close()
@@ -251,7 +252,7 @@ func TestPointsUpsertReportsTheLostRequestAsUnconfirmed(t *testing.T) {
 			_, _ = w.Write([]byte(upsertOK))
 		}))
 		t.Cleanup(srv.Close)
-		return &vecServer{t: t, srv: srv}, &n
+		return &vecServer{t: t, srv: srv}, n
 	}
 
 	s, n := dropping()
@@ -259,8 +260,8 @@ func TestPointsUpsertReportsTheLostRequestAsUnconfirmed(t *testing.T) {
 	if code := pointsUpsert(r, "articles", manyPoints(total)); code != exitRequestFailed {
 		t.Errorf("exit %d", code)
 	}
-	if *n != 2 || stdout.Len() != 0 {
-		t.Errorf("%d requests, stdout %q", *n, stdout.String())
+	if n.Load() != 2 || stdout.Len() != 0 {
+		t.Errorf("%d requests, stdout %q", n.Load(), stdout.String())
 	}
 	e := decode(t, stderr.String())["error"].(map[string]interface{})
 	if e["written"] != float64(vectors.UpsertPointsMax) || e["unconfirmed"] != 5.0 {
