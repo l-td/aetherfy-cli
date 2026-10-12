@@ -8,14 +8,22 @@ import (
 // AgentAccess is which workspaces an agent's key reaches on the vector API:
 // its own, plus the ones the account owner granted it (the control plane's
 // GET /agents/{agent}/access). Changed is set on a change, nil on a read.
+//
+// Every workspace comes by name, and again as an {id, name} pair in the *Ref
+// fields: the names for people, the pairs for a script that keeps a
+// reference (a workspace deleted and recreated under the same name is a
+// different workspace, with a different id).
 type AgentAccess struct {
-	Agent                string   `json:"agent"`
-	OwnWorkspace         *string  `json:"own_workspace"`
-	GrantedWorkspaces    []string `json:"granted_workspaces"`
-	WorkspacelessGranted bool     `json:"workspaceless_granted"`
-	AllowedWorkspaces    []string `json:"allowed_workspaces"`
-	WorkspacelessAllowed bool     `json:"workspaceless_allowed"`
-	Changed              *bool    `json:"changed"`
+	Agent                string         `json:"agent"`
+	OwnWorkspace         *string        `json:"own_workspace"`
+	OwnWorkspaceRef      *WorkspaceRef  `json:"own_workspace_ref"`
+	GrantedWorkspaces    []string       `json:"granted_workspaces"`
+	GrantedWorkspaceRefs []WorkspaceRef `json:"granted_workspace_refs"`
+	WorkspacelessGranted bool           `json:"workspaceless_granted"`
+	AllowedWorkspaces    []string       `json:"allowed_workspaces"`
+	AllowedWorkspaceRefs []WorkspaceRef `json:"allowed_workspace_refs"`
+	WorkspacelessAllowed bool           `json:"workspaceless_allowed"`
+	Changed              *bool          `json:"changed"`
 }
 
 func accessPath(agent string) string {

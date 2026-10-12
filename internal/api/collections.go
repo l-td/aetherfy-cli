@@ -145,6 +145,62 @@ func (c *Client) UpdateWorkspaceRegions(name string, regions []string) (*Workspa
 	return &r, nil
 }
 
+// WorkspaceRef is a workspace as the control plane pairs it: its id, for a
+// client that keeps a reference, and its name, for people.
+type WorkspaceRef struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// CollectionOperation is the change running on one collection (the control
+// plane's GET /collections/{id}/operation): a "regions_change" of its
+// placement regions, or a "move" to another workspace (TargetWorkspace; nil
+// when it moves out of any).
+type CollectionOperation struct {
+	OperationID     *string       `json:"operation_id"`
+	Kind            string        `json:"kind"`
+	Status          string        `json:"status"`
+	FromRegions     []string      `json:"from_regions"`
+	ToRegions       []string      `json:"to_regions"`
+	TargetWorkspace *WorkspaceRef `json:"target_workspace"`
+	AcceptedAt      string        `json:"accepted_at"`
+}
+
+// GetCollectionOperation reads the change running on a collection, by its id,
+// or nil when none runs. It is the same in-flight change the control plane's
+// 409 names, so a client that did not start it can still see it.
+func (c *Client) GetCollectionOperation(collectionID string) (*CollectionOperation, error) {
+	var out struct {
+		Operation *CollectionOperation `json:"operation"`
+	}
+	if err := c.Get(fmt.Sprintf("/collections/%s/operation", collectionID), &out); err != nil {
+		return nil, err
+	}
+	return out.Operation, nil
+}
+
+// RegionChangeUsage is the account's region changes that copy data, against
+// the plan's limits over its rolling window (GET /users/me/region-changes):
+// the same window and limits a change is judged against. A nil limit is no
+// limit.
+type RegionChangeUsage struct {
+	WindowDays     int     `json:"window_days"`
+	CountUsed      int     `json:"count_used"`
+	CountLimit     *int    `json:"count_limit"`
+	SizeUsedBytes  int64   `json:"size_used_bytes"`
+	SizeLimitBytes *int64  `json:"size_limit_bytes"`
+	FreesAt        *string `json:"frees_at"`
+}
+
+// GetRegionChangeUsage reads the account's region-change window.
+func (c *Client) GetRegionChangeUsage() (*RegionChangeUsage, error) {
+	var out RegionChangeUsage
+	if err := c.Get("/users/me/region-changes", &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // GetOperation reads an operation's state.
 func (c *Client) GetOperation(id string) (*Operation, error) {
 	var o Operation
