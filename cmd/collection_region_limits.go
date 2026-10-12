@@ -1,6 +1,6 @@
 package cmd
 
-// afy collections region-changes: the account's region changes that copy
+// afy collections region-limits: the account's region changes that copy
 // data, against the plan's limits over its rolling window -- the figures the
 // dashboard's Usage page shows (REGION CHANGES, DATA COPIED), read from the
 // same control-plane route (GET /users/me/region-changes). It is the window
@@ -14,34 +14,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var collectionsRegionChangesCmd = &cobra.Command{
-	Use:   "region-changes",
-	Short: "Show your region changes that copy data, against your plan's limits",
-	Long: `Show the region changes that copy data made in your account's rolling window,
-and the data they copied, against your plan's limits -- the window 'afy
-collections regions' checks a change against.
+var collectionsRegionLimitsCmd = &cobra.Command{
+	Use:   "region-limits",
+	Short: "Show your plan's region-change limits, and how much of them you have used",
+	Long: `Show your plan's region-change limits, and how much of them you have used:
+the region changes that copied data in your account's rolling window, and the
+data they copied. It changes nothing: 'afy collections regions' makes a change,
+and checks it against these limits.
 
 Only a change that adds a region to a collection counts. Dropping a region,
 or moving a collection to another workspace, does not.`,
 	Example: `  # How many region changes are left this window
-  afy collections region-changes
+  afy collections region-limits
 
   # The same, as JSON
-  afy collections region-changes --json`,
+  afy collections region-limits --json`,
 	Args: refuseArgs(cobra.NoArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runVec(cmd, collectionsRegionChanges)
+		return runVec(cmd, collectionsRegionLimits)
 	},
 }
 
-func collectionsRegionChanges(r *vecRun) int {
+func collectionsRegionLimits(r *vecRun) int {
 	usage, err := r.controlPlane().GetRegionChangeUsage()
 	if err != nil {
 		return r.fail(err)
 	}
 	if r.json {
 		return r.printJSON(struct {
-			RegionChanges interface{} `json:"region_changes"`
+			RegionLimits interface{} `json:"region_limits"`
 		}{usage})
 	}
 	count := fmt.Sprintf("%d, no limit", usage.CountUsed)
@@ -65,5 +66,5 @@ func collectionsRegionChanges(r *vecRun) int {
 }
 
 func init() {
-	collectionsCmd.AddCommand(collectionsRegionChangesCmd)
+	collectionsCmd.AddCommand(collectionsRegionLimitsCmd)
 }

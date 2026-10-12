@@ -95,11 +95,11 @@ func regionChangesCP(t *testing.T, body string) *vecServer {
 	})
 }
 
-func TestRegionChangesShowsUsedAgainstThePlansLimits(t *testing.T) {
+func TestRegionLimitsShowsUsedAgainstThePlansLimits(t *testing.T) {
 	cp := regionChangesCP(t, `{"window_days":30,"count_used":2,"count_limit":10,"size_used_bytes":9017753,`+
 		`"size_limit_bytes":429496729600,"frees_at":"2026-11-10T22:17:16+00:00"}`)
 	r, out, errOut := runWithCP(noVectors(t), cp, false)
-	if code := collectionsRegionChanges(r); code != 0 {
+	if code := collectionsRegionLimits(r); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 	for _, want := range []string{"last 30 days", "2 of 10", "8.6 MB of 400 GB"} {
@@ -112,11 +112,11 @@ func TestRegionChangesShowsUsedAgainstThePlansLimits(t *testing.T) {
 	}
 }
 
-func TestRegionChangesNoLimitAndAtTheLimit(t *testing.T) {
+func TestRegionLimitsNoLimitAndAtTheLimit(t *testing.T) {
 	cp := regionChangesCP(t, `{"window_days":30,"count_used":1,"count_limit":null,"size_used_bytes":10,`+
 		`"size_limit_bytes":null,"frees_at":null}`)
 	r, out, _ := runWithCP(noVectors(t), cp, false)
-	collectionsRegionChanges(r)
+	collectionsRegionLimits(r)
 	if !strings.Contains(out.String(), "1, no limit") || !strings.Contains(out.String(), "10 B, no limit") {
 		t.Errorf("a null limit must read as no limit:\n%s", out.String())
 	}
@@ -124,22 +124,22 @@ func TestRegionChangesNoLimitAndAtTheLimit(t *testing.T) {
 	full := regionChangesCP(t, `{"window_days":30,"count_used":10,"count_limit":10,"size_used_bytes":10,`+
 		`"size_limit_bytes":2000,"frees_at":"2026-11-10T22:17:16+00:00"}`)
 	r, out, _ = runWithCP(noVectors(t), full, false)
-	collectionsRegionChanges(r)
+	collectionsRegionLimits(r)
 	if !strings.Contains(out.String(), "At the limit") || !strings.Contains(out.String(), "2026-11-10T22:17:16+00:00") {
 		t.Errorf("at the limit, the free-up time must be said:\n%s", out.String())
 	}
 }
 
-func TestRegionChangesJSONIsTheControlPlanesAnswer(t *testing.T) {
+func TestRegionLimitsJSONIsTheControlPlanesAnswer(t *testing.T) {
 	cp := regionChangesCP(t, `{"window_days":30,"count_used":2,"count_limit":10,"size_used_bytes":5,`+
 		`"size_limit_bytes":2000,"frees_at":null}`)
 	r, out, errOut := runWithCP(noVectors(t), cp, true)
-	if code := collectionsRegionChanges(r); code != 0 {
+	if code := collectionsRegionLimits(r); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	rc := decode(t, out.String())["region_changes"].(map[string]interface{})
+	rc := decode(t, out.String())["region_limits"].(map[string]interface{})
 	if rc["count_used"] != 2.0 || rc["count_limit"] != 10.0 || rc["size_limit_bytes"] != 2000.0 || rc["frees_at"] != nil {
-		t.Errorf("region_changes = %v", rc)
+		t.Errorf("region_limits = %v", rc)
 	}
 }
 

@@ -628,13 +628,13 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		},
 		"collections move": func(r *vecRun) int { return collectionsMove(r, "articles", "", true, false) },
 		// Reaches only the control plane; the refusing server answers it too.
-		"collections region-changes": func(r *vecRun) int { return collectionsRegionChanges(r) },
-		"index create":               func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
-		"index delete":               func(r *vecRun) int { return indexDelete(r, "articles", "f") },
-		"points count":               func(r *vecRun) int { return pointsCount(r, "articles", "") },
-		"points get":                 func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
-		"points search":              func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
-		"points list":                func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
+		"collections region-limits": func(r *vecRun) int { return collectionsRegionLimits(r) },
+		"index create":              func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
+		"index delete":              func(r *vecRun) int { return indexDelete(r, "articles", "f") },
+		"points count":              func(r *vecRun) int { return pointsCount(r, "articles", "") },
+		"points get":                func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
+		"points search":             func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
+		"points list":               func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
 		"points delete": func(r *vecRun) int {
 			return pointsDelete(r, "articles", []string{"1"}, "", true, strings.NewReader(""), false)
 		},
@@ -679,7 +679,7 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 			// A command that reaches only the control plane prints its error
 			// the way every control-plane command does, with the status first.
 			want := "Error: " + message + " (NOT_FOUND)\n"
-			if name == "collections region-changes" {
+			if name == "collections region-limits" {
 				want = "Error: [404] " + message + " (NOT_FOUND)\n"
 			}
 			if stderr.String() != want {

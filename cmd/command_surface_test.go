@@ -255,11 +255,11 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// control-plane changes to one collection the dashboard already makes;
 	// points upsert was the owner's (2026-10-08), writing a few points while
 	// debugging a collection, without the SDKs' chunking or retries;
-	// collections region-changes was the owner's (2026-10-12), the CLI's half
+	// collections region-limits was the owner's (2026-10-12), the CLI's half
 	// of the dashboard's Usage figures for region changes.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
-		"afy collections move", "afy collections region-changes", "afy collections regions",
+		"afy collections move", "afy collections region-limits", "afy collections regions",
 		"afy index create", "afy index delete",
 		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
 		"afy points upsert",
