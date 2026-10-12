@@ -18,7 +18,7 @@ func TestCollectionsGetShowsItsIDAndTheChangeRunningOnIt(t *testing.T) {
 	cp := cpFake(t, map[string]func(vecRequest) (int, string){
 		"GET " + operationPath: func(vecRequest) (int, string) {
 			return 200, `{"collection_id":"c-1","operation":{"operation_id":"op-7","kind":"regions_change",` +
-				`"status":"running","from_regions":["us-east-1"],"to_regions":["us-east-1","eu-central-1"],` +
+				`"status":"in_progress","from_regions":["us-east-1"],"to_regions":["us-east-1","eu-central-1"],` +
 				`"target_workspace":null,"accepted_at":"2026-10-12T10:00:00Z"}}`
 		},
 	})
@@ -26,7 +26,7 @@ func TestCollectionsGetShowsItsIDAndTheChangeRunningOnIt(t *testing.T) {
 	if code := collectionsGet(r, "articles"); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	for _, want := range []string{"ID:", "c-1", "Change:", "replicating to us-east-1, eu-central-1 (running, operation op-7)"} {
+	for _, want := range []string{"ID:", "c-1", "Change:", "replicating to us-east-1, eu-central-1 (in progress, operation op-7)"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q:\n%s", want, out.String())
 		}

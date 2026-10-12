@@ -198,7 +198,9 @@ func describeCollectionOperation(op *api.CollectionOperation) string {
 			what = "moving to workspace '" + op.TargetWorkspace.Name + "'"
 		}
 	}
-	line := what + " (" + op.Status
+	// The operation's status as words: the control plane answers pending or
+	// in_progress, the vocabulary its operation poll uses.
+	line := what + " (" + strings.ReplaceAll(op.Status, "_", " ")
 	if op.OperationID != nil {
 		line += ", operation " + *op.OperationID
 	}
