@@ -6,8 +6,6 @@ name: Pin Guard
 # actions/* are allowed on tags by policy (lower risk, out of M6 scope).
 
 on:
-  pull_request:
-    paths: ['.github/workflows/**']
   push:
     branches: [main, master]
     paths: ['.github/workflows/**']

@@ -98,8 +98,8 @@ func TestListAgentRuns_BuildsQuery(t *testing.T) {
 	}{
 		{"defaults empty", RunsQuery{}, map[string]string{}},
 		{"limit only", RunsQuery{Limit: 50}, map[string]string{"limit": "50"}},
-		{"trigger + before + limit", RunsQuery{TriggerSource: "cron", Before: "2026-07-17T00:00:00Z", Limit: 10},
-			map[string]string{"trigger_source": "cron", "before": "2026-07-17T00:00:00Z", "limit": "10"}},
+		{"trigger + before + limit", RunsQuery{TriggerSource: "cron", Before: "WyIyMDI2LTA3LTE3VDAwOjAwOjAwKzAwOjAwIiwzXQ", Limit: 10},
+			map[string]string{"trigger_source": "cron", "before": "WyIyMDI2LTA3LTE3VDAwOjAwOjAwKzAwOjAwIiwzXQ", "limit": "10"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 	"github.com/spf13/cobra"
@@ -19,7 +20,8 @@ var collectionsCmd = &cobra.Command{
 	Short:   "Inspect and manage vector collections",
 	Long: `Inspect and manage vector collections in the vectors API.
 
-Collection names are scoped to a workspace. The workspace is --workspace when
+A collection is reachable only through its workspace (names are unique per
+account). The workspace is --workspace when
 given, else AETHERFY_WORKSPACE, else none, the same default as the SDKs. The
 endpoint is --vectors-url, else AETHERFY_VECTORS_URL, else the one region
 discovery names for --api-region, else the global endpoint.
@@ -46,6 +48,7 @@ var collectionsListCmd = &cobra.Command{
 }
 
 type collectionJSON struct {
+	ID          string   `json:"id,omitempty"`
 	Name        string   `json:"name"`
 	Description *string  `json:"description"`
 	Size        int      `json:"size"`
@@ -59,6 +62,7 @@ type collectionJSON struct {
 
 func toCollectionJSON(c vectors.CollectionInfo) collectionJSON {
 	return collectionJSON{
+		ID:          c.ID,
 		Name:        c.Name,
 		Description: c.Description,
 		Size:        c.Config.Params.Vectors.Size,
@@ -138,14 +142,33 @@ func collectionsGet(r *vecRun, name string) int {
 	if err != nil {
 		return r.fail(err)
 	}
+	// The change running on it, if any: a regions change or a move started
+	// by anyone (the dashboard, another terminal, a script without --wait).
+	// Read by its id from the control plane; a failed read is said, never
+	// taken for "nothing running".
+	var op *api.CollectionOperation
+	var opErr error
+	if c.ID != "" {
+		op, opErr = r.controlPlane().GetCollectionOperation(c.ID)
+	}
 	if r.json {
+		var opErrMsg *string
+		if opErr != nil {
+			msg := opErr.Error()
+			opErrMsg = &msg
+		}
 		return r.printJSON(struct {
 			vecEnvelope
-			Collection collectionJSON `json:"collection"`
-		}{r.envelope(), toCollectionJSON(*c)})
+			Collection     collectionJSON           `json:"collection"`
+			Operation      *api.CollectionOperation `json:"operation"`
+			OperationError *string                  `json:"operation_error,omitempty"`
+		}{r.envelope(), toCollectionJSON(*c), op, opErrMsg})
 	}
 	kv := func(k, v string) { fmt.Fprintf(r.stdout, "%-13s %s\n", k+":", v) }
 	kv("Name", c.Name)
+	if c.ID != "" {
+		kv("ID", c.ID)
+	}
 	kv("Workspace", workspaceLabel(client.Workspace()))
 	if c.Description != nil && *c.Description != "" {
 		kv("Description", *c.Description)
@@ -155,8 +178,33 @@ func collectionsGet(r *vecRun, name string) int {
 	kv("Points", fmt.Sprintf("%d", c.PointsCount))
 	kv("Status", c.Status)
 	kv("Regions", strings.Join(c.Regions, ", "))
+	switch {
+	case opErr != nil:
+		kv("Change", "could not be read: "+opErr.Error())
+	case op != nil:
+		kv("Change", describeCollectionOperation(op))
+	}
 	kv("Created", c.CreatedAt)
 	return 0
+}
+
+// describeCollectionOperation is one line for the change running on a
+// collection: what it does, its state, and the operation to follow.
+func describeCollectionOperation(op *api.CollectionOperation) string {
+	what := "replicating to " + strings.Join(op.ToRegions, ", ")
+	if op.Kind == "move" {
+		what = "moving to no workspace"
+		if op.TargetWorkspace != nil {
+			what = "moving to workspace '" + op.TargetWorkspace.Name + "'"
+		}
+	}
+	// The operation's status as words: the control plane answers pending or
+	// in_progress, the vocabulary its operation poll uses.
+	line := what + " (" + strings.ReplaceAll(op.Status, "_", " ")
+	if op.OperationID != nil {
+		line += ", operation " + *op.OperationID
+	}
+	return line + ")"
 }
 
 // --- CREATE ---

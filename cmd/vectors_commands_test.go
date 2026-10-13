@@ -12,6 +12,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 )
@@ -443,7 +444,7 @@ func TestPointsGetSendsDigitsAsNumbersAndTheRestAsStrings(t *testing.T) {
 
 func TestPointsSearch(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) {
-		return 200, `{"result":[{"id":3,"score":0.91,"payload":{"lang":"en"},"version":1}]}`
+		return 200, `{"result":{"points":[{"id":3,"score":0.91,"payload":{"lang":"en"},"version":1}]}}`
 	})
 	vectorFile := filepath.Join(t.TempDir(), "q.json")
 	if err := os.WriteFile(vectorFile, []byte("[0.5, -0.25]"), 0o600); err != nil {
@@ -454,8 +455,12 @@ func TestPointsSearch(t *testing.T) {
 		t.Fatalf("exit %d", code)
 	}
 	req := only(t, s.got())
-	vec := req.Body["vector"].([]interface{})
-	if req.Path != "/api/v1/collections/articles/points/search" || len(vec) != 2 || vec[1] != -0.25 ||
+	// Search goes through Qdrant's query route; the vector travels as "query".
+	vec := req.Body["query"].([]interface{})
+	if _, retired := req.Body["vector"]; retired {
+		t.Errorf("sent the retired search body field \"vector\": %v", req.Body)
+	}
+	if req.Path != "/api/v1/collections/articles/points/query" || len(vec) != 2 || vec[1] != -0.25 ||
 		req.Body["limit"] != 5.0 || req.Body["filter"] == nil || req.Body["with_payload"] != true {
 		t.Errorf("sent %s %v", req.Path, req.Body)
 	}
@@ -561,6 +566,12 @@ func TestAnUnparseableVectorCommandLineExitsTwo(t *testing.T) {
 		{"collections", "get"},
 		{"index", "create", "a"},
 		{"points", "get", "a"},
+		{"points", "list", "a", "--limit", "x"},
+		{"points", "list"},
+		{"points", "delete"},
+		{"points", "delete", "a", "--yes=maybe"},
+		{"points", "upsert"},
+		{"points", "upsert", "a", "b", "--points", `{"id":1,"vector":[1]}`},
 		{"collections", "list", "--bogus"},
 	}
 	for _, args := range cases {
@@ -610,22 +621,40 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		"collections delete": func(r *vecRun) int {
 			return collectionsDelete(r, "articles", true, strings.NewReader(""), false)
 		},
-		"index create":  func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
-		"index delete":  func(r *vecRun) int { return indexDelete(r, "articles", "f") },
-		"points count":  func(r *vecRun) int { return pointsCount(r, "articles", "") },
-		"points get":    func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
-		"points search": func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
+		// regions and move find the collection through the vectors API first:
+		// its 404 is theirs, and nothing reaches the control plane.
+		"collections regions": func(r *vecRun) int {
+			return collectionsRegions(r, "articles", []string{"us-east-1"}, true, false, strings.NewReader(""), false)
+		},
+		"collections move": func(r *vecRun) int { return collectionsMove(r, "articles", "", true, false) },
+		// Reaches only the control plane; the refusing server answers it too.
+		"collections region-limits": func(r *vecRun) int { return collectionsRegionLimits(r) },
+		"index create":              func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
+		"index delete":              func(r *vecRun) int { return indexDelete(r, "articles", "f") },
+		"points count":              func(r *vecRun) int { return pointsCount(r, "articles", "") },
+		"points get":                func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
+		"points search":             func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
+		"points list":               func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
+		"points delete": func(r *vecRun) int {
+			return pointsDelete(r, "articles", []string{"1"}, "", true, strings.NewReader(""), false)
+		},
+		"points upsert": func(r *vecRun) int { return pointsUpsert(r, "articles", `{"id":1,"vector":[1]}`) },
 	}
 	if len(commands) != len(vectorLeaves()) {
 		t.Fatalf("%d commands here, %d vector commands registered: cover the new one", len(commands), len(vectorLeaves()))
 	}
+	// Both envelopes in one body: the vectors API's {"error": ...} and the
+	// control plane's {"detail": ...}, so a command that reaches either one is
+	// refused in its own API's words.
 	refuse := func(vecRequest) (int, string) {
-		return 404, `{"error":{"code":"NOT_FOUND","message":"` + message + `"}}`
+		return 404, `{"error":{"code":"NOT_FOUND","message":"` + message + `"},` +
+			`"detail":{"code":"NOT_FOUND","message":"` + message + `"}}`
 	}
 	for name, run := range commands {
 		t.Run(name+" --json", func(t *testing.T) {
 			s := newVecServer(t, refuse)
 			r, stdout, stderr, _ := s.run("", true)
+			r.cp = api.NewClientWithURL(s.srv.URL+"/api/v1", "afy_test_key")
 			if code := run(r); code != exitRequestFailed {
 				t.Errorf("exit %d, want %d", code, exitRequestFailed)
 			}
@@ -643,11 +672,18 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		t.Run(name+" text", func(t *testing.T) {
 			s := newVecServer(t, refuse)
 			r, _, stderr, _ := s.run("", false)
+			r.cp = api.NewClientWithURL(s.srv.URL+"/api/v1", "afy_test_key")
 			if code := run(r); code != exitRequestFailed {
 				t.Errorf("exit %d, want %d", code, exitRequestFailed)
 			}
-			if stderr.String() != "Error: "+message+" (NOT_FOUND)\n" {
-				t.Errorf("stderr = %q", stderr.String())
+			// A command that reaches only the control plane prints its error
+			// the way every control-plane command does, with the status first.
+			want := "Error: " + message + " (NOT_FOUND)\n"
+			if name == "collections region-limits" {
+				want = "Error: [404] " + message + " (NOT_FOUND)\n"
+			}
+			if stderr.String() != want {
+				t.Errorf("stderr = %q, want %q", stderr.String(), want)
 			}
 		})
 	}
