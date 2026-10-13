@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 128
+      "count": 137
     },
     {
       "path": "api/routes/regions.py",
@@ -250,6 +250,42 @@
     "COMPONENT_NOT_READY": {
       "source": "api/routes/regions.py",
       "tier": "violation"
+    },
+    "CONNECTION_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NAME_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NEEDS_REAUTH": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_PROVIDER_NOT_CONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_PROVIDER_UNAVAILABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_PROVIDER_UNKNOWN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_REQUIRES_AGENT_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_SCOPE_NOT_ALLOWED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
     },
     "DEPLOYMENT_ACCESS_DENIED": {
       "source": "shared/error_codes.py",

@@ -123,7 +123,7 @@ func init() {
 
 	// AGENTS ARE THE DEFAULT NOUN. A bare verb is an agent verb — `afy list`,
 	// `afy logs`, `afy deploy` — and ONLY the non-default nouns keep a group:
-	// secrets, workspaces, github. Docker works exactly this way, and it is the
+	// secrets, workspaces, github, connections. Docker works exactly this way, and it is the
 	// reason `docker ps` is not `docker containers ps`.
 	//
 	// The `agents` group used to exist and was removed, with no alias left
@@ -142,7 +142,7 @@ func init() {
 	for _, c := range []*cobra.Command{logsCmd, deploymentsCmd, spawnCmd} {
 		c.GroupID = groupAgentOps
 	}
-	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, collectionsCmd, indexCmd, pointsCmd} {
+	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, connectionsCmd, collectionsCmd, indexCmd, pointsCmd} {
 		c.GroupID = groupResources
 	}
 	for _, c := range []*cobra.Command{initCmd, versionCmd, loginCmd, logoutCmd, whoamiCmd} {
@@ -161,6 +161,7 @@ func init() {
 	rootCmd.AddCommand(secretsCmd)
 	rootCmd.AddCommand(workspacesCmd)
 	rootCmd.AddCommand(githubCmd)
+	rootCmd.AddCommand(connectionsCmd)
 	rootCmd.AddCommand(collectionsCmd)
 	rootCmd.AddCommand(indexCmd)
 	rootCmd.AddCommand(pointsCmd)
