@@ -92,9 +92,6 @@ func TestAgentUpdateRequestOptionalFields(t *testing.T) {
 	if req.Description != nil {
 		t.Error("Expected Description to be nil when not set")
 	}
-	if req.Tier != nil {
-		t.Error("Expected Tier to be nil when not set")
-	}
 	if req.MemoryMB != nil {
 		t.Error("Expected MemoryMB to be nil when not set")
 	}
@@ -124,9 +121,6 @@ func TestAgentUpdateRequestPartialUpdate(t *testing.T) {
 	// Unset fields should be nil
 	if req.Description != nil {
 		t.Error("Expected Description to be nil")
-	}
-	if req.Tier != nil {
-		t.Error("Expected Tier to be nil")
 	}
 }
 
@@ -306,6 +300,21 @@ func TestSpawnableByEmptyWhenNoSpawner(t *testing.T) {
 	}
 	if got := api.SpawnableBy("my-job", all); len(got) != 0 {
 		t.Errorf("Expected no spawners, got %v", got)
+	}
+}
+
+// ["*"] is the explicit "any of my agents" (control plane
+// shared/spawn_workers.py): such a service may spawn every job, named or not.
+// An empty list is not "any" — it allows none.
+func TestSpawnableByHonoursStarAndNotEmpty(t *testing.T) {
+	all := []api.Agent{
+		{ID: "s1", Name: "svc-any", AgentType: "service", AllowedWorkers: []string{api.AnyWorker}},
+		{ID: "s2", Name: "svc-empty", AgentType: "service", AllowedWorkers: []string{}},
+		{ID: "s3", Name: "svc-named", AgentType: "service", AllowedWorkers: []string{"other"}},
+	}
+	got := api.SpawnableBy("my-job", all)
+	if len(got) != 1 || got[0] != "svc-any" {
+		t.Errorf("Expected only svc-any, got %v", got)
 	}
 }
 
