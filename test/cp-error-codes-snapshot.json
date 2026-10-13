@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 131
+      "count": 137
     },
     {
       "path": "api/routes/regions.py",
@@ -163,7 +163,7 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_STILL_STOPPING": {
+    "AGENT_SPAWN_WORKERS_REQUIRED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -179,7 +179,15 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_WORKSPACE_GRANT_REDUNDANT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AUTHENTICATION_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AUTH_AGENT_KEY_OUT_OF_SCOPE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -215,6 +223,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "COLLECTION_MOVE_OUTSIDE_TARGET_REGIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "COLLECTION_NOT_FOUND": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -231,7 +243,7 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "COLLECTION_WORKSPACE_BROKEN": {
+    "COLLECTION_SDK_MANAGED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -403,6 +415,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "LOG_DEPLOYMENT_REQUIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "LOG_QUOTA_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -436,6 +452,14 @@
       "tier": "violation"
     },
     "RATE_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "REGION_CHANGE_COUNT_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "REGION_CHANGE_SIZE_LIMIT_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -491,10 +515,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "TARGET_WORKSPACE_HAS_NO_REGIONS": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "TARGET_WORKSPACE_NOT_FOUND": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -516,6 +536,10 @@
       "tier": "top-level"
     },
     "WORKER_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_AGENTS_STILL_DELETING": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -143,13 +143,15 @@ var (
 	agentType        string
 	agentRuntime     string
 	spawnEnabled     bool
+	spawnWorkers     []string
 )
 
 func init() {
 	agentsCreateCmd.Flags().StringVarP(&agentDescription, "description", "d", "", "Agent description")
 	agentsCreateCmd.Flags().StringVarP(&agentType, "type", "t", "SERVICE", "Agent type: SERVICE or JOB")
 	agentsCreateCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "python3.11", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile")
-	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent")
+	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent (requires --spawn-workers)")
+	agentsCreateCmd.Flags().StringSliceVar(&spawnWorkers, "spawn-workers", nil, `Agents this agent may spawn, comma-separated, or "*" for any of your agents`)
 }
 
 // normalizeAgentType validates a user-supplied agent type against the
@@ -172,13 +174,18 @@ func normalizeAgentType(raw string) (string, error) {
 // `afy create` and the consented create inside `afy deploy` go through
 // here rather than building their own request body, so the two can't drift.
 // agentType must already be normalized (lowercase, backend form).
-func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool) (*api.Agent, error) {
+//
+// The spawn rule (enabled requires workers; "*" stands alone) is the control
+// plane's to state: it answers 422 AGENT_SPAWN_WORKERS_REQUIRED with the
+// sentence naming the fix, which the caller prints. No local copy to drift.
+func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool, spawnWorkers []string) (*api.Agent, error) {
 	return client.CreateAgent(&api.AgentCreateRequest{
-		Name:         name,
-		Description:  description,
-		AgentType:    agentType,
-		Runtime:      runtime,
-		SpawnEnabled: spawnEnabled,
+		Name:           name,
+		Description:    description,
+		AgentType:      agentType,
+		Runtime:        runtime,
+		SpawnEnabled:   spawnEnabled,
+		AllowedWorkers: spawnWorkers,
 	})
 }
 
@@ -200,7 +207,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled)
+	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled, spawnWorkers)
 	sp.Stop()
 
 	if err != nil {
@@ -288,9 +295,23 @@ Distinct from a billing-driven STOPPED state.`,
 var agentsStartCmd = &cobra.Command{
 	Use:   "start <name>",
 	Short: "Resume a paused agent",
-	Long:  "Resume an agent that was paused with 'afy stop'.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAgentsStart,
+	Long: `Resume an agent that was paused with 'afy stop'.
+
+If the agent's previous stop is still finishing, the start is accepted and
+Aetherfy starts the agent as soon as that stop completes -- nothing needs
+re-running. Use --wait to block until the agent is running, for as long as the
+server says its start can take. --wait exits 1 if the start was dropped (with
+the reason), and 4 if it is still pending when that time is up: Aetherfy is
+still retrying, and 'afy status <name>' shows the result.`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsStart,
+}
+
+var startWait bool
+
+func init() {
+	agentsStartCmd.Flags().BoolVar(&startWait, "wait", false,
+		"If the previous stop is still finishing, wait until the agent is running (exit 1 if the start is dropped)")
 }
 
 // --- ARCHIVE / RESTORE (destroy Fly app, preserve config; re-provision) ---
@@ -359,55 +380,53 @@ func runAgentsStart(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return startAgent(api.NewClient(), args[0])
+	return startAgent(api.NewClient(), args[0], startWait)
 }
 
 // startAgent runs `afy start` against a given client, so a test can drive the
 // whole path -- the server's answer decoded, and that answer (not a constant)
 // deciding what is printed -- and not only the printer at the end of it.
-func startAgent(client *api.Client, idOrName string) error {
+//
+// ONE REQUEST. A resume sent while the agent's previous stop is still finishing
+// is ACCEPTED by the control plane (202, `resume` pending): it keeps the request
+// and starts the agent itself once that stop completes, so killing this
+// command loses nothing and nothing is ever re-sent. With wait, the agent's
+// STATUS is followed until it runs -- the start is never asked for again.
+func startAgent(client *api.Client, idOrName string, wait bool) error {
 	sp := output.NewSpinner(fmt.Sprintf("Starting agent '%s'...", idOrName))
 	sp.Start()
-
-	// A PREVIOUS STOP STILL SETTLING is not a failed start. `afy stop` answers
-	// once the pause is decided and the control plane stops the machines after
-	// it, giving the agent's server its shutdown grace; a resume sent meanwhile
-	// is answered 409 AGENT_STILL_STOPPING with how long to wait and the
-	// longest the stop can still take. So this waits as told, up to that bound,
-	// and says so once; past the bound it fails, naming why.
-	var waited time.Duration
-	told := false
-	var result *api.StartAgentResult
-	var err error
-	for {
-		result, err = client.StartAgent(idOrName)
-		wait, bound, stopping := stillStopping(err)
-		if !stopping {
-			break
-		}
-		if waited+wait > bound {
-			sp.Stop()
-			output.PrintError("Agent '%s' was still finishing its previous stop after %.0fs, "+
-				"the longest a stop can take. Run `afy start %s` again in a moment.",
-				idOrName, waited.Seconds(), idOrName)
-			return err
-		}
-		if !told {
-			sp.Stop()
-			output.PrintInfo("Previous stop still finishing, retrying in %.0fs", wait.Seconds())
-			sp.Start()
-			told = true
-		}
-		sp.UpdateMessage(fmt.Sprintf("Waiting for agent '%s' to finish stopping (%.0fs)...",
-			idOrName, (waited + wait).Seconds()))
-		stillStoppingSleep(wait)
-		waited += wait
-	}
+	result, err := client.StartAgent(idOrName)
 	sp.Stop()
 
 	if err != nil {
 		output.PrintError("Failed to start agent: %v", err)
 		return err
+	}
+
+	if result != nil && result.Resume.UnderWay() {
+		within := ""
+		if result.WaitBoundSeconds != nil && *result.WaitBoundSeconds > 0 {
+			within = fmt.Sprintf(" (at most %ds)", *result.WaitBoundSeconds)
+		}
+		if words, ok := resumeCauses[resumeCause(result.Resume)]; ok {
+			output.PrintSuccess(words.accepted, idOrName, within)
+		} else if resumeCause(result.Resume) != "" {
+			output.PrintSuccess("Agent '%s' will be started by Aetherfy%s.", idOrName, within)
+		} else {
+			output.PrintSuccess("Agent '%s' will start once its previous stop finishes%s.", idOrName, within)
+		}
+		if !wait {
+			output.PrintInfo("Nothing more to do. Follow it with 'afy status %s', or use --wait.", idOrName)
+			return nil
+		}
+		if result.WaitBoundSeconds == nil {
+			// The server states how long its start can take; a guess here would
+			// be a second bound to drift from the platform's own.
+			output.PrintError("The control plane did not say how long the start can take, so --wait has "+
+				"nothing to wait by. Follow it with 'afy status %s'.", idOrName)
+			return fmt.Errorf("no wait_bound_seconds in the accepted start")
+		}
+		return waitForAcceptedStart(client, idOrName, *result.WaitBoundSeconds)
 	}
 
 	var readiness *string
@@ -418,26 +437,147 @@ func startAgent(client *api.Client, idOrName string) error {
 	return nil
 }
 
-// codeAgentStillStopping is the control plane's answer to a start whose
-// pause is still being carried out (shared/error_codes.py).
-const codeAgentStillStopping = "AGENT_STILL_STOPPING"
+// resumeCauses: the words for an accepted start that is not waiting on a stop,
+// by the server's `resume.cause` (its RESUME_CAUSES;
+// TestStartDescribesExactlyTheControlPlanesDropReasons pins the keys).
+// `accepted` is what `afy start` says, given the agent's name and the
+// " (at most Ns)" of the server's bound; `pending` is `afy status`'s Pending
+// line while it is under way.
+type resumeCauseWords struct{ accepted, pending string }
 
-// stillStoppingSleep is how startAgent waits between attempts. A var only so
-// a test can record the waits instead of spending them.
-var stillStoppingSleep = time.Sleep
+var resumeCauses = map[string]resumeCauseWords{
+	"host_full": {
+		accepted: "Agent '%s' is being started on a new machine: its machine's host " +
+			"has no room to resume it, so Aetherfy recreates it from the current release%s.",
+		pending: "starting on a new machine (its host was full)",
+	},
+}
 
-// stillStopping reads a 409 AGENT_STILL_STOPPING: how long the server asked to
-// wait (Retry-After, carried in the body), and the longest a stop can take.
-// ok is false for anything else -- and for an answer missing either number,
-// which then fails as it arrived rather than being waited on for a guess.
-func stillStopping(err error) (wait, bound time.Duration, ok bool) {
-	apiErr, isAPI := err.(*api.APIError)
-	if !isAPI || apiErr.Code != codeAgentStillStopping ||
-		apiErr.RetryAfterSeconds == nil || apiErr.StopBoundSeconds == nil {
-		return 0, 0, false
+// resumePendingLine is `afy status`'s Pending line for a start under way:
+// its cause's wording, or -- a start accepted during a stop -- the stop's.
+func resumePendingLine(r *api.ResumeState) string {
+	if words, ok := resumeCauses[resumeCause(r)]; ok {
+		return words.pending
 	}
-	return time.Duration(*apiErr.RetryAfterSeconds) * time.Second,
-		time.Duration(*apiErr.StopBoundSeconds) * time.Second, true
+	if resumeCause(r) != "" {
+		return "starting"
+	}
+	return "starting once its stop finishes"
+}
+
+func resumeCause(r *api.ResumeState) string {
+	if r == nil || r.Cause == nil {
+		return ""
+	}
+	return *r.Cause
+}
+
+// printColdStart names a resume that could not wake a machine where it was.
+// The control plane replaces a machine whose host has no room left with a new
+// one from the agent's current release, so the agent came up from a cold
+// start: said here, so a slower first request or a fresh process is not a
+// mystery.
+func printColdStart(recreated int) {
+	switch {
+	case recreated == 1:
+		output.PrintInfo("Its machine's host had no room to resume it, so it was started on a new machine from its current release: a cold start.")
+	case recreated > 1:
+		output.PrintInfo("%d of its machines' hosts had no room to resume them, so they were started on new machines from its current release: a cold start.", recreated)
+	}
+}
+
+// How `afy start --wait` follows an accepted start: one read of the agent per
+// poll, for the wait_bound_seconds the server answered -- the stop still to
+// come plus the longest its start can take, from the control plane's own
+// constants. The CLI holds no bound of its own. Vars only so a test can record
+// the waits instead of spending them.
+var (
+	startWaitSleep = time.Sleep
+	startWaitPoll  = 5 * time.Second
+)
+
+// exitStillPending: `afy start --wait` reached the server's bound and the
+// start is neither carried out nor dropped. Not a failure -- Aetherfy is still
+// retrying it -- so not 1, which every waiting command uses for "it failed";
+// the next code after the CLI's 1 (failed), 2 (input refused) and
+// 3 (not logged in).
+const exitStillPending = 4
+
+// stillPendingError is what startAgent returns for exitStillPending.
+type stillPendingError struct{ msg string }
+
+func (e *stillPendingError) Error() string { return e.msg }
+
+// resumeDropSentences: what each published drop reason means, as the end of
+// "was not started: ...". The KEYS are the control plane's RESUME_DROP_REASONS
+// (workers/lifecycle_decisions.py) -- TestStartDescribesExactlyTheControlPlanes
+// DropReasons pins them wherever that checkout exists. A reason this binary
+// does not know still gets a sentence, never a raw code. A start cancelled by
+// the owner's own pause reads as no resume at all, so it has no sentence.
+var resumeDropSentences = map[string]string{
+	"archived":      "it was archived",
+	"deleted":       "it was deleted",
+	"billing_hold":  "a spend-limit pause or an account suspension took it",
+	"agent_failed":  "the agent failed (its app or image was lost)",
+	"stop_failed":   "its stop never finished, so it was not started",
+	"start_failed":  "its start never finished",
+	"state_changed": "it left paused another way",
+}
+
+// resumeDropSentence is the sentence for a drop reason, known or not.
+func resumeDropSentence(reason *string) string {
+	if reason != nil {
+		if s, ok := resumeDropSentences[*reason]; ok {
+			return s
+		}
+	}
+	return "the platform could not carry it out"
+}
+
+// waitForAcceptedStart polls the agent until it runs (success), until its
+// start reads dropped (exit 1, with the reason's sentence), or until the
+// server's bound passes (exit 4: the start is still the platform's to carry
+// out, and it says so and where the result will show).
+func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int) error {
+	sp := output.NewSpinner(fmt.Sprintf("Waiting for agent '%s' to start...", name))
+	sp.Start()
+	deadline := time.Duration(waitBoundSeconds) * time.Second
+	var waited time.Duration
+	for {
+		startWaitSleep(startWaitPoll)
+		waited += startWaitPoll
+		agent, err := client.GetAgent(name)
+		if err != nil {
+			sp.Stop()
+			output.PrintError("Could not read agent '%s' while waiting for it to start: %v", name, err)
+			return err
+		}
+		if agent.Status == "running" {
+			sp.Stop()
+			output.PrintSuccess("Agent '%s' resumed.", name)
+			// ONCE, AT THE END: whether the start recreated a machine is
+			// known only once it is carried out, and the agent read keeps it.
+			printColdStart(agent.MachinesRecreated)
+			return nil
+		}
+		if !agent.Resume.UnderWay() {
+			sp.Stop()
+			why := "its start is no longer pending"
+			if agent.Resume != nil && agent.Resume.State == "dropped" {
+				why = resumeDropSentence(agent.Resume.Reason)
+			}
+			output.PrintError("Agent '%s' was not started: %s. It is %s; run 'afy start %s' to start it now.",
+				name, why, agent.Status, name)
+			return fmt.Errorf("agent '%s' was not started: %s", name, why)
+		}
+		if waited >= deadline {
+			sp.Stop()
+			output.PrintWarning("Agent '%s' has not started within %.0fs. Aetherfy is still retrying the "+
+				"start; 'afy status %s' shows the result.", name, waited.Seconds(), name)
+			return &stillPendingError{msg: fmt.Sprintf(
+				"agent '%s' has not started within %.0fs; Aetherfy is still retrying", name, waited.Seconds())}
+		}
+	}
 }
 
 // printStartOutcome says what the control plane OBSERVED, and nothing more.
@@ -543,7 +683,11 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Track status via 'afy list'.", idOrName)
+	// 'afy status', NOT 'afy list': the restore is checked again when it runs,
+	// and a refused one leaves the agent `archived` with the reason on the
+	// record. The list shows the status alone, which reads the same for a
+	// restore still under way and one that was refused.
+	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Run 'afy status %s' to follow it: if the restore is refused, it says why.", idOrName, idOrName)
 	return nil
 }
 
@@ -678,11 +822,22 @@ func showAgentStatus(client *api.Client, name string) error {
 	output.KeyValue("Name", agent.Name)
 	output.KeyValue("Type", agent.AgentType)
 	output.KeyValue("Status", formatStatus(agent.Status))
-	// WHY it is failed, when the server recorded a reason. Until this line, an
-	// agent whose image the registry had lost read `failed` in the terminal and
-	// nothing else: the explanation existed on the API and in the dashboard and
-	// reached nobody at a command line. A code this binary is too old to have a
-	// message for still prints, with the one action that gets the wording.
+	// A start asked for while its previous stop was finishing: the status stays
+	// paused until the platform starts it, and this says one is on its way --
+	// or, when it was dropped, why.
+	if agent.Resume.UnderWay() {
+		output.KeyValue("Pending", resumePendingLine(agent.Resume))
+	} else if agent.Resume != nil && agent.Resume.State == "dropped" {
+		output.KeyValue("Start dropped", resumeDropSentence(agent.Resume.Reason))
+	}
+	// WHY it is not where it was asked to be, when the server recorded a
+	// reason -- on any status, not only `failed`: a restore the platform
+	// refused leaves the agent `archived`, and this line is the only place the
+	// terminal says why. Until this line, an agent whose image the registry had
+	// lost read `failed` and nothing else: the explanation existed on the API
+	// and in the dashboard and reached nobody at a command line. A code this
+	// binary is too old to have a message for still prints, with the one
+	// action that gets the wording.
 	if agent.FailureMessage != "" {
 		output.KeyValue("Reason", agent.FailureMessage)
 	} else if agent.FailureCode != "" {
@@ -765,7 +920,9 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 	output.Println("")
 	switch strings.ToLower(agent.AgentType) {
 	case "service":
-		if len(agent.AllowedWorkers) > 0 {
+		if len(agent.AllowedWorkers) == 1 && agent.AllowedWorkers[0] == api.AnyWorker {
+			output.KeyValue("Allowed workers", "any of your agents")
+		} else if len(agent.AllowedWorkers) > 0 {
 			output.KeyValue("Allowed workers", "["+strings.Join(agent.AllowedWorkers, ", ")+"]")
 		} else {
 			output.KeyValue("Allowed workers", "(none)")
@@ -822,10 +979,13 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.KeyValue("Directory", "repository root")
 	}
 	output.KeyValue("Webhook id", derefString(link.WebhookID))
+	if link.WaitingPush != nil {
+		output.KeyValue("Push waiting", formatWaitingPush(link.WaitingPush))
+	}
 
 	// LINKED, BUT INERT. Nothing on GitHub reports either of these — a skip is
-	// announced as a commit status, which needs the installation token that is
-	// gone, and a deleted branch has no commit to attach one to. If it is not
+	// announced as a check on the commit, which needs the installation token
+	// that is gone, and a deleted branch has no commit to attach one to. If it is not
 	// said here it is not said anywhere a terminal can see.
 	if !link.AccountConnected {
 		output.Println("")
@@ -854,6 +1014,18 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.Println("This agent is still linked, and pushes will not deploy until that branch exists again.")
 		output.Println("Recreate it and push — the link is kept, so deploys resume with nothing to set up again.")
 	}
+}
+
+// formatWaitingPush is one line for a push waiting for the deploy in progress,
+// the same words on `afy status` and `afy deployments`, and as the dashboard's
+// PUSH WAITING badge says them.
+func formatWaitingPush(w *api.WaitingPush) string {
+	sha := w.SHA
+	if len(sha) > 7 {
+		sha = sha[:7]
+	}
+	return fmt.Sprintf("%s, received %s — deploys when the deploy in progress ends",
+		sha, formatUTCTime(&w.ReceivedAt))
 }
 
 // derefString reads a nullable server string. The API's link fields are null
@@ -1195,7 +1367,7 @@ func init() {
 	for _, c := range []*cobra.Command{
 		agentsCreateCmd, agentsDeleteCmd, agentsStopCmd, agentsStartCmd,
 		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd, agentsRenameCmd,
-		agentsUpdateCmd,
+		agentsUpdateCmd, agentsAccessCmd,
 	} {
 		c.GroupID = groupAgentLifecycle
 	}
@@ -1234,6 +1406,7 @@ func init() {
 	rootCmd.AddCommand(agentsRunCmd)
 	rootCmd.AddCommand(agentsRunsCmd)
 	rootCmd.AddCommand(agentsScheduleCmd)
+	rootCmd.AddCommand(agentsAccessCmd)
 
 	// `schedule` KEEPS ITS SUBCOMMANDS. Flattening removes the group around the
 	// DEFAULT noun; it does not flatten every group. pause/resume are two verbs
@@ -1661,45 +1834,16 @@ func formatRegions(regions []string) string {
 // first deploy and the address follows; rename after and it is frozen.
 // Printing the actual address makes the drift visible in the same breath as
 // the rename, instead of leaving it to be discovered later.
-// KNOWN GAP — this note's reassurance stopped being complete on 2026-09-03,
-// and the half it is missing is the half a renamer acts on.
 //
-// What it says is true: the PUBLIC address is fixed at first deploy
-// (public_label, control-plane shared/agent_names.py) and a rename does not
-// move it, so integrations and webhooks keep working. That was the whole story
-// while an agent had exactly one address.
-//
-// It has two now. The dashboard addresses each agent BY NAME —
-// /dashboard/agents/{name}, with its deployments at the root and its logs
-// beneath — so a rename DOES move that one. Every open tab on the old address,
-// every bookmark, and every link pasted into a ticket lands on the dashboard's
-// "NO SUCH AGENT" panel. That panel is honest (the read succeeded; the name is
-// gone) but nothing connects it to the rename, and this note is the only place
-// a renamer is told anything about addresses at all.
-//
-// So the sentence below now reads as a broader promise than it can keep:
-// "existing integrations, links and webhooks keep working" is exactly what
-// someone checks before sharing a dashboard link, and dashboard links are the
-// one kind that do not.
-//
-// AND IT SAYS NOTHING AT ALL FOR SOME AGENTS. The early return is correct for
-// what this note currently covers — no public URL, nothing to reassure anyone
-// about — but a scheduled task serves nothing and never has a URL, while it
-// still has a dashboard record whose address a rename moves. Those renames
-// print no address guidance whatever.
-//
-// OWNER: aetherfy-cli. TRIGGER: the first report of an agent that
-// "disappeared" from the dashboard after a rename, or the next edit to this
-// note.
-// FIX SHAPE: split the note in two rather than widening this sentence. Keep
-// this arm, URL-gated, saying the public address is unchanged; add a second,
-// UNGATED arm naming the dashboard address the rename moved to, built from
-// newName so it needs no lookup. cmd/rename_note_test.go is where both get
-// pinned — it already captures both writers this package prints through, and
-// its existing case asserts the "does not move it" half, so the new case is a
-// sibling rather than a new harness.
-// NOT FIXED HERE because the change that created the gap is in another
-// repository, and user-facing copy is the owner's call rather than a drive-by.
+// THE DASHBOARD ADDRESS DOES NOT MOVE EITHER. From 2026-09-03 the dashboard
+// addressed each agent by NAME (/dashboard/agents/{name}), so a rename moved
+// that address and "links keep working" was a broader promise than this note
+// could keep. Since 2026-10-10 the dashboard addresses each agent by its ID
+// (/dashboard/agents/{id}; the owner's rule: ids for every internal reference,
+// names only for people and the public API), and a rename changes no id. So
+// the sentence below holds for every address an agent has, and an agent with
+// no public URL (a draft, a scheduled task) has no address a rename could
+// move, which is why it is right for this note to print nothing for it.
 func printRenameNote(a *api.Agent) {
 	if a == nil || a.URL == "" {
 		return

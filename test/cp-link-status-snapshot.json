@@ -18,6 +18,7 @@
     "linked",
     "repo",
     "root_dir",
+    "waiting_push",
     "webhook_id"
   ]
 }

@@ -16,7 +16,12 @@ import (
 // reached the API and the dashboard while `afy status` showed a bare state.
 func statusWithFailure(t *testing.T, extra string) string {
 	t.Helper()
-	body := `{"id":"a1","user_id":"u1","name":"tick","status":"failed",` +
+	return statusWith(t, "failed", extra)
+}
+
+func statusWith(t *testing.T, status, extra string) string {
+	t.Helper()
+	body := `{"id":"a1","user_id":"u1","name":"tick","status":"` + status + `",` +
 		`"agent_type":"service","spawn_enabled":false,"deployed":false,` +
 		`"created_at":"2026-09-01T10:00:00Z","updated_at":"2026-09-01T10:00:00Z"` + extra + `}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -33,6 +38,32 @@ func statusWithFailure(t *testing.T, extra string) string {
 		t.Fatalf("afy status failed: %v", err)
 	}
 	return out
+}
+
+// A start the platform accepted is Pending in `afy status`, worded by WHY it
+// was accepted: a full host is being started on a new machine, a start during
+// a stop waits for that stop. Each wording is the control for the other.
+func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
+	resume := func(cause string) string {
+		return `,"resume":{"state":"queued","reason":null,` +
+			`"requested_at":"2026-09-30T10:00:00Z","cause":` + cause + `}`
+	}
+	full := statusWith(t, "paused", resume(`"host_full"`))
+	stop := statusWith(t, "paused", resume(`null`))
+	unknown := statusWith(t, "paused", resume(`"some_future_cause"`))
+
+	if !strings.Contains(full, "starting on a new machine (its host was full)") ||
+		strings.Contains(full, "once its stop finishes") {
+		t.Errorf("a full host's pending start is not named as one:\n%s", full)
+	}
+	if !strings.Contains(stop, "starting once its stop finishes") ||
+		strings.Contains(stop, "new machine") {
+		t.Errorf("a start during a stop is not named as one:\n%s", stop)
+	}
+	if !strings.Contains(unknown, "Pending") || strings.Contains(unknown, "stop finishes") ||
+		strings.Contains(unknown, "new machine") {
+		t.Errorf("a cause this binary does not know must read neutral, not as a stop or a full host:\n%s", unknown)
+	}
 }
 
 func TestStatusPrintsTheRecordedFailureReason(t *testing.T) {
@@ -64,5 +95,21 @@ func TestStatusOfAnAgentWithNoRecordedFailureHasNoReasonLine(t *testing.T) {
 
 	if strings.Contains(out, "Reason") {
 		t.Errorf("a status with no recorded failure printed a Reason line:\n%s", out)
+	}
+}
+
+// A RESTORE THE PLATFORM REFUSED leaves the agent `archived` -- correctly, it
+// still is -- with the reason on the record. The Reason line is printed on any
+// status: gated on `failed`, the one answer the customer is waiting for after
+// `afy restore` would reach the API and never the terminal.
+func TestStatusPrintsARefusedRestoresReasonOnAnArchivedAgent(t *testing.T) {
+	out := statusWith(t, "archived", `,"failure_code":"restore_refused_agent_limit",`+
+		`"failure_message":"This agent was not restored because your plan's agent limit is reached. It is still archived, with its code, secrets and settings kept. Archive or delete another agent, or upgrade your plan, then restore it again."`)
+
+	if !strings.Contains(out, "Reason") || !strings.Contains(out, "agent limit is reached") {
+		t.Errorf("status of an archived agent dropped the refused restore's reason:\n%s", out)
+	}
+	if !strings.Contains(out, "restore it again") {
+		t.Errorf("status did not print the action that fixes the refusal:\n%s", out)
 	}
 }

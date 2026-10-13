@@ -32,6 +32,17 @@ type Agent struct {
 	// carrying a fragment of the owner's account id.
 	Deployed bool   `json:"deployed"`
 	URL      string `json:"url,omitempty"`
+	// Resume: a start asked for while the agent's previous stop was still
+	// finishing (server AgentResponse.resume) -- pending, queued, or dropped
+	// with a reason. nil when there is none. No omitempty: `-o json` readers
+	// see an explicit null.
+	Resume *ResumeState `json:"resume"`
+	// MachinesRecreated: how many of the agent's machines its latest start
+	// replaced with new ones from its current release, because their host
+	// had no room to resume them -- a cold start rather than a resume (server
+	// AgentResponse.machines_recreated). 0 when that start recreated none, or
+	// when the agent's latest lifecycle step was not a start.
+	MachinesRecreated int `json:"machines_recreated"`
 	// AllowedWorkers pulls through from the server's AgentResponse: the agent
 	// names this agent may spawn. There is no parent field: who spawned a run
 	// is recorded on the run, never on the agent.
@@ -50,11 +61,15 @@ type Agent struct {
 	RegionsTotal   int    `json:"regions_total"`
 	RegionsReady   int    `json:"regions_ready"`
 	DegradedReason string `json:"degraded_reason,omitempty"`
-	// WHY THE AGENT IS `failed`, when nothing else on the record says. The
-	// server sets the two together: the CODE is the contract a script branches
-	// on, the MESSAGE is the platform's own prose and may be reworded between
-	// releases. That is why the terminal prints the message rather than a
-	// sentence of the CLI's own — one wording, composed where the state is.
+	// WHY THE AGENT IS NOT WHERE ITS OWNER ASKED, when nothing else on the
+	// record says: `failed` because the compute plane lost its app or image,
+	// or still `archived` because a restore was refused (the plan's agent
+	// limit, a payment issue, code that can no longer be used, ...). Read it on
+	// ANY status. The server sets the two together: the CODE is the contract a
+	// script branches on, the MESSAGE is the platform's own prose and may be
+	// reworded between releases. That is why the terminal prints the message
+	// rather than a sentence of the CLI's own — one wording, composed where the
+	// state is.
 	FailureCode    string `json:"failure_code,omitempty"`
 	FailureMessage string `json:"failure_message,omitempty"`
 	// The agent's actual region footprint, from the server's AgentResponse
@@ -110,13 +125,15 @@ type AgentCreateRequest struct {
 	AgentType    string `json:"agent_type,omitempty"`
 	Runtime      string `json:"runtime,omitempty"`
 	SpawnEnabled bool   `json:"spawn_enabled,omitempty"`
+	// The agents it may spawn, or ["*"] for any. Required by the control plane
+	// when SpawnEnabled is true (422 AGENT_SPAWN_WORKERS_REQUIRED).
+	AllowedWorkers []string `json:"allowed_workers,omitempty"`
 }
 
 // AgentUpdateRequest is the request body for updating an agent
 type AgentUpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
-	Tier        *string `json:"tier,omitempty"`
 	MemoryMB    *int    `json:"memory_mb,omitempty"`
 	KeepAlive   *bool   `json:"keep_alive,omitempty"`
 	// WorkspaceName is tri-state to match the backend PATCH /agents
@@ -280,8 +297,8 @@ type AgentRun struct {
 }
 
 // RunsQuery bundles the GET /agents/{id}/runs query parameters. TriggerSource
-// narrows to 'cron' or 'manual' (empty = both); Before is an ISO cursor
-// (created_at < before).
+// narrows to 'cron' or 'manual' (empty = both); Before is the opaque `cursor`
+// of the last run of the previous page, sent as it was received.
 type RunsQuery struct {
 	TriggerSource string
 	Limit         int
@@ -318,6 +335,7 @@ type Workspace struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Description string    `json:"description,omitempty"`
+	Regions     []string  `json:"regions"`
 	AgentCount  int       `json:"agent_count"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
@@ -457,8 +475,9 @@ type GitHubLinkResponse struct {
 // auto-deploy with no relinking) and survives the deletion of the branch it
 // tracks. In both states the repo, branch and webhook below are all still true
 // and no push deploys, and the push path CANNOT say so for itself: announcing a
-// skip means posting a commit status, which needs the installation token that
-// is gone — and a branch deletion has no commit to attach one to at all.
+// skip means reporting a check on the commit, which needs the installation
+// token that is gone — and a branch deletion has no commit to attach one to at
+// all.
 //
 // NOTHING IS OMITEMPTY. `linked: false` and `account_connected: false` are the
 // values a reader most needs to see, and omitempty is exactly the tag that
@@ -489,6 +508,40 @@ type GitHubLinkStatus struct {
 	// they find their agent inert. Null covers both a branch that was never
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
+	// The push WAITING for the deploy in progress, or null. An agent deploys
+	// one push at a time; a push that arrives while a deployment of the agent
+	// is in flight waits, and has no deployment row until it starts, so this
+	// is the only place a terminal can see it. Where several wait, it is the
+	// one that will deploy (the newest); the others end skipped.
+	WaitingPush *WaitingPush `json:"waiting_push"`
+}
+
+// WaitingPush is a push waiting for the deploy of its agent in progress.
+type WaitingPush struct {
+	SHA        string    `json:"sha"`
+	ReceivedAt time.Time `json:"received_at"`
+}
+
+// ResumeState is a start asked for while the agent's previous stop was still
+// finishing (server ResumeStateResponse). State is "pending" (the stop is
+// still being carried out), "queued" (the platform is starting the agent) or
+// "dropped", when Reason -- one of the server's RESUME_DROP_REASONS -- says
+// why it was not carried out.
+//
+// Cause is set when the start was accepted for a reason other than a stop
+// still finishing: "host_full" -- the machine's host had no room to resume it,
+// so the platform is starting the agent on a new machine (one of the server's
+// RESUME_CAUSES). nil otherwise.
+type ResumeState struct {
+	State       string  `json:"state"`
+	Reason      *string `json:"reason"`
+	RequestedAt string  `json:"requested_at"`
+	Cause       *string `json:"cause"`
+}
+
+// UnderWay: accepted, and neither carried out nor dropped.
+func (r *ResumeState) UnderWay() bool {
+	return r != nil && (r.State == "pending" || r.State == "queued")
 }
 
 // ConnectionProvider is one service a connection can be made to (Google,
