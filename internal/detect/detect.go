@@ -11,12 +11,12 @@ import (
 
 // ProjectHints holds what was auto-detected in a project directory.
 type ProjectHints struct {
-	Runtime          string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "node20-ts", "node22-ts", "bun", "dockerfile"
-	Entrypoint       string // e.g. "main.py", "index.js", "index.ts" — empty for dockerfile runtime
-	VectorDB         bool   // qdrant_memory folder found
-	HasMastra        bool   // mastra in package.json dependencies
-	HasPyprojectToml bool   // pyproject.toml found (uv or PEP 517 project)
-	HasUvLock        bool   // uv.lock found alongside pyproject.toml (uv project mode)
+	Runtime          string      // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "node20-ts", "node22-ts", "bun", "dockerfile"
+	Entrypoint       string      // e.g. "main.py", "index.js", "index.ts" — empty for dockerfile runtime
+	VectorDB         bool        // qdrant_memory folder found
+	Frameworks       []Framework // every row of the framework table the project declares (frameworks.go)
+	HasPyprojectToml bool        // pyproject.toml found (uv or PEP 517 project)
+	HasUvLock        bool        // uv.lock found alongside pyproject.toml (uv project mode)
 }
 
 // Project scans dir and returns detected hints.
@@ -63,7 +63,10 @@ func Project(dir string) ProjectHints {
 	// Node / Bun detection — overrides python if both present (unusual but safe)
 	jsCandidates := []string{"index.ts", "index.js", "main.ts", "main.js", "src/index.ts", "src/index.js"}
 	if fileExists(filepath.Join(dir, "package.json")) {
-		if fileExists(filepath.Join(dir, "bun.lockb")) {
+		// BOTH LOCKFILES: bun.lock is the text lockfile bun writes by default
+		// since 1.2, bun.lockb the binary one before it. Matching only
+		// bun.lockb sent every current bun project to a node runtime.
+		if fileExists(filepath.Join(dir, "bun.lock")) || fileExists(filepath.Join(dir, "bun.lockb")) {
 			hints.Runtime = "bun"
 		} else {
 			hints.Runtime = NodeVersion(dir)
@@ -74,7 +77,6 @@ func Project(dir string) ProjectHints {
 				break
 			}
 		}
-		hints.HasMastra = hasMastraDep(filepath.Join(dir, "package.json"))
 		// TypeScript promotion for Node: if the project is TypeScript (tsconfig.json
 		// present, or the resolved entrypoint is a .ts file), switch node20→node20-ts
 		// and node22→node22-ts so the backend runs it through `tsx`. Bun is left alone
@@ -97,6 +99,7 @@ func Project(dir string) ProjectHints {
 	if dirExists(filepath.Join(dir, "qdrant_memory")) {
 		hints.VectorDB = true
 	}
+	hints.Frameworks = DetectFrameworks(dir)
 
 	return hints
 }
@@ -201,7 +204,7 @@ func ParseNodeVersion(s string) string {
 				return "node22"
 			case major == 20:
 				return "node20"
-			// 21 is an odd/non-LTS release — not supported, caller falls back to default
+				// 21 is an odd/non-LTS release — not supported, caller falls back to default
 			}
 		}
 	}
@@ -216,23 +219,4 @@ func fileExists(path string) bool {
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
-}
-
-func hasMastraDep(packageJSONPath string) bool {
-	data, err := os.ReadFile(packageJSONPath)
-	if err != nil {
-		return false
-	}
-	var pkg map[string]interface{}
-	if err := json.Unmarshal(data, &pkg); err != nil {
-		return false
-	}
-	for _, key := range []string{"dependencies", "devDependencies"} {
-		if deps, ok := pkg[key].(map[string]interface{}); ok {
-			if _, found := deps["mastra"]; found {
-				return true
-			}
-		}
-	}
-	return false
 }

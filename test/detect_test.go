@@ -201,7 +201,7 @@ func TestProject_PythonWithMainPy(t *testing.T) {
 	assert.Equal(t, "python3.12", h.Runtime)
 	assert.Equal(t, "main.py", h.Entrypoint)
 	assert.False(t, h.VectorDB)
-	assert.False(t, h.HasMastra)
+	assert.Empty(t, h.Frameworks)
 }
 
 // Bare-script Python: just main.py, no dependency manifest. Common
@@ -391,17 +391,146 @@ func TestProject_VectorDB(t *testing.T) {
 	assert.True(t, h.VectorDB)
 }
 
-func TestProject_HasMastra(t *testing.T) {
-	dir := t.TempDir()
-	pkg := map[string]interface{}{
-		"name":         "test",
-		"dependencies": map[string]interface{}{"mastra": "^0.1.0"},
-	}
-	data, _ := json.Marshal(pkg)
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+// ─── Framework detection (internal/detect/frameworks.go) ─────────────────────
 
+func writePackageJSON(t *testing.T, dir string, deps, devDeps map[string]string) {
+	t.Helper()
+	pkg := map[string]interface{}{"name": "test"}
+	if deps != nil {
+		pkg["dependencies"] = deps
+	}
+	if devDeps != nil {
+		pkg["devDependencies"] = devDeps
+	}
+	data, err := json.Marshal(pkg)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
+}
+
+func frameworkKeys(fs []detect.Framework) []string {
+	keys := make([]string, 0, len(fs))
+	for _, f := range fs {
+		keys = append(keys, f.Key)
+	}
+	return keys
+}
+
+// THE OLD NAME STILL MATCHES. 'mastra' (the CLI package) is the only name
+// `afy init` matched before the table, and "Detected 'mastra'" must keep
+// printing for it.
+func TestProject_MastraByItsCLIPackage(t *testing.T) {
+	dir := t.TempDir()
+	writePackageJSON(t, dir, map[string]string{"mastra": "^0.1.0"}, nil)
 	h := detect.Project(dir)
-	assert.True(t, h.HasMastra)
+	assert.Equal(t, []string{"mastra"}, frameworkKeys(h.Frameworks))
+}
+
+// THE FIX: a Mastra project depends on '@mastra/core' and often has no
+// 'mastra' dependency at all, so it was never detected.
+func TestProject_MastraByItsCorePackage(t *testing.T) {
+	dir := t.TempDir()
+	writePackageJSON(t, dir, map[string]string{"@mastra/core": "^0.10.0"}, nil)
+	h := detect.Project(dir)
+	require.Equal(t, []string{"mastra"}, frameworkKeys(h.Frameworks))
+	assert.Equal(t, detect.NeedsServer, h.Frameworks[0].Class)
+}
+
+// Both Mastra names in one project: one row, one advice line.
+func TestProject_OneRowPerFrameworkHoweverManyPackagesMatch(t *testing.T) {
+	dir := t.TempDir()
+	writePackageJSON(t, dir, map[string]string{"@mastra/core": "^0.10.0"}, map[string]string{"mastra": "^0.10.0"})
+	assert.Equal(t, []string{"mastra"}, frameworkKeys(detect.Project(dir).Frameworks))
+}
+
+func TestFrameworks_OneCasePerClass(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(t *testing.T, dir string)
+		key   string
+		class detect.AdviceClass
+		says  string
+	}{
+		{"served python, from requirements.txt", func(t *testing.T, dir string) {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"),
+				[]byte("# web\nLitestar[standard]>=2.0 ; python_version >= '3.11'\n"), 0644))
+		}, "litestar", detect.Served, "served as your exported `app`"},
+		{"served node, from devDependencies", func(t *testing.T, dir string) {
+			writePackageJSON(t, dir, nil, map[string]string{"hono": "^4"})
+		}, "hono", detect.Served, "served as your exported `app`"},
+		{"library python, from pyproject [project].dependencies", func(t *testing.T, dir string) {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"),
+				[]byte("[project]\nname = \"x\"\ndependencies = [\"LangGraph>=0.2\", \"httpx\"]\n"), 0644))
+		}, "langgraph", detect.NeedsServer, "a FastAPI or Litestar `app`"},
+		{"library node", func(t *testing.T, dir string) {
+			writePackageJSON(t, dir, map[string]string{"@openai/agents": "^0.1"}, nil)
+		}, "@openai/agents", detect.NeedsServer, "a Hono or Express `app`"},
+		{"refused python, PEP 503 spelling", func(t *testing.T, dir string) {
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("Flask==3.1\n"), 0644))
+		}, "flask", detect.RefusedShape, "WsgiToAsgi"},
+		{"refused node", func(t *testing.T, dir string) {
+			writePackageJSON(t, dir, map[string]string{"koa": "^2"}, nil)
+		}, "koa", detect.RefusedShape, "app.callback()"},
+		{"dockerfile recommended", func(t *testing.T, dir string) {
+			writePackageJSON(t, dir, map[string]string{"openclaw": "^1"}, nil)
+		}, "openclaw", detect.DockerfileRecommended, "`runtime: dockerfile`"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			tc.setup(t, dir)
+			found := detect.DetectFrameworks(dir)
+			require.Equal(t, []string{tc.key}, frameworkKeys(found))
+			assert.Equal(t, tc.class, found[0].Class)
+			assert.Contains(t, found[0].Advice(), tc.says)
+		})
+	}
+}
+
+// A package name that merely CONTAINS a framework's name is not that
+// framework: 'flask-cors' is not Flask, 'ai-utils' is not the AI SDK.
+func TestFrameworks_NoSubstringMatches(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("flask-cors\nfastapi-utils\n"), 0644))
+	writePackageJSON(t, dir, map[string]string{"ai-utils": "1", "honoka": "1"}, nil)
+	assert.Empty(t, detect.DetectFrameworks(dir))
+}
+
+// Pip options and comments are not requirements.
+func TestFrameworks_RequirementsOptionsAreSkipped(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"),
+		[]byte("-r base.txt\n--index-url https://example.test/simple\n# fastapi\n"), 0644))
+	assert.Empty(t, detect.DetectFrameworks(dir))
+}
+
+// Every row is complete: a key, a display name, packages, an advice
+// sentence, and a way out wherever the class needs one.
+func TestFrameworks_TableIsWellFormed(t *testing.T) {
+	seen := map[string]bool{}
+	for _, f := range detect.Frameworks {
+		assert.NotEmpty(t, f.Key)
+		assert.False(t, seen[f.Key], "duplicate key %s", f.Key)
+		seen[f.Key] = true
+		assert.NotEmpty(t, f.Display, f.Key)
+		assert.NotEmpty(t, f.Packages, f.Key)
+		assert.NotEmpty(t, f.Advice(), f.Key)
+		if f.Class == detect.RefusedShape || f.Class == detect.DockerfileRecommended {
+			assert.NotEmpty(t, f.WayOut, f.Key)
+		}
+	}
+}
+
+// bun.lock is the TEXT lockfile bun writes by default since 1.2. Detection
+// matched only the binary bun.lockb, so every current bun project was sent to
+// a node runtime.
+func TestProject_BunTextLockfile(t *testing.T) {
+	dir := t.TempDir()
+	writePackageJSON(t, dir, map[string]string{"hono": "^4"}, nil)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "bun.lock"), []byte("{}\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
+	h := detect.Project(dir)
+	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
 func TestProject_Dockerfile(t *testing.T) {
@@ -454,7 +583,7 @@ func TestProject_Empty(t *testing.T) {
 	assert.Equal(t, "", h.Runtime)
 	assert.Equal(t, "", h.Entrypoint)
 	assert.False(t, h.VectorDB)
-	assert.False(t, h.HasMastra)
+	assert.Empty(t, h.Frameworks)
 	assert.False(t, h.HasUvLock)
 }
 
