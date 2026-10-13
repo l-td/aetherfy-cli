@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 128
+      "count": 143
     },
     {
       "path": "api/routes/regions.py",
@@ -300,6 +300,66 @@
       "tier": "top-level"
     },
     "DUNNING_FROZEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVALS_NOT_ENABLED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_COMPARE_INCOMPATIBLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_DATASET_EXISTS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_DATASET_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_DATASET_IN_USE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_DATASET_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_DATASET_TOO_LARGE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_DATASET_VERSION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_GRADER_INVALID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_JUDGE_HOST_NOT_ALLOWED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_JUDGE_SECRET_MISSING": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_NOT_CANCELLABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_RELEASE_NOT_CURRENT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_RUN_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "EVAL_TOO_MANY_ACTIVE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -139,10 +139,10 @@ func init() {
 	for _, c := range []*cobra.Command{deployCmd, redeployCmd, rollbackCmd} {
 		c.GroupID = groupAgentLifecycle
 	}
-	for _, c := range []*cobra.Command{logsCmd, deploymentsCmd, spawnCmd} {
+	for _, c := range []*cobra.Command{logsCmd, deploymentsCmd, spawnCmd, evalCmd} {
 		c.GroupID = groupAgentOps
 	}
-	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, collectionsCmd, indexCmd, pointsCmd} {
+	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, collectionsCmd, indexCmd, pointsCmd, datasetsCmd} {
 		c.GroupID = groupResources
 	}
 	for _, c := range []*cobra.Command{initCmd, versionCmd, loginCmd, logoutCmd, whoamiCmd} {
@@ -158,12 +158,14 @@ func init() {
 	rootCmd.AddCommand(logsCmd)
 	rootCmd.AddCommand(deploymentsCmd)
 	rootCmd.AddCommand(spawnCmd)
+	rootCmd.AddCommand(evalCmd)
 	rootCmd.AddCommand(secretsCmd)
 	rootCmd.AddCommand(workspacesCmd)
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(collectionsCmd)
 	rootCmd.AddCommand(indexCmd)
 	rootCmd.AddCommand(pointsCmd)
+	rootCmd.AddCommand(datasetsCmd)
 	rootCmd.AddCommand(initCmd)
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(loginCmd)
