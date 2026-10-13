@@ -75,7 +75,8 @@ var notControlPlaneCodes = map[string]string{
 	// Environment variables the CLI reads.
 	"AETHERFY_API_KEY":    "env var: the API key, read by internal/config/credentials.go",
 	"AETHERFY_CONFIG_DIR": "env var: overrides the credentials directory",
-	"NO_COLOR":            "env var: the no-color convention, honoured by internal/output",
+	"AETHERFY_API_URL":    "env var: overrides the control-plane API URL (config api_url, internal/config)",
+	"NO_COLOR":          "env var: the no-color convention, honoured by internal/output",
 	"XDG_CONFIG_HOME":     "env var: XDG base-directory lookup on unix",
 	"AETHERFY_CP_ROOT":    "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
 	"AETHERFY_REQUIRE_CP": "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
@@ -85,6 +86,10 @@ var notControlPlaneCodes = map[string]string{
 	// A secret NAME, not a code: an llm_judge grader names the customer's key by
 	// it (api_key_secret), in the `afy datasets push` fixtures.
 	"ANTHROPIC_API_KEY": "secret name: an llm_judge grader's api_key_secret in cmd/datasets_test.go",
+	// Names of control-plane Python tuples the cpresume reader looks for
+	// (workers/lifecycle_decisions.py), not codes a response carries.
+	"RESUME_DROP_REASONS": "tuple name: the drop reasons cpresume.Extract reads",
+	"RESUME_CAUSES":       "tuple name: the accepted-start causes cpresume.ExtractCauses reads",
 
 	// The vector commands' environment, the vectors SDKs' names, read by
 	// internal/vectors/resolve.go.
@@ -96,10 +101,11 @@ var notControlPlaneCodes = map[string]string{
 	// commands talk to vectordb, not the control plane, and vectordb has no
 	// code registry to pin them against: it writes each code as a literal in
 	// the route that raises it (see the APIError comment in
-	// internal/vectors/client.go). Nothing in the CLI branches on either; the
+	// internal/vectors/client.go). Nothing in the CLI branches on any of them; the
 	// commands print the code they are sent.
-	"NOT_FOUND":   "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
-	"PROXY_ERROR": "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
+	"NOT_FOUND":         "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
+	"PROXY_ERROR":       "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
+	"PAYLOAD_TOO_LARGE": "vectordb code: an upsert body over the byte cap (middleware/streamingPointsParser.js), in cmd/points_upsert_test.go",
 
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.

@@ -275,7 +275,7 @@ func handleDeployResult(client *api.Client, agentID string, cfg *archive.Aetherf
 		// runtime that were just printed — no other create path exists.
 		sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", agentID))
 		sp.Start()
-		agent, createErr := createAgentRecord(client, agentID, "", outcome.AgentType, outcome.Runtime, false)
+		agent, createErr := createAgentRecord(client, agentID, "", outcome.AgentType, outcome.Runtime, false, nil)
 		sp.Stop()
 		if createErr != nil {
 			output.PrintError("Failed to create agent '%s': %v", agentID, createErr)

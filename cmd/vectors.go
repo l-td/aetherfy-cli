@@ -17,7 +17,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 	"github.com/spf13/cobra"
@@ -49,7 +51,7 @@ const (
 	vecJSONHelp       = "Print one JSON object with stable field names (same as --output json)"
 	vecVectorsURLHelp = "Vectors API endpoint (overrides " + vectors.EnvVectorsURL + " and --api-region)"
 	vecAPIRegionHelp  = "API region to connect to: us-east-1, eu-central-1 or ap-southeast-1, resolved by region discovery (or " + vectors.EnvAPIRegion + ")"
-	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none)"
+	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none, written --workspace= on Windows PowerShell 5.1)"
 )
 
 // inputError is input refused before any request was sent: exit 2.
@@ -59,6 +61,22 @@ func (e *inputError) Error() string { return e.msg }
 
 func refuse(format string, args ...interface{}) error {
 	return &inputError{msg: fmt.Sprintf(format, args...)}
+}
+
+// refuseFlagLikeValue refuses a workspace flag's value that starts with "-".
+// No workspace is named so (the control plane's rule starts a name with a
+// letter or a digit), and the usual cause is a shell that dropped an empty
+// argument: Windows PowerShell 5.1 turns `--add "" --yes` into `--add --yes`,
+// and the flag takes "--yes" as its value. Called before anything is sent.
+func refuseFlagLikeValue(flag string, values ...string) error {
+	for _, v := range values {
+		if strings.HasPrefix(v, "-") {
+			return refuse("--%s got %q as its value, and no workspace name starts with \"-\": the shell "+
+				"probably dropped an empty argument (Windows PowerShell 5.1 drops \"\"). For no workspace, "+
+				"write --%s= instead. Nothing was sent.", flag, v, flag)
+		}
+	}
+	return nil
 }
 
 // notLoggedIn is checkAuth's refusal, reported through fail so --json gets
@@ -85,12 +103,17 @@ func refuseArgs(rule cobra.PositionalArgs) cobra.PositionalArgs {
 func refuseFlag(_ *cobra.Command, err error) error { return &inputError{msg: err.Error()} }
 
 // ExitCode is the process exit code for an error Execute returned: 2 for
-// input refused before any request, 4 for an eval threshold breached, 1 for
-// anything else.
+// input refused before any request, 4 for `afy start --wait` reaching the
+// server's bound with the start still pending and for `afy eval run` missing
+// a threshold (two commands, two meanings), 1 for anything else.
 func ExitCode(err error) int {
 	var in *inputError
 	if errors.As(err, &in) {
 		return exitInputRefused
+	}
+	var pending *stillPendingError
+	if errors.As(err, &pending) {
+		return exitStillPending
 	}
 	var breached *thresholdBreached
 	if errors.As(err, &breached) {
@@ -102,7 +125,20 @@ func ExitCode(err error) int {
 // runVec is every vector command's RunE: the login check, then op, then the
 // process exit with op's code.
 func runVec(cmd *cobra.Command, op func(r *vecRun) int) error {
-	return exitWith(vecMain(newVecRun(cmd), op))
+	r := newVecRun(cmd)
+	if err := workspaceFlagRefusal(cmd); err != nil {
+		return exitWith(r.fail(err))
+	}
+	return exitWith(vecMain(r, op))
+}
+
+// workspaceFlagRefusal is refuseFlagLikeValue for a vector command's
+// --workspace, when it was given.
+func workspaceFlagRefusal(cmd *cobra.Command) error {
+	if f := cmd.Flags().Lookup("workspace"); f != nil && f.Changed {
+		return refuseFlagLikeValue("workspace", vecWorkspace)
+	}
+	return nil
 }
 
 func vecMain(r *vecRun, op func(r *vecRun) int) int {
@@ -121,6 +157,18 @@ type vecRun struct {
 	stderr  io.Writer
 	connect func() (*vectors.Client, error)
 	client  *vectors.Client
+	// cp is the control-plane client for the commands that change a
+	// collection's regions or workspace; nil means the logged-in one.
+	cp *api.Client
+}
+
+// controlPlane is the control-plane client: the injected one, or the logged-in
+// one built on first use.
+func (r *vecRun) controlPlane() *api.Client {
+	if r.cp == nil {
+		r.cp = api.NewClient()
+	}
+	return r.cp
 }
 
 // newVecRun builds the context from the command's flags and the environment.
@@ -187,12 +235,17 @@ func (r *vecRun) printJSON(v interface{}) int {
 }
 
 // vecErrorJSON is what --json prints on stderr for a failure. status and code
-// are the API's, present only when the API answered.
+// are the API's, present only when the API answered. On an afy points upsert
+// that may have written something, written is the points confirmed written
+// before the failed request, and unconfirmed (when not 0) the points of that
+// request whose outcome is unknown.
 type vecErrorJSON struct {
 	Error struct {
-		Status  int    `json:"status,omitempty"`
-		Code    string `json:"code,omitempty"`
-		Message string `json:"message"`
+		Status      int    `json:"status,omitempty"`
+		Code        string `json:"code,omitempty"`
+		Message     string `json:"message"`
+		Written     *int   `json:"written,omitempty"`
+		Unconfirmed *int   `json:"unconfirmed,omitempty"`
 	} `json:"error"`
 }
 
@@ -209,11 +262,24 @@ func (r *vecRun) fail(err error) int {
 	}
 	var apiErr *vectors.APIError
 	isAPI := errors.As(err, &apiErr)
+	// The control plane's errors (afy collections regions / move) carry the
+	// same three things.
+	var cpErr *api.APIError
+	isCP := errors.As(err, &cpErr)
 	if r.json {
 		var out vecErrorJSON
 		out.Error.Message = err.Error()
 		if isAPI {
 			out.Error.Status, out.Error.Code, out.Error.Message = apiErr.Status, apiErr.Code, apiErr.Message
+		} else if isCP {
+			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
+		}
+		var upsert *upsertFailure
+		if errors.As(err, &upsert) {
+			out.Error.Written = &upsert.progress.Written
+			if upsert.progress.Unconfirmed > 0 {
+				out.Error.Unconfirmed = &upsert.progress.Unconfirmed
+			}
 		}
 		data, _ := json.Marshal(out)
 		fmt.Fprintln(r.stderr, string(data))

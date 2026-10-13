@@ -91,7 +91,7 @@ func TestTheAgentVerbsAreAllAtTheRoot(t *testing.T) {
 	for _, name := range []string{
 		"list", "create", "delete", "stop", "start", "archive", "restore",
 		"cancel", "status", "rename", "update", "pull", "diff", "run", "runs",
-		"schedule", "eval",
+		"schedule", "access", "eval",
 		// already flat before the flatten; here so the list reads as the whole
 		// agent surface rather than as "the ones that moved"
 		"deploy", "logs", "rollback", "redeploy", "deployments", "spawn",
@@ -247,12 +247,22 @@ func vectorLeaves() []*cobra.Command {
 }
 
 func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
-	// The surface the brief scoped, and no more: upsert, payload edits and
-	// aliases are the SDKs' job. A new one here is a decision, not a drive-by.
+	// The surface the brief scoped, and no more: bulk loads, payload edits and
+	// aliases are the SDKs' job. A new one here is a decision, not a drive-by:
+	// points list and points delete were the owner's (2026-09-30), browsing
+	// and cleanup, with the dashboard's parity in mind; collections regions
+	// and move were the collections brief's (item 9, 2026-10-07), the
+	// control-plane changes to one collection the dashboard already makes;
+	// points upsert was the owner's (2026-10-08), writing a few points while
+	// debugging a collection, without the SDKs' chunking or retries;
+	// collections region-limits was the owner's (2026-10-12), the CLI's half
+	// of the dashboard's Usage figures for region changes.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
+		"afy collections move", "afy collections region-limits", "afy collections regions",
 		"afy index create", "afy index delete",
-		"afy points count", "afy points get", "afy points search",
+		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
+		"afy points upsert",
 	}
 	var got []string
 	for _, c := range vectorLeaves() {

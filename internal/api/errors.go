@@ -51,12 +51,6 @@ type APIError struct {
 	// polls (github connect) must honour it or it spends the rest of its
 	// budget being refused. nil for every other error.
 	RetryAfterSeconds *int `json:"-"`
-	// StopBoundSeconds carries the `stop_bound_seconds` extra from the 409
-	// AGENT_STILL_STOPPING envelope: the longest a stop can take to settle,
-	// which is how long `afy start` keeps waiting for one. From the BODY, like
-	// RetryAfterSeconds, so the number is the control plane's and never a copy.
-	// nil for every other error.
-	StopBoundSeconds *int `json:"-"`
 	// Violations carries `violations` from the envelopes that report every
 	// problem at once: VALIDATION_ERROR, and the evals dataset push's
 	// EVAL_DATASET_INVALID / EVAL_GRADER_INVALID ([{case, field, message}] and
@@ -129,10 +123,6 @@ func parseAPIError(resp *resty.Response) error {
 				if secs, ok := v["retry_after_seconds"].(float64); ok {
 					n := int(secs)
 					apiErr.RetryAfterSeconds = &n
-				}
-				if secs, ok := v["stop_bound_seconds"].(float64); ok {
-					n := int(secs)
-					apiErr.StopBoundSeconds = &n
 				}
 				if list, ok := v["violations"].([]interface{}); ok {
 					for _, item := range list {
