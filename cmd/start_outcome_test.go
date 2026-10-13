@@ -155,7 +155,7 @@ func startAgainst(t *testing.T, body string) string {
 	var stderr string
 	stdout := captureStdout(t, func() {
 		stderr = captureStderr(t, func() {
-			err = startAgent(client, "api")
+			err = startAgent(client, "api", false)
 		})
 	})
 	if err != nil {

@@ -37,7 +37,6 @@ type AetherfyConfig struct {
 	// here would refuse a value it accepts (a quoted "5" for an int, say)
 	// before the server ever saw it.
 	Description        any          `yaml:"description,omitempty"`
-	Tier               any          `yaml:"tier,omitempty"`
 	IdleTimeoutMinutes any          `yaml:"idle_timeout_minutes,omitempty"`
 	GithubDependencies any          `yaml:"github_dependencies,omitempty"`
 	Spawn              *SpawnConfig `yaml:"spawn,omitempty"`

@@ -123,7 +123,22 @@ func printDeployments(client *api.Client, agentID string) error {
 		}
 	}
 
+	printWaitingPushLine(client, agentID)
 	return nil
+}
+
+// printWaitingPushLine names the push waiting for the deploy in progress, if
+// any. It is the next entry of this history, and it has no deployment row yet,
+// so without this line `afy deployments` would not show it at all. One read of
+// the agent, which carries it (`github.waiting_push`); a read that fails only
+// leaves the line out — the history above is already printed.
+func printWaitingPushLine(client *api.Client, agentID string) {
+	agent, err := client.GetAgent(agentID)
+	if err != nil || agent == nil || agent.GitHub == nil || agent.GitHub.WaitingPush == nil {
+		return
+	}
+	output.Println("")
+	output.KeyValue("Push waiting", formatWaitingPush(agent.GitHub.WaitingPush))
 }
 
 // newestRollbackTarget is the first (newest) deployment the server says a

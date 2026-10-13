@@ -7,10 +7,15 @@ import (
 	"time"
 )
 
+// AnyWorker is the one spelling of "any of my agents" in allowed_workers
+// (control plane shared/spawn_workers.py). It stands alone in the list: an
+// empty list allows no spawns, and "*" never appears beside a name.
+const AnyWorker = "*"
+
 // SpawnableBy returns the names of SERVICE agents whose allowed_workers
-// list includes jobName — i.e. the services that could spawn this JOB.
-// Computed client-side from a previously-fetched agent list (no extra API
-// call, no new endpoint).
+// list includes jobName, or is ["*"] — i.e. the services that could spawn
+// this JOB. Computed client-side from a previously-fetched agent list (no
+// extra API call, no new endpoint).
 func SpawnableBy(jobName string, agents []Agent) []string {
 	var out []string
 	for i := range agents {
@@ -19,7 +24,7 @@ func SpawnableBy(jobName string, agents []Agent) []string {
 			continue
 		}
 		for _, w := range a.AllowedWorkers {
-			if w == jobName {
+			if w == jobName || w == AnyWorker {
 				out = append(out, a.Name)
 				break
 			}
@@ -158,13 +163,28 @@ func (c *Client) StopAgent(idOrName string) error {
 // "serving", "starting", "load_failed" or "unconfirmed". It is nil for an agent
 // that serves no requests, and for a control plane older than the field -- so a
 // nil never means "serving".
+//
+// Resume is set when the control plane ACCEPTED the start rather than carrying
+// it out in the request (status still "paused", nothing started yet): the
+// agent's previous stop was still finishing, or its machine's host had no room
+// (Resume.Cause "host_full"). The platform starts the agent itself.
+// StopBoundSeconds is then the longest the stop can still take, and
+// WaitBoundSeconds the longest until the agent runs or the start is given up
+// -- the server's number, the only bound `afy start --wait` waits by. Nothing
+// needs re-sending. Resume is nil on an ordinary start.
 type StartAgentResult struct {
-	Status    string  `json:"status"`
-	AgentID   string  `json:"agent_id"`
-	Readiness *string `json:"readiness"`
+	Status           string       `json:"status"`
+	AgentID          string       `json:"agent_id"`
+	Readiness        *string      `json:"readiness"`
+	Resume           *ResumeState `json:"resume"`
+	StopBoundSeconds *int         `json:"stop_bound_seconds"`
+	WaitBoundSeconds *int         `json:"wait_bound_seconds"`
 }
 
-// StartAgent resumes a paused agent.
+// StartAgent resumes a paused agent. The call is short: a start the control
+// plane cannot carry out in the request -- a stop still finishing, a full
+// host -- is ACCEPTED (Resume), and `afy start --wait` follows the agent's
+// status, so the client's own timeout applies.
 func (c *Client) StartAgent(idOrName string) (*StartAgentResult, error) {
 	var result StartAgentResult
 	if err := c.postLifecycle(fmt.Sprintf("/agents/%s/start", idOrName), &result); err != nil {
