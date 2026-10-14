@@ -61,15 +61,13 @@ func refuse(format string, args ...interface{}) error {
 
 // refuseFlagLikeValue refuses a workspace flag's value that starts with "-".
 // No workspace is named so (the control plane's rule starts a name with a
-// letter or a digit), and the usual cause is a shell that dropped an empty
-// argument: Windows PowerShell 5.1 turns `--add "" --yes` into `--add --yes`,
-// and the flag takes "--yes" as its value. Called before anything is sent.
+// letter or a digit), and the usual cause is a value left out: `--to --wait`
+// gives --to the value "--wait". Called before anything is sent.
 func refuseFlagLikeValue(flag string, values ...string) error {
 	for _, v := range values {
 		if strings.HasPrefix(v, "-") {
-			return refuse("--%s got %q as its value, and no workspace name starts with \"-\": the shell "+
-				"probably dropped an empty argument (Windows PowerShell 5.1 drops \"\"). For no workspace, "+
-				"write --%s= instead. Nothing was sent.", flag, v, flag)
+			return refuse("--%s got %q as its value, and no workspace name starts with \"-\": "+
+				"name the workspace after --%s. Nothing was sent.", flag, v, flag)
 		}
 	}
 	return nil

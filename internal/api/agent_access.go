@@ -15,14 +15,12 @@ import (
 // different workspace, with a different id).
 type AgentAccess struct {
 	Agent                string         `json:"agent"`
-	OwnWorkspace         *string        `json:"own_workspace"`
-	OwnWorkspaceRef      *WorkspaceRef  `json:"own_workspace_ref"`
+	OwnWorkspace         string         `json:"own_workspace"`
+	OwnWorkspaceRef      WorkspaceRef   `json:"own_workspace_ref"`
 	GrantedWorkspaces    []string       `json:"granted_workspaces"`
 	GrantedWorkspaceRefs []WorkspaceRef `json:"granted_workspace_refs"`
-	WorkspacelessGranted bool           `json:"workspaceless_granted"`
 	AllowedWorkspaces    []string       `json:"allowed_workspaces"`
 	AllowedWorkspaceRefs []WorkspaceRef `json:"allowed_workspace_refs"`
-	WorkspacelessAllowed bool           `json:"workspaceless_allowed"`
 	Changed              *bool          `json:"changed"`
 }
 
@@ -55,25 +53,6 @@ func (c *Client) GrantWorkspace(agent, workspace string) (*AgentAccess, error) {
 func (c *Client) RevokeWorkspace(agent, workspace string) (*AgentAccess, error) {
 	var out AgentAccess
 	if err := c.DeleteWithResult(accessPath(agent)+"/workspaces/"+url.PathEscape(workspace), &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// GrantWorkspaceless grants the workspaceless collections, on their own path:
-// "workspaceless" is a valid workspace NAME and must not mean two things.
-func (c *Client) GrantWorkspaceless(agent string) (*AgentAccess, error) {
-	var out AgentAccess
-	if err := c.Put(accessPath(agent)+"/workspaceless", nil, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
-// RevokeWorkspaceless revokes the workspaceless collections.
-func (c *Client) RevokeWorkspaceless(agent string) (*AgentAccess, error) {
-	var out AgentAccess
-	if err := c.DeleteWithResult(accessPath(agent)+"/workspaceless", &out); err != nil {
 		return nil, err
 	}
 	return &out, nil

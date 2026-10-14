@@ -73,13 +73,14 @@ func skipList() map[string]bool { return map[string]bool{guardFile: true} }
 // nothing else in the tree records.
 var notControlPlaneCodes = map[string]string{
 	// Environment variables the CLI reads.
-	"AETHERFY_API_KEY":    "env var: the API key, read by internal/config/credentials.go",
-	"AETHERFY_CONFIG_DIR": "env var: overrides the credentials directory",
-	"AETHERFY_API_URL":    "env var: overrides the control-plane API URL (config api_url, internal/config)",
-	"NO_COLOR":          "env var: the no-color convention, honoured by internal/output",
-	"XDG_CONFIG_HOME":     "env var: XDG base-directory lookup on unix",
-	"AETHERFY_CP_ROOT":    "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
-	"AETHERFY_REQUIRE_CP": "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
+	"AETHERFY_API_KEY":      "env var: the API key, read by internal/config/credentials.go",
+	"AETHERFY_CONFIG_DIR":   "env var: overrides the credentials directory",
+	"AETHERFY_API_URL":      "env var: overrides the control-plane API URL (config api_url, internal/config)",
+	"NO_COLOR":              "env var: the no-color convention, honoured by internal/output",
+	"XDG_CONFIG_HOME":       "env var: XDG base-directory lookup on unix",
+	"AETHERFY_CP_ROOT":      "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
+	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
+	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
 

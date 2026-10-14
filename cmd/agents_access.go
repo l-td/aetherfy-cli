@@ -12,9 +12,6 @@ package cmd
 // script must never hang on a question nobody can answer. A removal narrows
 // access, so it asks nothing. A change that changes nothing says so and asks
 // nothing.
-//
-// The workspaceless collections are named "" (as `afy collections move --to
-// ""` names no workspace): "workspaceless" is a valid workspace name.
 
 import (
 	"bufio"
@@ -43,10 +40,9 @@ var agentsAccessCmd = &cobra.Command{
 An agent reaches the collections of its own workspace, and of the workspaces
 you grant it; any other workspace is refused to it. --add grants a workspace,
 --remove revokes one; each takes a name, repeats, or takes a comma-separated
-list. "" names the collections in no workspace; Windows PowerShell 5.1 drops an
-empty argument, so there write --add= or --remove= instead; a value starting
-with "-" is refused, exit 2, as what a dropped "" leaves. Your own key is
-unaffected.
+list. Granting gives the agent access; it does not move it (moving is
+'afy update' with --workspace). An empty value, or one starting with
+"-", is refused, exit 2. Your own key is unaffected.
 
 Adding access lets the agent's code read, write, create and delete every
 collection there, including ones added later, so the command shows what would
@@ -59,8 +55,8 @@ A change takes effect within ` + accessChangeWindow + `.`,
   # Grant it a second workspace, then confirm
   afy access support-bot --add research
 
-  # From a script: grant the workspaceless collections, revoke another workspace
-  afy access support-bot --add "" --remove archive --yes --json`,
+  # From a script: grant one workspace, revoke another
+  afy access support-bot --add research --remove archive --yes --json`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interactive := term.IsTerminal(int(os.Stdin.Fd()))
@@ -76,19 +72,15 @@ var (
 	agentsAccessYes    bool
 )
 
-// scopes splits each flag value on commas (as --regions takes a list), keeping
-// a lone "" -- the workspaceless collections -- and dropping duplicates.
+// scopes splits each flag value on commas (as --regions takes a list),
+// dropping duplicates.
 func scopes(values []string) []string {
 	seen := map[string]bool{}
 	var out []string
 	for _, v := range values {
-		parts := []string{v}
-		if v != "" {
-			parts = strings.Split(v, ",")
-		}
-		for _, p := range parts {
+		for _, p := range strings.Split(v, ",") {
 			p = strings.TrimSpace(p)
-			if seen[p] || (p == "" && v != "") {
+			if seen[p] {
 				continue
 			}
 			seen[p] = true
@@ -98,17 +90,23 @@ func scopes(values []string) []string {
 	return out
 }
 
-func scopeLabel(scope string) string {
-	if scope == "" {
-		return "the collections in no workspace"
+// refuseEmptyScope refuses an empty workspace name: every agent and collection
+// lives in a workspace, so there is no unnamed one to grant.
+func refuseEmptyScope(flag string, values []string) error {
+	for _, s := range scopes(values) {
+		if s == "" {
+			return refuse("--%s got an empty workspace name: every collection lives in a named workspace. "+
+				"Name the workspace. Nothing was sent.", flag)
+		}
 	}
+	return nil
+}
+
+func scopeLabel(scope string) string {
 	return fmt.Sprintf("workspace '%s'", scope)
 }
 
 func reaches(a *api.AgentAccess, scope string) bool {
-	if scope == "" {
-		return a.WorkspacelessAllowed
-	}
 	for _, w := range a.AllowedWorkspaces {
 		if w == scope {
 			return true
@@ -118,9 +116,6 @@ func reaches(a *api.AgentAccess, scope string) bool {
 }
 
 func granted(a *api.AgentAccess, scope string) bool {
-	if scope == "" {
-		return a.WorkspacelessGranted
-	}
 	for _, w := range a.GrantedWorkspaces {
 		if w == scope {
 			return true
@@ -134,6 +129,12 @@ func agentsAccess(r *vecRun, agent string, add, remove []string, yes bool, stdin
 		return r.fail(err)
 	}
 	if err := refuseFlagLikeValue("remove", remove...); err != nil {
+		return r.fail(err)
+	}
+	if err := refuseEmptyScope("add", add); err != nil {
+		return r.fail(err)
+	}
+	if err := refuseEmptyScope("remove", remove); err != nil {
 		return r.fail(err)
 	}
 	return changeAgentAccess(r, agent, add, remove, yes, stdin, interactive)
@@ -216,24 +217,14 @@ func changeAgentAccess(r *vecRun, agent string, add, remove []string, yes bool, 
 	added, removed := []string{}, []string{}
 	// Narrow first, then widen: an interrupted run leaves less reachable, never more.
 	for _, s := range toRemove {
-		var next *api.AgentAccess
-		if s == "" {
-			next, err = cp.RevokeWorkspaceless(agent)
-		} else {
-			next, err = cp.RevokeWorkspace(agent, s)
-		}
+		next, err := cp.RevokeWorkspace(agent, s)
 		if err != nil {
 			return r.fail(partialAccessError(err, added, removed))
 		}
 		final, removed = next, append(removed, s)
 	}
 	for _, s := range toAdd {
-		var next *api.AgentAccess
-		if s == "" {
-			next, err = cp.GrantWorkspaceless(agent)
-		} else {
-			next, err = cp.GrantWorkspace(agent, s)
-		}
+		next, err := cp.GrantWorkspace(agent, s)
 		if err != nil {
 			return r.fail(partialAccessError(err, added, removed))
 		}
@@ -248,10 +239,7 @@ func changeAgentAccess(r *vecRun, agent string, add, remove []string, yes bool, 
 }
 
 func isOwn(a *api.AgentAccess, scope string) bool {
-	if scope == "" {
-		return a.OwnWorkspace == nil
-	}
-	return a.OwnWorkspace != nil && *a.OwnWorkspace == scope
+	return a.OwnWorkspace == scope
 }
 
 // partialAccessError keeps what was already applied visible: the changes are
@@ -277,18 +265,11 @@ func labels(scopes []string) string {
 // printAccess lists what the agent reaches, its own scope first.
 func printAccess(w io.Writer, a *api.AgentAccess) {
 	fmt.Fprintf(w, "Agent '%s' can use:\n", a.Agent)
-	if a.OwnWorkspace != nil {
-		fmt.Fprintf(w, "  %s  (its own workspace)\n", *a.OwnWorkspace)
-	} else {
-		fmt.Fprintln(w, "  \"\"  the collections in no workspace (its own scope)")
-	}
+	fmt.Fprintf(w, "  %s  (its own workspace)\n", a.OwnWorkspace)
 	names := append([]string(nil), a.GrantedWorkspaces...)
 	sort.Strings(names)
 	for _, n := range names {
 		fmt.Fprintf(w, "  %s  (granted)\n", n)
-	}
-	if a.OwnWorkspace != nil && a.WorkspacelessGranted {
-		fmt.Fprintln(w, "  \"\"  the collections in no workspace (granted)")
 	}
 }
 
@@ -301,9 +282,6 @@ func printAccessPreview(w io.Writer, a *api.AgentAccess, toAdd, toRemove, adds, 
 	fmt.Fprintf(w, "Agent '%s':\n", a.Agent)
 	for _, s := range toAdd {
 		what := fmt.Sprintf("every collection in workspace '%s'", s)
-		if s == "" {
-			what = "every collection that is in no workspace"
-		}
 		fmt.Fprintf(w, "  Adds %s: %s, including ones added later, becomes readable and writable by this agent's code.\n",
 			scopeLabel(s), what)
 	}
@@ -340,8 +318,8 @@ func accessJSON(a *api.AgentAccess, added, removed []string) interface{} {
 }
 
 func init() {
-	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated; \"\" for the collections in no workspace, written --add= on Windows PowerShell 5.1)")
-	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated; \"\" for the collections in no workspace, written --remove= on Windows PowerShell 5.1)")
+	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated)")
+	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().BoolVarP(&agentsAccessYes, "yes", "y", false, "Grant access without asking")
 	agentsAccessCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 }

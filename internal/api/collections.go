@@ -125,7 +125,7 @@ func (c *Client) ChangeCollectionRegions(id string, regions []string) (*Collecti
 
 // MoveCollection moves collection id to workspaceID, or out of any workspace
 // when it is nil.
-func (c *Client) MoveCollection(id string, workspaceID *string) (*CollectionChange, error) {
+func (c *Client) MoveCollection(id, workspaceID string) (*CollectionChange, error) {
 	var r CollectionChange
 	if err := c.Patch(fmt.Sprintf("/collections/%s", id), map[string]interface{}{"workspace_id": workspaceID}, &r); err != nil {
 		return nil, err

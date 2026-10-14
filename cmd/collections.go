@@ -192,11 +192,10 @@ func collectionsGet(r *vecRun, name string) int {
 // collection: what it does, its state, and the operation to follow.
 func describeCollectionOperation(op *api.CollectionOperation) string {
 	what := "replicating to " + strings.Join(op.ToRegions, ", ")
-	if op.Kind == "move" {
-		what = "moving to no workspace"
-		if op.TargetWorkspace != nil {
-			what = "moving to workspace '" + op.TargetWorkspace.Name + "'"
-		}
+	// A move always names its target; target_workspace is null only for a
+	// regions change.
+	if op.Kind == "move" && op.TargetWorkspace != nil {
+		what = "moving to workspace '" + op.TargetWorkspace.Name + "'"
 	}
 	// The operation's status as words: the control plane answers pending or
 	// in_progress, the vocabulary its operation poll uses.

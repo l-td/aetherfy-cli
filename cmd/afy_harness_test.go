@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"testing"
@@ -136,5 +140,64 @@ func TestRunAfyDrivesTheRealCommandAndSeesItsRequests(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "stand-in-unrouted") && !strings.Contains(stderr, "the stand-in has no answer") {
 		t.Errorf("stderr did not carry the stand-in's refusal: %q", stderr)
+	}
+}
+
+// afyProcessArgs carries the argv of a re-executed test binary that is to act
+// as afy (see runAfyProcess). Unit separator: an argument may contain spaces.
+const afyProcessArgs = "AFY_TEST_PROCESS_ARGS"
+
+// TestMain lets the test binary act as afy itself when re-executed by
+// runAfyProcess: some commands end the process (os.Exit with their exit code),
+// which in-process would end the whole test run.
+func TestMain(m *testing.M) {
+	if args, ok := os.LookupEnv(afyProcessArgs); ok {
+		rootCmd.SetArgs(strings.Split(args, "\x1f"))
+		if err := Execute(); err != nil {
+			os.Exit(ExitCode(err))
+		}
+		os.Exit(0)
+	}
+	os.Exit(m.Run())
+}
+
+// runAfyProcess runs `afy <args>` as its own process (this test binary,
+// re-executed) against cp, logged in, and returns stdout, stderr and the exit
+// code: the shipped command as a user runs it, exit code included.
+func runAfyProcess(t *testing.T, cp *fakeCP, env []string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0])
+	cmd.Env = append(os.Environ(),
+		afyProcessArgs+"="+strings.Join(args, "\x1f"),
+		"AETHERFY_CONFIG_DIR="+t.TempDir(),
+		"AETHERFY_API_KEY=afy_test_0123456789abcdef0123456789abcdef",
+		"NO_COLOR=1",
+	)
+	if cp != nil {
+		cmd.Env = append(cmd.Env, "AETHERFY_API_URL="+cp.srv.URL+"/api/v1")
+	}
+	cmd.Env = append(cmd.Env, env...)
+	var out, errOut bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errOut
+	err := cmd.Run()
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+	case errors.As(err, &exitErr):
+		code = exitErr.ExitCode()
+	default:
+		t.Fatalf("running afy: %v", err)
+	}
+	return out.String(), errOut.String(), code
+}
+
+func TestRunAfyProcessReportsTheExitCode(t *testing.T) {
+	// Positive control: a refused input exits 2, and a good one 0, as a user
+	// would see them.
+	if _, stderr, code := runAfyProcess(t, nil, nil, "access", "bot", "--add", "--yes"); code != exitInputRefused {
+		t.Errorf("exit %d, want %d; stderr %q", code, exitInputRefused, stderr)
+	}
+	if _, _, code := runAfyProcess(t, nil, nil, "version"); code != 0 {
+		t.Errorf("afy version exited %d", code)
 	}
 }
