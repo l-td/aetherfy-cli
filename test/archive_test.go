@@ -173,7 +173,7 @@ func TestValidateAetherfyConfig_MissingFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	err := archive.ValidateAetherfyConfig(tmpDir)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "aetherfy.yaml not found")
+	assert.Contains(t, err.Error(), "Missing required aetherfy.yaml")
 }
 
 func TestValidateAetherfyConfig_MissingRuntime(t *testing.T) {

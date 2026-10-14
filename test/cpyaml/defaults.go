@@ -119,6 +119,40 @@ func Defaults(cpRoot string) (defaults map[string]interface{}, required []string
 	return defaults, required, nil
 }
 
+// MissingConfigMessage reads the control plane's MISSING_CONFIG_MESSAGE from
+// SourcePath: `NAME = (` then string literals, one per line, concatenated,
+// then `)`. Anything else inside is refused, so a sentence assembled some
+// other way is not read as a shorter one.
+func MissingConfigMessage(cpRoot string) (string, error) {
+	raw, err := os.ReadFile(filepath.Join(cpRoot, filepath.FromSlash(SourcePath)))
+	if err != nil {
+		return "", err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	for i, l := range lines {
+		if strings.TrimSpace(l) != "MISSING_CONFIG_MESSAGE = (" {
+			continue
+		}
+		var b strings.Builder
+		for _, part := range lines[i+1:] {
+			part = strings.TrimSpace(part)
+			if part == ")" {
+				if b.Len() == 0 {
+					return "", fmt.Errorf("MISSING_CONFIG_MESSAGE in %s is empty", SourcePath)
+				}
+				return b.String(), nil
+			}
+			s, err := strconv.Unquote(part)
+			if err != nil {
+				return "", fmt.Errorf("MISSING_CONFIG_MESSAGE has a line this reader cannot read: %q", part)
+			}
+			b.WriteString(s)
+		}
+		return "", fmt.Errorf("MISSING_CONFIG_MESSAGE in %s never closes", SourcePath)
+	}
+	return "", fmt.Errorf("no `MISSING_CONFIG_MESSAGE = (` in %s", SourcePath)
+}
+
 // parenDepth is the net count of ( over ) on a line, string literals ignored.
 func parenDepth(l string) int {
 	s := pyString.ReplaceAllString(l, `""`)

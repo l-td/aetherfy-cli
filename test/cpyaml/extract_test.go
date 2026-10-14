@@ -110,6 +110,16 @@ func TestDefaultsRefusesADefaultItCannotRead(t *testing.T) {
 	}
 }
 
+func TestMissingConfigMessageJoinsItsLiterals(t *testing.T) {
+	body := "MISSING_CONFIG_MESSAGE = (\r\n    \"Missing required aetherfy.yaml. Add it \"\r\n    \"beside your code.\"\r\n)\r\n"
+	got, err := MissingConfigMessage(fakeCP(t, body))
+	require.NoError(t, err)
+	assert.Equal(t, "Missing required aetherfy.yaml. Add it beside your code.", got)
+
+	_, err = MissingConfigMessage(fakeCP(t, "MISSING_CONFIG_MESSAGE = (\r\n    PREFIX + \"x\"\r\n)\r\n"))
+	assert.Error(t, err, "a line that is not a string literal is refused, not skipped")
+}
+
 func TestAMissingOrUnreadablePlatformFieldsIsRefused(t *testing.T) {
 	start := strings.Index(realShape, "PLATFORM_FIELDS = {")
 	end := strings.Index(realShape, "}\r\n\r\nclass SpawnConfig") + len("}\r\n")

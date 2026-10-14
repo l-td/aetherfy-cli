@@ -180,6 +180,14 @@ func TestKnownFieldsEqualTheControlPlaneModel(t *testing.T) {
 		"yamldiff.Defaults and the defaults of the control plane's %s (%s) disagree: `afy diff` would "+
 			"misreport what an omitted field becomes", cpyaml.RootModel, cpyaml.SourcePath)
 	assert.Equal(t, []string{"runtime"}, required, "the model's required fields changed")
+
+	// A deploy without aetherfy.yaml is refused locally (there is nothing to
+	// upload, so the server's sentence cannot arrive); the CLI's sentence is
+	// the server's own.
+	missing, err := cpyaml.MissingConfigMessage(cpRootForPair(t))
+	require.NoError(t, err)
+	assert.Equal(t, missing, MissingConfigMessage,
+		"archive.MissingConfigMessage and the control plane's MISSING_CONFIG_MESSAGE (%s) disagree", cpyaml.SourcePath)
 	assert.Empty(t, cpyaml.NotForbidding(src),
 		"these control-plane models accept unknown fields, which the CLI refuses: set "+
 			"model_config = ConfigDict(extra=\"forbid\") on them")

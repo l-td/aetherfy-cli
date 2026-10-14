@@ -197,13 +197,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			// sentence above says which.
 			os.Exit(1)
 		}
-		output.Println("")
-		output.Println("Add an aetherfy.yaml beside your code, with at least a runtime:")
-		output.Println("")
-		output.Dim.Println("  runtime: python3.11")
-		output.Dim.Println("  entrypoint: main.py")
-		output.Println("")
-		output.Println("'afy init' scans the folder and writes one.")
+		output.Println("'afy init --agent <name>' writes the linked agent's configuration as one; 'afy init' scans a folder for a new agent.")
 		os.Exit(1)
 	}
 	return deployDir(client, agent, absPath)

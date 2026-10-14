@@ -47,13 +47,27 @@ type SpawnConfig struct {
 	Workers any `yaml:"workers,omitempty"`
 }
 
+// MissingConfigMessage is the control plane's sentence for a release without
+// aetherfy.yaml (shared/config_parser.py MISSING_CONFIG_MESSAGE): an upload
+// and a push without one are refused with it. The CLI refuses a deploy before
+// uploading, so the server's sentence cannot arrive; this one says the same
+// thing, the same way, after the path it looked at, as the push refusal names
+// the repo, commit, branch and path it read.
+const MissingConfigMessage = "Missing required aetherfy.yaml. Add it beside your code with at least `runtime:`; " +
+	"every field it leaves out takes its default."
+
+// MissingConfigError is a folder without aetherfy.yaml.
+type MissingConfigError struct{ Path string }
+
+func (e *MissingConfigError) Error() string { return e.Path + ": " + MissingConfigMessage }
+
 // ParseAetherfyConfig reads and parses aetherfy.yaml from the given directory
 func ParseAetherfyConfig(dir string) (*AetherfyConfig, error) {
 	configPath := filepath.Join(dir, "aetherfy.yaml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("aetherfy.yaml not found in %s", dir)
+			return nil, &MissingConfigError{Path: configPath}
 		}
 		return nil, fmt.Errorf("failed to read aetherfy.yaml: %w", err)
 	}
