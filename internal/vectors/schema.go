@@ -31,13 +31,17 @@ type SchemaWrite struct {
 }
 
 // SchemaFieldAnalysis is one payload field as the analyzer saw it in the
-// sample (services/schemaAnalyzer.js): the share of points carrying it, the
-// share of each type among them, and its warnings.
+// sample (vectordb services/schemaAnalyzer.js:177-201): the share of points
+// carrying it, the share of each type among them, its warnings, the first
+// value seen of each type, and, for an object, the same analysis of its own
+// fields. ElementTypes is sent only for an array field.
 type SchemaFieldAnalysis struct {
-	Presence     float64            `json:"presence"`
-	Types        map[string]float64 `json:"types"`
-	ElementTypes map[string]float64 `json:"element_types,omitempty"`
-	Warnings     []string           `json:"warnings"`
+	Presence     float64                        `json:"presence"`
+	Types        map[string]float64             `json:"types"`
+	ElementTypes map[string]float64             `json:"element_types,omitempty"`
+	Warnings     []string                       `json:"warnings"`
+	Samples      map[string]json.RawMessage     `json:"samples,omitempty"`
+	Nested       map[string]SchemaFieldAnalysis `json:"nested,omitempty"`
 }
 
 // SchemaAnalysis is POST …/schema/analyze's answer.

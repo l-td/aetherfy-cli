@@ -49,8 +49,10 @@ func (st *schemaStore) handle(r vecRequest) (int, string) {
 		return 200, `{"success":true}`
 	case r.Method == "POST" && r.Path == schemaPath+"/analyze":
 		return 200, `{"collection":"articles","sample_size":4,"total_points":10,"fields":{` +
-			`"title":{"presence":1,"types":{"string":1},"element_types":{},"warnings":[]},` +
-			`"tags":{"presence":0.25,"types":{"array":1},"element_types":{"string":1},"warnings":["SPARSE_FIELD"]}},` +
+			`"title":{"presence":1,"types":{"string":1},"warnings":[],"samples":{"string":"Hello"}},` +
+			`"tags":{"presence":0.25,"types":{"array":1},"warnings":["SPARSE_FIELD"],"samples":{"array":["a"]},"element_types":{"string":1}},` +
+			`"author":{"presence":0.5,"types":{"object":1},"warnings":[],"samples":{"object":{"name":"Ann"}},` +
+			`"nested":{"name":{"presence":1,"types":{"string":1},"warnings":[],"samples":{"string":"Ann"}}}}},` +
 			`"suggested_schema":{"fields":{"title":{"type":"string","required":true}}},"processing_time_ms":3}`
 	}
 	return 599, `{"error":{"code":"stand-in-unrouted","message":"the fake has no answer"}}`
@@ -227,20 +229,30 @@ func TestSchemaSetWithoutAVersionIsTheFirstSchema(t *testing.T) {
 // Input refused before any request: exit 2, nothing sent.
 func TestSchemaSetRefusesABadFileBeforeAnyRequest(t *testing.T) {
 	s, _ := schemaFake(t, "v2")
-	for name, args := range map[string][]string{
-		"no --file":     {},
-		"missing file":  {"--file", filepath.Join(t.TempDir(), "nope.json")},
-		"not JSON":      {"--file", writeSchemaFile(t, `schema: {}`)},
-		"unknown field": {"--file", writeSchemaFile(t, `{"schema":{},"enforcment_mode":"strict"}`)},
-		"no schema":     {"--file", writeSchemaFile(t, `{"etag":"v2"}`)},
-		"a null schema": {"--file", writeSchemaFile(t, `{"schema":null,"etag":"v2"}`)},
+	// Each case names the sentence of ITS refusal: exit 2 and nothing sent are
+	// also what a neighbouring refusal gives (an empty --file path fails to
+	// read, bad JSON has no schema), so they cannot tell the cases apart.
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"no --file", nil, "--file is required"},
+		{"missing file", []string{"--file", filepath.Join(t.TempDir(), "nope.json")}, "reading "},
+		{"not JSON", []string{"--file", writeSchemaFile(t, `schema: {}`)}, "is not a schema file"},
+		{"unknown field", []string{"--file", writeSchemaFile(t, `{"schema":{},"enforcment_mode":"strict"}`)}, `unknown field "enforcment_mode"`},
+		{"no schema", []string{"--file", writeSchemaFile(t, `{"etag":"v2"}`)}, `has no "schema"`},
+		{"a null schema", []string{"--file", writeSchemaFile(t, `{"schema":null,"etag":"v2"}`)}, `has no "schema"`},
 	} {
-		t.Run(name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			before := len(s.got())
-			argv := append([]string{"collections", "schema", "set", "articles", "--workspace", "research"}, args...)
+			argv := append([]string{"collections", "schema", "set", "articles", "--workspace", "research"}, tc.args...)
 			_, stderr, code := runAfyProcess(t, nil, schemaEnv(s), argv...)
 			if code != exitInputRefused || len(s.got()) != before {
 				t.Errorf("exit %d, %d requests; want exit %d and nothing sent. stderr %q", code, len(s.got())-before, exitInputRefused, stderr)
+			}
+			if !strings.Contains(stderr, tc.want) {
+				t.Errorf("stderr = %q, want this case's own refusal (%q)", stderr, tc.want)
 			}
 		})
 	}
@@ -283,6 +295,23 @@ func TestSchemaAnalyze(t *testing.T) {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, stdout)
 		}
+	}
+	// --json carries what the analyzer sent, samples and nested fields
+	// included (vectordb schemaAnalyzer.js:181, :201), not only what the text
+	// output shows.
+	stdout, _, err = runAfy(t, nil, "collections", "schema", "analyze", "articles", "--workspace", "research", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields, _ := decode(t, stdout)["fields"].(map[string]interface{})
+	if got := jsonAt(fields, "author", "nested", "name", "presence"); got != 1.0 {
+		t.Errorf("--json lost the analyzer's nested fields (author.nested.name.presence = %v): %v", got, fields)
+	}
+	if got := jsonAt(fields, "author", "samples", "object", "name"); got != "Ann" {
+		t.Errorf("--json lost the analyzer's samples (author.samples.object.name = %v): %v", got, fields)
+	}
+	if got := jsonAt(fields, "title", "samples", "string"); got != "Hello" {
+		t.Errorf("--json lost the analyzer's samples (title.samples.string = %v): %v", got, fields)
 	}
 	// No --sample-size: the server's default, so none is sent.
 	_, _, _ = runAfy(t, nil, "collections", "schema", "analyze", "articles", "--workspace", "research")
@@ -365,4 +394,17 @@ func TestSchemaGetSaveKeepsAnExistingFileUnlessForce(t *testing.T) {
 	if saved := decode(t, readFile(t, file)); saved["etag"] != "v2" {
 		t.Errorf("--force did not replace the file: %v", saved)
 	}
+}
+
+// jsonAt follows keys down decoded JSON, nil when any step is missing.
+func jsonAt(m map[string]interface{}, keys ...string) interface{} {
+	var cur interface{} = m
+	for _, k := range keys {
+		obj, ok := cur.(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		cur = obj[k]
+	}
+	return cur
 }
