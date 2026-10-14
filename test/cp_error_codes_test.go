@@ -79,6 +79,7 @@ var notControlPlaneCodes = map[string]string{
 	"NO_COLOR":              "env var: the no-color convention, honoured by internal/output",
 	"XDG_CONFIG_HOME":       "env var: XDG base-directory lookup on unix",
 	"AETHERFY_CP_ROOT":      "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
+	"AETHERFY_WORKSPACE_ID": "env var: the workspace id the control plane injects into agents (for the SDKs); the CLI reads it NOT, pinned by a test",
 	"PLATFORM_FIELDS":       "the control plane's constant of the keys that left aetherfy.yaml, read by test/cpyaml",
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
@@ -94,7 +95,7 @@ var notControlPlaneCodes = map[string]string{
 	// internal/vectors/resolve.go.
 	"AETHERFY_VECTORS_URL":        "env var: the vectors endpoint, as the SDKs read it",
 	"AETHERFY_VECTORS_API_REGION": "env var: the vectors API region, as the SDKs read it",
-	"AETHERFY_WORKSPACE":          "env var: the workspace vector collections default to, as the SDKs read it",
+	"AETHERFY_WORKSPACE":          "env var: no longer injected nor read; a test pins that the CLI ignores it",
 
 	// VECTORDB error codes, in the internal/vectors fixtures. The vector
 	// commands talk to vectordb, not the control plane, and vectordb has no

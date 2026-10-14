@@ -58,7 +58,8 @@ type Client struct {
 type sender func(method, url string, body []byte, headers http.Header, timeout time.Duration) (int, []byte, error)
 
 // New builds a client for an already-resolved endpoint (see Resolve).
-// workspace "" means no workspace: collections are not namespaced.
+// Every collection lives in a workspace, so workspace is always named: the
+// vectors API refuses a collection path without one (400 WORKSPACE_REQUIRED).
 func New(endpoint, apiKey, workspace string) *Client {
 	return &Client{
 		endpoint:      strings.TrimRight(endpoint, "/"),
@@ -76,7 +77,7 @@ func New(endpoint, apiKey, workspace string) *Client {
 // Endpoint is the base URL requests go to, without /api/v1.
 func (c *Client) Endpoint() string { return c.endpoint }
 
-// Workspace is the workspace collection names are scoped to, "" for none.
+// Workspace is the workspace collection names are scoped to.
 func (c *Client) Workspace() string { return c.workspace }
 
 func httpSend(method, target string, body []byte, headers http.Header, timeout time.Duration) (int, []byte, error) {
@@ -108,24 +109,17 @@ func apiURL(endpoint, path string) string {
 	return strings.TrimRight(endpoint, "/") + "/api/v1/" + strings.TrimLeft(path, "/")
 }
 
-// collectionPath is the SDKs' _build_collection_path: the nested
-// workspaces/{ws}/collections/{name} form when a workspace is set, else the
-// flat one. Every segment is escaped whole, "/" included, as quote(safe="")
-// does, so a name cannot split into two segments.
+// collectionPath is the SDKs' _build_collection_path:
+// workspaces/{ws}/collections/{name}. There is no flat form: every collection
+// lives in a workspace. Every segment is escaped whole, "/" included, as
+// quote(safe="") does, so a name cannot split into two segments.
 func (c *Client) collectionPath(name, suffix string) string {
-	enc := url.PathEscape(name)
-	if c.workspace != "" {
-		return "workspaces/" + url.PathEscape(c.workspace) + "/collections/" + enc + suffix
-	}
-	return "collections/" + enc + suffix
+	return "workspaces/" + url.PathEscape(c.workspace) + "/collections/" + url.PathEscape(name) + suffix
 }
 
 // collectionsPath is the SDKs' _build_collections_list_path.
 func (c *Client) collectionsPath() string {
-	if c.workspace != "" {
-		return "workspaces/" + url.PathEscape(c.workspace) + "/collections"
-	}
-	return "collections"
+	return "workspaces/" + url.PathEscape(c.workspace) + "/collections"
 }
 
 func (c *Client) headers(withBody bool) http.Header {

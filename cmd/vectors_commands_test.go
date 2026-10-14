@@ -137,23 +137,6 @@ func TestCollectionsListScopesToTheWorkspaceAndSaysWhichOne(t *testing.T) {
 		t.Errorf("collection = %v", c)
 	}
 
-	// No workspace: the flat route, and the envelope says so with a null
-	// rather than leaving the key out.
-	s = newVecServer(t, func(vecRequest) (int, string) { return 200, `{"collections":[]}` })
-	r, stdout, _, _ = s.run("", true)
-	if code := collectionsList(r); code != 0 {
-		t.Fatalf("exit %d", code)
-	}
-	if req := only(t, s.got()); req.Path != "/api/v1/collections" {
-		t.Errorf("workspaceless list went to %s", req.Path)
-	}
-	out = decode(t, stdout.String())
-	if ws, present := out["workspace"]; !present || ws != nil {
-		t.Errorf("workspace = %v (present %v), want null", ws, present)
-	}
-	if cols, ok := out["collections"].([]interface{}); !ok || len(cols) != 0 {
-		t.Errorf("an empty list must print [], got %v", out["collections"])
-	}
 }
 
 func TestCollectionsGet(t *testing.T) {
@@ -161,11 +144,11 @@ func TestCollectionsGet(t *testing.T) {
 		return 200, `{"result":{"name":"articles","description":"news","config":{"params":{"vectors":{"size":768,"distance":"Dot"}}},` +
 			`"points_count":3,"status":"green","regions":["us-east-1","eu-central-1"],"created_at":"c","updated_at":"u"},"schema_version":"v1"}`
 	})
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := collectionsGet(r, "my articles"); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if req := only(t, s.got()); req.Method != "GET" || req.Path != "/api/v1/collections/my%20articles" {
+	if req := only(t, s.got()); req.Method != "GET" || req.Path != "/api/v1/workspaces/default/collections/my%20articles" {
 		t.Errorf("sent %s %s", req.Method, req.Path)
 	}
 	c := decode(t, stdout.String())["collection"].(map[string]interface{})
@@ -204,7 +187,7 @@ func TestCollectionsCreateSendsTheSDKsBody(t *testing.T) {
 	// Without --regions the key is not sent: the server places the collection
 	// in the full scope, while an explicit [] is a different request.
 	s = newVecServer(t, func(vecRequest) (int, string) { return 200, `{"result":true,"regions":["us-east-1","eu-central-1"]}` })
-	r, _, _, _ = s.run("", false)
+	r, _, _, _ = s.run("default", false)
 	if code := collectionsCreate(r, "articles", 8, "cosine", nil); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -224,7 +207,7 @@ func TestCollectionsCreateRefusesBadInputBeforeAnyRequest(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{}` })
-			r, _, stderr, connects := s.run("", false)
+			r, _, stderr, connects := s.run("default", false)
 			if code := collectionsCreate(r, "articles", tc.size, tc.distance, nil); code != exitInputRefused {
 				t.Errorf("exit %d, want %d", code, exitInputRefused)
 			}
@@ -241,7 +224,7 @@ func TestCollectionsCreateRefusesBadInputBeforeAnyRequest(t *testing.T) {
 func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	deleted := func(t *testing.T, s *vecServer) {
 		t.Helper()
-		if req := only(t, s.got()); req.Method != "DELETE" || req.Path != "/api/v1/collections/articles" {
+		if req := only(t, s.got()); req.Method != "DELETE" || req.Path != "/api/v1/workspaces/default/collections/articles" {
 			t.Errorf("sent %s %s", req.Method, req.Path)
 		}
 	}
@@ -249,7 +232,7 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 
 	t.Run("--yes deletes", func(t *testing.T) {
 		s := newVecServer(t, ok)
-		r, stdout, _, _ := s.run("", true)
+		r, stdout, _, _ := s.run("default", true)
 		if code := collectionsDelete(r, "articles", true, strings.NewReader(""), false); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
@@ -261,7 +244,7 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	})
 	t.Run("no terminal and no --yes deletes nothing", func(t *testing.T) {
 		s := newVecServer(t, ok)
-		r, _, stderr, connects := s.run("", false)
+		r, _, stderr, connects := s.run("default", false)
 		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), false); code != exitInputRefused {
 			t.Errorf("exit %d, want %d", code, exitInputRefused)
 		}
@@ -274,7 +257,7 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	})
 	t.Run("typing the name deletes", func(t *testing.T) {
 		s := newVecServer(t, ok)
-		r, _, _, _ := s.run("", false)
+		r, _, _, _ := s.run("default", false)
 		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), true); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
@@ -282,7 +265,7 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	})
 	t.Run("typing another name deletes nothing", func(t *testing.T) {
 		s := newVecServer(t, ok)
-		r, _, _, _ := s.run("", false)
+		r, _, _, _ := s.run("default", false)
 		if code := collectionsDelete(r, "articles", false, strings.NewReader("article\n"), true); code != exitInputRefused {
 			t.Errorf("exit %d", code)
 		}
@@ -332,7 +315,7 @@ func TestIndexCreateWaitsForCompleted(t *testing.T) {
 
 func TestIndexCreateForwardsAParameterisedTypeAsAnObject(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) { return 200, indexCompleted })
-	r, _, _, _ := s.run("", false)
+	r, _, _, _ := s.run("default", false)
 	if code := indexCreate(r, "articles", "body", `{"type":"text","lowercase":true}`, nil); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -344,7 +327,7 @@ func TestIndexCreateForwardsAParameterisedTypeAsAnObject(t *testing.T) {
 
 func TestIndexCreateStopsAtItsDeadlineWithTheStillBuildingMessage(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) { return 200, indexAcknowledged })
-	r, stdout, stderr, _ := s.run("", false)
+	r, stdout, stderr, _ := s.run("default", false)
 	if code := indexCreate(r, "articles", "ts", "integer", strPtr("0.3")); code != exitRequestFailed {
 		t.Errorf("exit %d, want %d", code, exitRequestFailed)
 	}
@@ -360,7 +343,7 @@ func TestIndexCreateStopsAtItsDeadlineWithTheStillBuildingMessage(t *testing.T) 
 func TestIndexCreateRefusesATimeoutBeforeAnyRequest(t *testing.T) {
 	for _, raw := range []string{"0", "-5", "NaN", "Inf", "ten", ""} {
 		s := newVecServer(t, func(vecRequest) (int, string) { return 200, indexCompleted })
-		r, _, stderr, connects := s.run("", true)
+		r, _, stderr, connects := s.run("default", true)
 		if code := indexCreate(r, "articles", "ts", "integer", strPtr(raw)); code != exitInputRefused {
 			t.Errorf("--timeout %q: exit %d, want %d", raw, code, exitInputRefused)
 		}
@@ -376,11 +359,11 @@ func TestIndexCreateRefusesATimeoutBeforeAnyRequest(t *testing.T) {
 
 func TestIndexDelete(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) { return 200, indexCompleted })
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := indexDelete(r, "articles", "meta/tag"); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
-	if req := only(t, s.got()); req.Method != "DELETE" || req.Path != "/api/v1/collections/articles/index/meta%2Ftag" {
+	if req := only(t, s.got()); req.Method != "DELETE" || req.Path != "/api/v1/workspaces/default/collections/articles/index/meta%2Ftag" {
 		t.Errorf("sent %s %s", req.Method, req.Path)
 	}
 	if out := decode(t, stdout.String()); out["deleted"] != true || out["field"] != "meta/tag" {
@@ -392,12 +375,12 @@ const langFilter = `{"must":[{"key":"lang","match":{"value":"en"}}]}`
 
 func TestPointsCount(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{"result":{"count":42},"status":"ok"}` })
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := pointsCount(r, "articles", langFilter); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	req := only(t, s.got())
-	if req.Method != "POST" || req.Path != "/api/v1/collections/articles/points/count" || req.Body["exact"] != true {
+	if req.Method != "POST" || req.Path != "/api/v1/workspaces/default/collections/articles/points/count" || req.Body["exact"] != true {
 		t.Errorf("sent %s %s %v", req.Method, req.Path, req.Body)
 	}
 	if f, ok := req.Body["filter"].(map[string]interface{}); !ok || f["must"] == nil {
@@ -409,7 +392,7 @@ func TestPointsCount(t *testing.T) {
 
 	// Human output is the bare number, for $(afy points count ...).
 	s = newVecServer(t, func(vecRequest) (int, string) { return 200, `{"result":{"count":7}}` })
-	r, stdout, _, _ = s.run("", false)
+	r, stdout, _, _ = s.run("default", false)
 	if code := pointsCount(r, "articles", ""); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -422,13 +405,13 @@ func TestPointsGetSendsDigitsAsNumbersAndTheRestAsStrings(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) {
 		return 200, `{"result":[{"id":17,"payload":{"title":"a"}},{"id":"5c56c793-69f3-4fbf-87e6-c4bf54c28c26","payload":null}]}`
 	})
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := pointsGet(r, "articles", []string{"17", "5c56c793-69f3-4fbf-87e6-c4bf54c28c26"}); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	req := only(t, s.got())
 	ids := req.Body["ids"].([]interface{})
-	if req.Path != "/api/v1/collections/articles/points/retrieve" || ids[0] != 17.0 ||
+	if req.Path != "/api/v1/workspaces/default/collections/articles/points/retrieve" || ids[0] != 17.0 ||
 		ids[1] != "5c56c793-69f3-4fbf-87e6-c4bf54c28c26" || req.Body["with_payload"] != true || req.Body["with_vector"] != false {
 		t.Errorf("sent %s %v", req.Path, req.Body)
 	}
@@ -450,7 +433,7 @@ func TestPointsSearch(t *testing.T) {
 	if err := os.WriteFile(vectorFile, []byte("[0.5, -0.25]"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := pointsSearch(r, "articles", "@"+vectorFile, 5, langFilter); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -460,7 +443,7 @@ func TestPointsSearch(t *testing.T) {
 	if _, retired := req.Body["vector"]; retired {
 		t.Errorf("sent the retired search body field \"vector\": %v", req.Body)
 	}
-	if req.Path != "/api/v1/collections/articles/points/query" || len(vec) != 2 || vec[1] != -0.25 ||
+	if req.Path != "/api/v1/workspaces/default/collections/articles/points/query" || len(vec) != 2 || vec[1] != -0.25 ||
 		req.Body["limit"] != 5.0 || req.Body["filter"] == nil || req.Body["with_payload"] != true {
 		t.Errorf("sent %s %v", req.Path, req.Body)
 	}
@@ -485,7 +468,7 @@ func TestPointsRefuseBadInputBeforeAnyRequest(t *testing.T) {
 	for name, run := range cases {
 		t.Run(name, func(t *testing.T) {
 			s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{}` })
-			r, _, _, connects := s.run("", false)
+			r, _, _, connects := s.run("default", false)
 			if code := run(r); code != exitInputRefused {
 				t.Errorf("exit %d, want %d", code, exitInputRefused)
 			}
@@ -497,47 +480,34 @@ func TestPointsRefuseBadInputBeforeAnyRequest(t *testing.T) {
 }
 
 // The real wiring, flags to request: `afy collections list` run through the
-// root command, with its endpoint and workspace coming from the environment
-// or the flags exactly as a user's shell would supply them.
-func TestTheFlagsAndTheEnvironmentReachTheRequest(t *testing.T) {
+// root command, with its endpoint coming from the environment and its
+// workspace from --workspace, else from the account's workspaces -- NEVER from
+// an environment variable (supervisor ruling R3: a person names the
+// workspace). AETHERFY_WORKSPACE, which earlier versions read, is set here and
+// must change nothing.
+func TestTheWorkspaceIsTheFlagOrTheAccountsNeverTheEnvironment(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{"collections":[]}` })
-	t.Setenv("AETHERFY_CONFIG_DIR", t.TempDir())
-	t.Setenv("AETHERFY_API_KEY", "afy_test_0123456789abcdef0123456789abcdef")
+	cp := newFakeCP(t)
+	cp.on("GET", "/workspaces", 200, oneWorkspace) // "default"
 	t.Setenv(vectors.EnvVectorsURL, s.srv.URL)
 	t.Setenv(vectors.EnvAPIRegion, "")
-	t.Setenv(vectors.EnvWorkspace, "from-env")
+	t.Setenv("AETHERFY_WORKSPACE", "from-env")
+	t.Setenv("AETHERFY_WORKSPACE_ID", "7d1c2f4e-0000-4000-8000-0000000000aa")
 
-	run := func(args ...string) map[string]interface{} {
+	list := func(args ...string) map[string]interface{} {
 		t.Helper()
-		// Cobra keeps parsed values and Changed marks between executions of the
-		// same tree; put these back so each run starts as a fresh process would.
-		defer func() {
-			for _, name := range []string{"json", "workspace", "vectors-url", "api-region"} {
-				f := collectionsListCmd.Flag(name)
-				_ = f.Value.Set(f.DefValue)
-				f.Changed = false
-			}
-		}()
-		rootCmd.SetArgs(append([]string{"collections", "list"}, args...))
-		var err error
-		out := captureStdout(t, func() { err = rootCmd.Execute() })
+		stdout, stderr, err := runAfy(t, cp, append([]string{"collections", "list", "--json"}, args...)...)
 		if err != nil {
-			t.Fatalf("afy collections list %v: %v", args, err)
+			t.Fatalf("afy collections list %v: %v\n%s", args, err, stderr)
 		}
-		return decode(t, out)
+		return decode(t, stdout)
 	}
 
-	out := run("--json")
-	if out["workspace"] != "from-env" || out["endpoint"] != s.srv.URL {
-		t.Errorf("env: envelope = %v", out)
+	if out := list(); out["workspace"] != "default" || out["endpoint"] != s.srv.URL {
+		t.Errorf("no flag, one workspace: envelope = %v, want workspace default", out)
 	}
-	out = run("--json", "--workspace", "from-flag")
-	if out["workspace"] != "from-flag" {
+	if out := list("--workspace", "from-flag"); out["workspace"] != "from-flag" {
 		t.Errorf("--workspace: envelope = %v", out)
-	}
-	out = run("--json", "--workspace", "")
-	if out["workspace"] != nil {
-		t.Errorf(`--workspace "": envelope = %v, want no workspace`, out)
 	}
 
 	paths := []string{}
@@ -547,9 +517,36 @@ func TestTheFlagsAndTheEnvironmentReachTheRequest(t *testing.T) {
 			t.Errorf("sent Authorization %q, want AETHERFY_API_KEY", r.Auth)
 		}
 	}
-	want := "/api/v1/workspaces/from-env/collections,/api/v1/workspaces/from-flag/collections,/api/v1/collections"
+	want := "/api/v1/workspaces/default/collections,/api/v1/workspaces/from-flag/collections"
 	if strings.Join(paths, ",") != want {
-		t.Errorf("paths = %v, want %s", paths, want)
+		t.Errorf("paths = %v, want %s (the environment variables must not count)", paths, want)
+	}
+	if n := len(cp.called("GET", "/workspaces")); n != 1 {
+		t.Errorf("the account's workspaces are asked only when --workspace is not given: %d asks", n)
+	}
+}
+
+// Several workspaces and no --workspace: a script cannot be asked, so the
+// command is refused (exit 2) before any vector request, naming them.
+func TestSeveralWorkspacesWithoutTheFlagAreRefused(t *testing.T) {
+	s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{"collections":[]}` })
+	cp := newFakeCP(t)
+	cp.on("GET", "/workspaces", 200, twoWorkspaces)
+	for _, args := range [][]string{
+		{"collections", "list"},
+		{"points", "count", "articles"},
+		{"index", "delete", "articles", "tag"},
+	} {
+		_, stderr, code := runAfyProcess(t, cp, []string{vectors.EnvVectorsURL + "=" + s.srv.URL, vectors.EnvAPIRegion + "="}, args...)
+		if code != exitInputRefused {
+			t.Errorf("%v: exit %d, want %d; stderr %q", args, code, exitInputRefused, stderr)
+		}
+		if !strings.Contains(stderr, "pass --workspace <name>") || !strings.Contains(stderr, "acme, default") {
+			t.Errorf("%v: the refusal must name the flag and the workspaces: %q", args, stderr)
+		}
+	}
+	if len(s.got()) != 0 {
+		t.Errorf("no vector request may be sent: %+v", s.got())
 	}
 }
 
@@ -598,7 +595,7 @@ func TestNotLoggedInIsExitThreeAndJSONUnderJSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := newVecServer(t, func(vecRequest) (int, string) { return 200, `{"collections":[]}` })
-	r, stdout, stderr, connects := s.run("", true)
+	r, stdout, stderr, connects := s.run("default", true)
 	if code := vecMain(r, collectionsList); code != exitNotLoggedIn {
 		t.Errorf("exit %d, want %d", code, exitNotLoggedIn)
 	}
@@ -653,7 +650,7 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 	for name, run := range commands {
 		t.Run(name+" --json", func(t *testing.T) {
 			s := newVecServer(t, refuse)
-			r, stdout, stderr, _ := s.run("", true)
+			r, stdout, stderr, _ := s.run("default", true)
 			r.cp = api.NewClientWithURL(s.srv.URL+"/api/v1", "afy_test_key")
 			if code := run(r); code != exitRequestFailed {
 				t.Errorf("exit %d, want %d", code, exitRequestFailed)
@@ -671,7 +668,7 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		})
 		t.Run(name+" text", func(t *testing.T) {
 			s := newVecServer(t, refuse)
-			r, _, stderr, _ := s.run("", false)
+			r, _, stderr, _ := s.run("default", false)
 			r.cp = api.NewClientWithURL(s.srv.URL+"/api/v1", "afy_test_key")
 			if code := run(r); code != exitRequestFailed {
 				t.Errorf("exit %d, want %d", code, exitRequestFailed)

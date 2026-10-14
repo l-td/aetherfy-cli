@@ -107,7 +107,7 @@ func TestUpsertWaitsLongerThanVectordbMayTakeOverARequest(t *testing.T) {
 			t.Errorf("request %d waited %s, want %s", i+1, got, UpsertTimeout)
 		}
 	}
-	if New("http://x", "k", "").timeout != DefaultTimeout {
+	if New("http://x", "k", "default").timeout != DefaultTimeout {
 		t.Error("the other calls' timeout changed")
 	}
 }
@@ -132,7 +132,7 @@ func (f *fakeUpsert) send(method, url string, body []byte, _ http.Header, timeou
 }
 
 func clientWith(f *fakeUpsert) *Client {
-	c := New("http://vectors.test", "k", "")
+	c := New("http://vectors.test", "k", "default")
 	c.send = f.send
 	return c
 }
@@ -201,7 +201,7 @@ func TestUpsertTimeoutOnTheSecondRequestIsUnconfirmed(t *testing.T) {
 	}))
 	defer srv.Close()
 	defer close(release)
-	c := New(srv.URL, "k", "")
+	c := New(srv.URL, "k", "default")
 	c.upsertTimeout = 200 * time.Millisecond
 	progress, err := c.Upsert("articles", manyPoints(UpsertPointsMax+5, 1))
 	var te *TimeoutError

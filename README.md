@@ -257,8 +257,10 @@ Workspaces group related agents so they can share secrets and vector collections
 ### Vectors
 
 Read and manage the vector database with the same API key. Loading points is
-the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`, `--workspace` (default
-`AETHERFY_WORKSPACE`, else none), `--vectors-url` and `--api-region`.
+the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`, `--workspace` (the account's only
+workspace when it has one; asked when it has several, and required without a
+terminal or with `--json`), `--vectors-url` and `--api-region`. Every collection
+lives in a workspace, and a name is unique within it.
 
 | Command | Description |
 |---------|-------------|
@@ -428,7 +430,6 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 | `XDG_CONFIG_HOME` | Used on Linux if set |
 | `AETHERFY_VECTORS_URL` | Vectors endpoint for the vector commands |
 | `AETHERFY_VECTORS_API_REGION` | Vectors API region, resolved by region discovery |
-| `AETHERFY_WORKSPACE` | Workspace the vector commands scope names to |
 
 ### Global Flags
 

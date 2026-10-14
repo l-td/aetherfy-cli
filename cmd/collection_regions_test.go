@@ -35,7 +35,7 @@ func cpFake(t *testing.T, routes map[string]func(vecRequest) (int, string)) *vec
 }
 
 func runWithCP(vec *vecServer, cp *vecServer, asJSON bool) (*vecRun, *strings.Builder, *strings.Builder) {
-	r, stdout, stderr, _ := vec.run("", asJSON)
+	r, stdout, stderr, _ := vec.run("default", asJSON)
 	r.cp = api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key")
 	out, errOut := &strings.Builder{}, &strings.Builder{}
 	r.stdout, r.stderr = out, errOut
@@ -105,7 +105,7 @@ func TestCollectionsRegionsShowsThePreviewAndAsksBeforeChanging(t *testing.T) {
 		t.Errorf("PATCH body = %v", reqs[0].Body)
 	}
 	// The collection was found by name through the vectors API.
-	if req := only(t, vec.got()); req.Path != "/api/v1/collections/articles" {
+	if req := only(t, vec.got()); req.Path != "/api/v1/workspaces/default/collections/articles" {
 		t.Errorf("lookup = %s", req.Path)
 	}
 }

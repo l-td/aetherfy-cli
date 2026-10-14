@@ -127,31 +127,6 @@ func TestDiscoveryFailuresSayWhatFailed(t *testing.T) {
 	}
 }
 
-func TestTheWorkspaceIsFlagThenEnvThenNone(t *testing.T) {
-	env := map[string]string{EnvWorkspace: "from-env"}
-	for name, tc := range map[string]struct {
-		opts Options
-		env  map[string]string
-		want string
-	}{
-		"flag":                        {Options{Workspace: "from-flag", WorkspaceSet: true}, env, "from-flag"},
-		"env, the SDKs' auto":         {Options{}, env, "from-env"},
-		"none":                        {Options{}, nil, ""},
-		"an empty flag forces none":   {Options{Workspace: "", WorkspaceSet: true}, env, ""},
-		"an unset flag is not a flag": {Options{Workspace: "", WorkspaceSet: false}, env, "from-env"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			got, err := resolver(tc.env, &discoveryStub{}).Resolve(tc.opts)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if got.Workspace != tc.want {
-				t.Errorf("workspace = %q, want %q", got.Workspace, tc.want)
-			}
-		})
-	}
-}
-
 func TestTheDefaultEndpointIsTheSDKs(t *testing.T) {
 	// aetherfy_vectors/client.py DEFAULT_ENDPOINT and VALID_REGIONS. The CLI
 	// hard-codes no other vectors host: every regional one comes from

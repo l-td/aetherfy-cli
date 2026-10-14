@@ -38,8 +38,7 @@ type CollectionInfo struct {
 	UpdatedAt   string   `json:"updated_at"`
 }
 
-// ListCollections lists the collections in the client's workspace, or the
-// workspaceless ones when it has none. The two are separate address spaces.
+// ListCollections lists the collections in the client's workspace.
 func (c *Client) ListCollections() ([]CollectionInfo, error) {
 	var out struct {
 		Collections []CollectionInfo `json:"collections"`
