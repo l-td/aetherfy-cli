@@ -53,6 +53,10 @@ func runStatus(t *testing.T, format, link string) (string, []string) {
 		asked = append(asked, r.URL.Path)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/deployments") {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
 		_, _ = w.Write([]byte(statusAgentJSON(link)))
 	}))
 	t.Cleanup(srv.Close)
@@ -84,10 +88,11 @@ const linkedJSON = `{"linked":true,"repo":"myorg/agents","branch":"production","
 func TestStatusReadsTheLinkFromTheAgentInOneRequest(t *testing.T) {
 	out, asked := runStatus(t, "text", linkedJSON)
 
-	// ONE request, and it is for the agent. Asking the link route as well is the
-	// second read this command no longer makes.
-	if len(asked) != 1 || asked[0] != "/agents/reporter" {
-		t.Errorf("afy status requested %v, want exactly [/agents/reporter]", asked)
+	// The link comes inside the agent: the link route is never asked. The
+	// second read is the deployment history, for a failed deploy's sentence
+	// (printLastDeployFailure).
+	if len(asked) != 2 || asked[0] != "/agents/reporter" || asked[1] != "/agents/a1/deployments" {
+		t.Errorf("afy status requested %v, want exactly [/agents/reporter /agents/a1/deployments]", asked)
 	}
 	// The four fields, each a separate json tag that could be wrong on its own
 	// and would then simply not appear.

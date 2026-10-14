@@ -771,6 +771,35 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	return showAgentStatus(api.NewClient(), args[0])
 }
 
+// printLastDeployFailure says, in full, why the agent's newest release deploy
+// failed, when it did. The agent's own failure_message covers only a lost app
+// or a refused restore; an ordinary failed deploy -- a push without
+// aetherfy.yaml, a frozen account's refused deploy -- is explained only on the
+// deployment (error_message), and the agent may still be serving its previous
+// release, so nothing else on this screen says it. Runs (ephemeral rows) are
+// skipped: `Last run` speaks for them. A deployments read that fails is said,
+// and the rest of the status still prints.
+func printLastDeployFailure(client *api.Client, agent *api.Agent) {
+	deployments, err := client.ListDeployments(agent.ID)
+	if err != nil {
+		output.Dim.Printf("  (could not read the deployment history: %v)\n", err)
+		return
+	}
+	for _, d := range deployments {
+		if d.IsEphemeral {
+			continue
+		}
+		if !strings.EqualFold(d.Status, "failed") {
+			return
+		}
+		output.KeyValue("Last deploy", fmt.Sprintf("v%d failed", d.Version))
+		if d.ErrorMessage != "" {
+			output.KeyValue("Deploy error", d.ErrorMessage)
+		}
+		return
+	}
+}
+
 // showAgentStatus is `afy status` past the auth check. Split out so a test can
 // hand it a client pointed at a server it controls and count what the command
 // asks that server for.
@@ -820,6 +849,7 @@ func showAgentStatus(client *api.Client, name string) error {
 		output.KeyValue("Reason", fmt.Sprintf(
 			"%s (this CLI has no description for it — 'afy upgrade' may)", agent.FailureCode))
 	}
+	printLastDeployFailure(client, agent)
 	// Where to send a request, when the server says there is one.
 	if agent.URL != "" {
 		output.KeyValue("URL", agent.URL)

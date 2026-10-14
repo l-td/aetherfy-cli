@@ -61,14 +61,11 @@ func printDeployments(client *api.Client, agentID string) error {
 	}
 
 	table := output.Table([]string{"Version", "State", "Release", "Created", "Error"})
+	var cut []api.Deployment // rows whose error the table shortened
 	for _, d := range deployments {
-		errMsg := ""
-		if d.ErrorMessage != "" {
-			// Truncate long errors for the table
-			errMsg = d.ErrorMessage
-			if len(errMsg) > 60 {
-				errMsg = errMsg[:57] + "..."
-			}
+		errMsg, shortened := shortenError(d.ErrorMessage)
+		if shortened {
+			cut = append(cut, d)
 		}
 		// A degraded deploy stays state=active and converges in the background
 		// (control-plane REVIEW_FAQ §63); flag it inline with the N/M region
@@ -89,6 +86,18 @@ func printDeployments(client *api.Client, agentID string) error {
 		})
 	}
 	table.Render()
+
+	// THE FULL SENTENCE OF EVERY ERROR THE TABLE CUT. A refusal is written for
+	// the person reading it (a push without aetherfy.yaml names the repo,
+	// commit, branch and path it looked in; a frozen account says what to
+	// reduce), and its end is where the fix is. The table keeps its width;
+	// the sentence is printed whole below it.
+	if len(cut) > 0 {
+		output.Println("")
+		for _, d := range cut {
+			output.Printf("v%d error: %s\n", d.Version, d.ErrorMessage)
+		}
+	}
 
 	output.Println("")
 	output.Dim.Printf("Total: %d deployment(s)\n", len(deployments))
@@ -185,4 +194,20 @@ func formatDeployState(state string) string {
 	default:
 		return state
 	}
+}
+
+// errorColumnWidth is how many characters of an error the deployments table
+// shows; a longer one is cut there, with an ellipsis, and printed in full
+// below the table.
+const errorColumnWidth = 60
+
+// shortenError fits msg to the table's error column, cutting on characters
+// (never inside a multi-byte one, as a byte cut of "—" would), and says
+// whether it cut.
+func shortenError(msg string) (string, bool) {
+	r := []rune(msg)
+	if len(r) <= errorColumnWidth {
+		return msg, false
+	}
+	return string(r[:errorColumnWidth-3]) + "...", true
 }
