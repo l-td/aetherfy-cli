@@ -14,9 +14,8 @@ import (
 // say what to reduce; RELEASE_CONFIG_NOT_ON_RECORD says to deploy again from
 // source; a yaml declaring name: says where the name is set now), and the
 // server is that sentence's one owner: the CLI neither rewords it nor wraps it
-// in its own prefix. (The returned error is printed again by cobra, with its
-// status and code, as for every command.) Anything else (no answer, or an
-// answer without a message) is printed after `what`.
+// in its own prefix. Anything else (no answer, or an answer without a
+// message) is printed after `what`.
 // isNotDeployed reports the export's answer for a draft (an agent never
 // released): 404 AGENT_NOT_DEPLOYED.
 func isNotDeployed(err error) bool {
@@ -29,12 +28,24 @@ func noReleaseYet(agent string) string {
 	return agent + " has no release yet: deploy it first"
 }
 
+// The returned error is marked as printed, so Execute does not print it a
+// second time; its exit code and its type (errors.As) are unchanged.
 func printRefusal(what string, err error) error {
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) && apiErr.Message != "" {
 		output.PrintError("%s", apiErr.Message)
-		return err
+		return &printedError{err}
 	}
 	output.PrintError("%s: %v", what, err)
-	return err
+	return &printedError{err}
+}
+
+// printedError is an error its command has already shown to the user.
+type printedError struct{ error }
+
+func (e *printedError) Unwrap() error { return e.error }
+
+func alreadyPrinted(err error) bool {
+	var p *printedError
+	return errors.As(err, &p)
 }

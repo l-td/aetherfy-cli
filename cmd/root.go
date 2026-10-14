@@ -39,8 +39,8 @@ reads one agent's logs. Only the other nouns are grouped.
 
 Quick start:
   afy login                    # Authenticate with your API key
-  afy init                     # Generate aetherfy.yaml for your project
-  afy deploy                   # Deploy current directory
+  afy init                     # Create an agent for this folder (or --agent <name> to link one)
+  afy deploy                   # Deploy this folder to the agent it is linked to
   afy list                     # List your agents
   afy logs <agent>             # View agent logs
   afy deployments <agent>      # View deployment history
@@ -52,10 +52,15 @@ For more information, visit: https://docs.aetherfy.com`,
 	// Runtime errors (a failed API call, a rejected deploy) already print a
 	// clean "Error: ..." line — dumping the full usage/help text after them is
 	// noise. SilenceUsage suppresses that dump for every command (children
-	// inherit). SilenceErrors is deliberately left off so cobra still prints the
-	// error itself. Trade-off: unknown-flag/arg errors also stop dumping usage,
+	// inherit). Trade-off: unknown-flag/arg errors also stop dumping usage,
 	// but the error text still names the offending flag and `--help` remains.
-	SilenceUsage: true,
+	//
+	// SilenceErrors: Execute prints the error instead, in cobra's own
+	// "Error: ..." form, EXCEPT one a command already printed in full
+	// (printRefusal: the server's sentence, as written). Cobra printing it too
+	// showed every refusal twice, the second time wrapped in "[409] ... (CODE)".
+	SilenceUsage:  true,
+	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Skip config loading for certain commands
 		if cmd.Name() == "version" || cmd.Name() == "help" {
@@ -96,9 +101,15 @@ For more information, visit: https://docs.aetherfy.com`,
 	},
 }
 
-// Execute adds all child commands to the root command and sets flags appropriately.
+// Execute adds all child commands to the root command and sets flags
+// appropriately, and prints the error a command returns unless the command
+// already printed it (see SilenceErrors above).
 func Execute() error {
-	return rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil && !alreadyPrinted(err) {
+		rootCmd.PrintErrln("Error:", err.Error())
+	}
+	return err
 }
 
 func init() {

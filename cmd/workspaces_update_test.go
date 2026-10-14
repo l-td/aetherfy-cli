@@ -79,6 +79,9 @@ func TestWorkspaceRefusalsPrintTheServersSentence(t *testing.T) {
 			if !strings.Contains(stderr, "Error: "+c.message+"\n") {
 				t.Errorf("the server's sentence must be printed unaltered:\n%s", stderr)
 			}
+			if n := strings.Count(stderr, c.message); n != 1 {
+				t.Errorf("the sentence must be shown once, got %d times:\n%s", n, stderr)
+			}
 		})
 	}
 }

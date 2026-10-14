@@ -132,7 +132,7 @@ func runAfy(t *testing.T, cp *fakeCP, args ...string) (stdout, stderr string, er
 	t.Cleanup(func() { resetAllFlags(); rootCmd.SetArgs(nil) })
 	rootCmd.SetArgs(args)
 	stderr = captureStderr(t, func() {
-		stdout = captureStdout(t, func() { err = rootCmd.Execute() })
+		stdout = captureStdout(t, func() { err = Execute() })
 	})
 	return stdout, stderr, err
 }
@@ -223,5 +223,18 @@ func TestRunAfyProcessReportsTheExitCode(t *testing.T) {
 	}
 	if _, _, code := runAfyProcess(t, nil, nil, "version"); code != 0 {
 		t.Errorf("afy version exited %d", code)
+	}
+}
+
+// Execute prints an error no command printed (here cobra's own, for an unknown
+// flag) exactly once, in the "Error: ..." form cobra used before
+// SilenceErrors -- the control for the refusal tests' "shown once".
+func TestExecutePrintsAnUnprintedErrorOnce(t *testing.T) {
+	_, stderr, err := runAfy(t, newFakeCP(t), "list", "--bogus")
+	if err == nil {
+		t.Fatal("an unknown flag must fail")
+	}
+	if n := strings.Count(stderr, "Error: unknown flag: --bogus"); n != 1 {
+		t.Errorf("want the error once, got %d:\n%s", n, stderr)
 	}
 }

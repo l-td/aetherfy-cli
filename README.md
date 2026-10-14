@@ -196,6 +196,7 @@ afy deploy --target staging
 | `afy update <name> --name <new>` | Rename an agent (its URL and the folders linked to it stay the same) |
 | `afy update <name> --workspace <ws>` | Move an agent to another workspace; it is redeployed there |
 | `afy update <name> --description <text>` | Set an agent's description |
+| `afy diff [--target <t>]` | Preview what `afy deploy` of this folder would change on its linked agent; an omitted field shows its default; exits 1 on changes |
 
 ### Runs & Schedules
 
