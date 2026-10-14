@@ -99,9 +99,6 @@ type Operation struct {
 	Failures        []struct {
 		Message string `json:"message"`
 	} `json:"failures"`
-	DeletedAliases []struct {
-		AliasName string `json:"alias_name"`
-	} `json:"deleted_aliases"`
 }
 
 // Done reports whether the operation has reached a terminal state.
