@@ -100,7 +100,9 @@ func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval,
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Rollback failed: %v", err)
+		// RELEASE_CONFIG_NOT_ON_RECORD and the frozen-account refusals say what
+		// to do: printed as the server wrote them.
+		_ = printRefusal("Rollback failed", err)
 		return 1
 	}
 
