@@ -11,8 +11,9 @@
 // There is no "preserved" field: nothing outside the file survives a deploy.
 //
 // The server map comes from the control-plane GET /agents/{id}/yaml export
-// (serialize_agent_to_yaml): the current value of every set field, unset
-// nullable fields omitted.
+// (serialize_release_to_yaml): the live release's recorded configuration,
+// every yaml-owned field written -- entrypoint, schedule and spawn only when
+// off their defaults.
 package yamldiff
 
 import (
@@ -52,16 +53,7 @@ const (
 	Add
 	// Clear: the field has a value and becomes unset.
 	Clear
-	// NotCompared: declared in the file, but the agent's current value cannot
-	// be read (NotExported), so nothing can be said about it. Not a change.
-	NotCompared
 )
-
-// NotExported are fields the control plane's export (serialize_agent_to_yaml)
-// never carries and no other read gives the CLI. A declared one is
-// NotCompared rather than shown as an Add on every run. (regions is not here:
-// the caller fills it from the agent's deployed footprint.)
-var NotExported = map[string]bool{"github_dependencies": true}
 
 // FieldDiff is one field's classification, with rendered values for display.
 // Defaulted says the file leaves the field out, so Declared is its default.
@@ -103,9 +95,7 @@ func Diff(local, server map[string]interface{}) []FieldDiff {
 			d.Current = render(sv)
 		}
 		switch {
-		case !sp && NotExported[key] && !isUnset(lv):
-			d.Kind = NotCompared
-		case sp && equalValue(key, lv, sv), !sp && isUnset(lv):
+		case sp && equalValues(lv, sv), !sp && isUnset(lv):
 			d.Kind = NoOp
 		case !sp:
 			d.Kind = Add
@@ -123,8 +113,7 @@ func Diff(local, server map[string]interface{}) []FieldDiff {
 // Clear). Drives the CI-friendly exit code.
 func HasChanges(diffs []FieldDiff) bool {
 	for _, d := range diffs {
-		switch d.Kind {
-		case Change, Add, Clear:
+		if d.Kind != NoOp {
 			return true
 		}
 	}
@@ -166,36 +155,6 @@ func orderedKeys(local, server map[string]interface{}) []string {
 	}
 	sort.Strings(extras)
 	return append(keys, extras...)
-}
-
-// equalValue compares one field's two values. regions is a SET: the deployed
-// footprint is not in the order the file lists it.
-func equalValue(key string, a, b interface{}) bool {
-	if key == "regions" {
-		as, aok := stringSet(a)
-		bs, bok := stringSet(b)
-		if aok && bok {
-			return reflect.DeepEqual(as, bs)
-		}
-	}
-	return equalValues(a, b)
-}
-
-func stringSet(v interface{}) ([]string, bool) {
-	l, ok := v.([]interface{})
-	if !ok {
-		return nil, false
-	}
-	out := make([]string, 0, len(l))
-	for _, e := range l {
-		s, ok := e.(string)
-		if !ok {
-			return nil, false
-		}
-		out = append(out, s)
-	}
-	sort.Strings(out)
-	return out, true
 }
 
 func equalValues(a, b interface{}) bool {

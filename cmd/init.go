@@ -155,19 +155,27 @@ func initLinkExisting(client *api.Client, dir, name, target string) error {
 	}
 
 	configPath := filepath.Join(dir, "aetherfy.yaml")
-	wroteYAML := false
+	wroteYAML, draft := false, false
 	if !fileExists(configPath) || initForce {
 		data, err := client.GetAgentYAML(agent.ID)
-		if err != nil {
+		switch {
+		case isNotDeployed(err):
+			// A draft (made with `afy create`): there is no configuration to
+			// write yet. The folder is still linked; its first deploy releases it.
+			draft = true
+		case err != nil:
+			// RELEASE_CONFIG_NOT_ON_RECORD and the rest: as the server wrote them.
 			return printRefusal("Failed to read agent '"+agent.Name+"''s configuration", err)
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return err
+		if !draft {
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(configPath, data, 0o644); err != nil {
+				return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
+			}
+			wroteYAML = true
 		}
-		if err := os.WriteFile(configPath, data, 0o644); err != nil {
-			return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
-		}
-		wroteYAML = true
 	}
 
 	previous := ""
@@ -182,9 +190,12 @@ func initLinkExisting(client *api.Client, dir, name, target string) error {
 	if previous != "" && previous != agent.ID {
 		output.Dim.Printf("  Target '%s' pointed at agent %s before.\n", target, previous)
 	}
-	if wroteYAML {
-		output.PrintInfo("Wrote aetherfy.yaml from the agent's current configuration.")
-	} else {
+	switch {
+	case draft:
+		output.PrintInfo("%s. Add an aetherfy.yaml here (at least `runtime:`), then 'afy deploy'.", noReleaseYet(agent.Name))
+	case wroteYAML:
+		output.PrintInfo("Wrote aetherfy.yaml from the agent's live release.")
+	default:
 		output.PrintInfo("Kept your aetherfy.yaml (--force replaces it with the agent's current configuration).")
 	}
 	printLinkNextSteps(target)

@@ -17,6 +17,18 @@ import (
 // in its own prefix. (The returned error is printed again by cobra, with its
 // status and code, as for every command.) Anything else (no answer, or an
 // answer without a message) is printed after `what`.
+// isNotDeployed reports the export's answer for a draft (an agent never
+// released): 404 AGENT_NOT_DEPLOYED.
+func isNotDeployed(err error) bool {
+	var apiErr *api.APIError
+	return errors.As(err, &apiErr) && apiErr.Code == "AGENT_NOT_DEPLOYED"
+}
+
+// noReleaseYet is what `afy init --agent` and `afy diff` say about a draft.
+func noReleaseYet(agent string) string {
+	return agent + " has no release yet: deploy it first"
+}
+
 func printRefusal(what string, err error) error {
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) && apiErr.Message != "" {

@@ -229,6 +229,34 @@ func TestInitAgentWithATargetKeepsTheOtherTargetsAndTheYaml(t *testing.T) {
 	}
 }
 
+// `afy create` then `afy init --agent`: the agent is a draft, with no release
+// to export. The folder is linked all the same, no aetherfy.yaml is written,
+// and the plain sentence says what to do -- never the raw 404.
+func TestInitAgentOnADraftLinksAndSaysItHasNoReleaseYet(t *testing.T) {
+	dir := t.TempDir()
+	cp := newFakeCP(t)
+	cp.on("GET", "/agents/invoice-parser", 200, `{"id":"`+prodID+`","name":"invoice-parser"}`)
+	cp.on("GET", "/agents/"+prodID+"/yaml", 404,
+		`{"detail":{"code":"AGENT_NOT_DEPLOYED","message":"Agent 'invoice-parser' has no release to export: it has never been deployed.","agent":"invoice-parser"}}`)
+
+	stdout, stderr, err := runAfy(t, cp, "init", dir, "--agent", "invoice-parser")
+	if err != nil {
+		t.Fatalf("init --agent on a draft: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "invoice-parser has no release yet: deploy it first") {
+		t.Errorf("want the plain sentence:\n%s", stdout)
+	}
+	if strings.Contains(stdout+stderr, "404") || strings.Contains(stdout+stderr, "AGENT_NOT_DEPLOYED") {
+		t.Errorf("no raw 404:\n%s%s", stdout, stderr)
+	}
+	if fileExists(filepath.Join(dir, "aetherfy.yaml")) {
+		t.Error("a draft has no configuration to write")
+	}
+	if f, err := link.Read(dir); err != nil || f.Targets["default"] != prodID {
+		t.Errorf("the folder must be linked: %+v %v", f, err)
+	}
+}
+
 func TestInitAgentThatDoesNotExistWritesNothing(t *testing.T) {
 	dir := t.TempDir()
 	cp := newFakeCP(t)

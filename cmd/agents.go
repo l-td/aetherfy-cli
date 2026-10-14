@@ -1614,6 +1614,12 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	}
 	serverYAML, err := client.GetAgentYAML(agent.ID)
 	if err != nil {
+		if isNotDeployed(err) {
+			// Nothing released yet, so nothing to compare with: said plainly,
+			// not as a 404.
+			output.PrintError("%s", noReleaseYet(agent.Name))
+			os.Exit(1)
+		}
 		return printRefusal("Failed to fetch the configuration of '"+agent.Name+"'", err)
 	}
 	var server map[string]interface{}
@@ -1621,7 +1627,6 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 		output.PrintError("Control plane returned invalid YAML: %v", err)
 		return err
 	}
-	fillDeployedRegions(local, server, agent)
 
 	diffs := yamldiff.Diff(local, server)
 	printAgentDiff(agent.Name, diffs)
@@ -1631,27 +1636,6 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 	return nil
-}
-
-// fillDeployedRegions gives the comparison the agent's current regions when the
-// file declares regions. The export does not carry them (they are each
-// deployment's, resolved within the workspace's scope at deploy time); the
-// agent's read does: the footprint of its active deployment. Without this, a
-// file declaring regions -- every one `afy init` writes -- would diff as a
-// change on every run. An omitted regions: is left alone: its default comes
-// from the workspace's scope, not a value the CLI can name.
-func fillDeployedRegions(local, server map[string]interface{}, agent *api.Agent) {
-	if _, declared := local["regions"]; !declared {
-		return
-	}
-	if _, has := server["regions"]; has || len(agent.Regions) == 0 {
-		return
-	}
-	regions := make([]interface{}, len(agent.Regions))
-	for i, r := range agent.Regions {
-		regions[i] = r
-	}
-	server["regions"] = regions
 }
 
 // printAgentDiff renders the diff with the project's color scheme.
@@ -1679,8 +1663,6 @@ func printAgentDiff(name string, diffs []yamldiff.FieldDiff) {
 			output.Red.Printf("- %s  (clear; currently %s)\n", d.Key, d.Current)
 		case yamldiff.NoOp:
 			output.Dim.Printf("= %s: %s\n", d.Key, declared)
-		case yamldiff.NotCompared:
-			output.Dim.Printf("? %s: %s  (the agent's current value cannot be read; not compared)\n", d.Key, declared)
 		}
 	}
 	output.Println("")

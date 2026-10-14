@@ -137,26 +137,28 @@ spawn:
 	}
 }
 
-func TestRegionsAreASet(t *testing.T) {
-	server := mustMap(t, "runtime: python3.11\nregions: [eu-central-1, us-east-1]\n")
-	diffs := Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1, eu-central-1]\n"), server)
-	if d := find(t, diffs, "regions"); d.Kind != NoOp {
-		t.Errorf("the same regions in another order = %+v, want NoOp", d)
-	}
-	diffs = Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\n"), server)
-	if d := find(t, diffs, "regions"); d.Kind != Change {
-		t.Errorf("fewer regions = %+v, want Change", d)
-	}
-}
+// regions and github_dependencies are in the export (ccc10c6) and compared
+// like every other field: a difference is a change, an equal value is not.
+func TestRegionsAndGithubDependenciesAreComparedLikeAnyField(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\nregions: [eu-central-1]\ngithub_dependencies: [org/lib@v1]\n")
 
-// A field the export never carries cannot be compared: shown, never counted.
-func TestADeclaredFieldTheExportNeverCarriesIsNotCompared(t *testing.T) {
-	diffs := Diff(mustMap(t, "runtime: python3.11\ngithub_dependencies: [org/lib@v1]\n"), mustMap(t, "runtime: python3.11\n"))
-	if d := find(t, diffs, "github_dependencies"); d.Kind != NotCompared {
-		t.Errorf("github_dependencies = %+v, want NotCompared", d)
+	same := Diff(mustMap(t, "runtime: python3.11\nregions: [eu-central-1]\ngithub_dependencies: [org/lib@v1]\n"), server)
+	if HasChanges(same) {
+		t.Errorf("equal regions and dependencies must not be a change: %+v", same)
 	}
-	if HasChanges(diffs) {
-		t.Error("a field that cannot be compared is not a change")
+
+	diffs := Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\ngithub_dependencies: [org/lib@v2]\n"), server)
+	for _, key := range []string{"regions", "github_dependencies"} {
+		if d := find(t, diffs, key); d.Kind != Change {
+			t.Errorf("%s = %+v, want Change", key, d)
+		}
+	}
+
+	// Omitted: they take their defaults (none / no dependencies) -- a change
+	// from what the release has.
+	omitted := Diff(mustMap(t, "runtime: python3.11\n"), server)
+	if d := find(t, omitted, "github_dependencies"); d.Kind != Clear || !d.Defaulted {
+		t.Errorf("github_dependencies omitted = %+v, want Clear (default)", d)
 	}
 }
 

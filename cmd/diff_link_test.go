@@ -15,8 +15,10 @@ func diffCP(t *testing.T) *fakeCP {
 }
 
 func TestDiffComparesWithTheLinkedAgentsExport(t *testing.T) {
-	// serverYAML: python3.11, service, 1024 MB, idle 5, keep_alive false, main.py.
-	dir := agentFolder(t, "runtime: python3.11\nentrypoint: main.py\nmemory_mb: 1024\n")
+	// serverYAML: python3.11, service, main.py, 1024 MB, idle 5, keep_alive
+	// false, eu-central-1, one GitHub dependency.
+	dir := agentFolder(t, "runtime: python3.11\nentrypoint: main.py\nmemory_mb: 1024\n"+
+		"regions: [eu-central-1]\ngithub_dependencies: [myorg/utils@v1.2.3]\n")
 	linkFolder(t, dir, map[string]string{"default": prodID})
 	cp := diffCP(t)
 
@@ -37,7 +39,8 @@ func TestDiffComparesWithTheLinkedAgentsExport(t *testing.T) {
 
 func TestDiffShowsAnOmittedFieldGoingToItsDefault(t *testing.T) {
 	// memory_mb omitted: the deploy gives it 256, the agent has 1024.
-	dir := agentFolder(t, "runtime: python3.11\nentrypoint: main.py\n")
+	dir := agentFolder(t, "runtime: python3.11\nentrypoint: main.py\n"+
+		"regions: [eu-central-1]\ngithub_dependencies: [myorg/utils@v1.2.3]\n")
 	linkFolder(t, dir, map[string]string{"default": prodID})
 
 	stdout, stderr, code := runAfyProcess(t, diffCP(t), nil, "diff", "--path", dir)
@@ -49,22 +52,93 @@ func TestDiffShowsAnOmittedFieldGoingToItsDefault(t *testing.T) {
 	}
 }
 
-// THE FOLDER `afy init` WRITES diffs clean against the agent it deployed.
-// The export carries no regions; the agent's footprint does, and a declared
-// regions: is compared with it. Without that, every init'd folder would show
-// "+ regions" forever and fail a CI gate.
+// THE FOLDER `afy init` WRITES diffs clean against the release it made. The
+// export (ccc10c6) is that release's recorded configuration, regions and
+// github_dependencies included -- here as serialize_release_to_yaml writes it
+// for that file -- so they compare like every other field.
+const initReleaseExport = `# yaml-language-server: $schema=https://docs.aetherfy.com/aetherfy-yaml.schema.json
+runtime: python3.11
+type: service
+entrypoint: main.py
+memory_mb: 1024
+idle_timeout_minutes: 5
+keep_alive: false
+regions:
+- eu-central-1
+github_dependencies: []
+`
+
 func TestAFreshlyInitialisedFolderDiffsClean(t *testing.T) {
 	dir := agentFolder(t, buildAetherfyYAML("python3.11", "service", "eu-central-1", 1024, false, "main.py", ""))
 	linkFolder(t, dir, map[string]string{"default": prodID})
 	cp := diffCP(t)
-	cp.on("GET", "/agents/"+prodID, 200, `{"id":"`+prodID+`","name":"invoice-parser","regions":["eu-central-1"]}`)
+	cp.on("GET", "/agents/"+prodID+"/yaml", 200, initReleaseExport)
 
 	stdout, stderr, code := runAfyProcess(t, cp, nil, "diff", "--path", dir)
 	if code != 0 {
 		t.Fatalf("an init'd, deployed folder must diff clean; exit %d\n%s%s", code, stdout, stderr)
 	}
 	if !strings.Contains(stdout, "= regions: [eu-central-1]") {
-		t.Errorf("regions must be compared with the deployed footprint:\n%s", stdout)
+		t.Errorf("regions must be compared with the release's:\n%s", stdout)
+	}
+}
+
+// Regions and dependencies that differ from the release are changes.
+func TestDiffShowsRegionsAndDependenciesThatDiffer(t *testing.T) {
+	dir := agentFolder(t, "runtime: python3.11\nentrypoint: main.py\nmemory_mb: 1024\n"+
+		"regions: [us-east-1]\ngithub_dependencies: [myorg/utils@v2.0.0]\n")
+	linkFolder(t, dir, map[string]string{"default": prodID})
+
+	stdout, stderr, code := runAfyProcess(t, diffCP(t), nil, "diff", "--path", dir)
+	if code != 1 {
+		t.Fatalf("want exit 1, got %d\n%s%s", code, stdout, stderr)
+	}
+	for _, want := range []string{"~ regions: [eu-central-1] → [us-east-1]", "~ github_dependencies: [myorg/utils@v1.2.3] → [myorg/utils@v2.0.0]"} {
+		if !strings.Contains(stdout, want) {
+			t.Errorf("stdout lacks %q:\n%s", want, stdout)
+		}
+	}
+}
+
+// A draft (never released) has no configuration to compare with: a plain
+// sentence, exit 1, never the raw 404.
+func TestDiffOnADraftSaysItHasNoReleaseYet(t *testing.T) {
+	dir := agentFolder(t, "")
+	linkFolder(t, dir, map[string]string{"default": prodID})
+	cp := deployCP(t)
+	cp.on("GET", "/agents/"+prodID+"/yaml", 404,
+		`{"detail":{"code":"AGENT_NOT_DEPLOYED","message":"Agent 'invoice-parser' has no release to export: it has never been deployed.","agent":"invoice-parser"}}`)
+
+	_, stderr, code := runAfyProcess(t, cp, nil, "diff", "--path", dir)
+	if code != 1 || !strings.Contains(stderr, "invoice-parser has no release yet: deploy it first") {
+		t.Errorf("want the plain sentence and exit 1; exit %d:\n%s", code, stderr)
+	}
+	if strings.Contains(stderr, "404") || strings.Contains(stderr, "AGENT_NOT_DEPLOYED") {
+		t.Errorf("no raw 404:\n%s", stderr)
+	}
+}
+
+// A release from before recorded configurations: the server's sentence, as
+// written, from both diff and init --agent.
+func TestTheExportsReleaseNotOnRecordRefusalIsPrintedAsWritten(t *testing.T) {
+	const msg = "Version 2's configuration isn't on record; deploy it again from its source."
+	refusal := `{"detail":{"code":"RELEASE_CONFIG_NOT_ON_RECORD","message":"` + msg + `","version":2}}`
+
+	dir := agentFolder(t, "")
+	linkFolder(t, dir, map[string]string{"default": prodID})
+	cp := deployCP(t)
+	cp.on("GET", "/agents/"+prodID+"/yaml", 422, refusal)
+	if _, stderr, code := runAfyProcess(t, cp, nil, "diff", "--path", dir); code == 0 || !strings.Contains(stderr, "Error: "+msg+"\n") {
+		t.Errorf("diff: exit %d, want the sentence as written:\n%s", code, stderr)
+	}
+
+	empty := t.TempDir()
+	cp2 := newFakeCP(t)
+	cp2.on("GET", "/agents/invoice-parser", 200, `{"id":"`+prodID+`","name":"invoice-parser"}`)
+	cp2.on("GET", "/agents/"+prodID+"/yaml", 422, refusal)
+	_, stderr, err := runAfy(t, cp2, "init", empty, "--agent", "invoice-parser")
+	if err == nil || !strings.Contains(stderr, "Error: "+msg+"\n") {
+		t.Errorf("init --agent: %v, want the sentence as written:\n%s", err, stderr)
 	}
 }
 
