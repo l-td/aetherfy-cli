@@ -90,7 +90,7 @@ func TestTheAgentVerbsAreAllAtTheRoot(t *testing.T) {
 	// user typing it and being told it is unknown.
 	for _, name := range []string{
 		"list", "create", "delete", "stop", "start", "archive", "restore",
-		"cancel", "status", "rename", "update", "pull", "diff", "run", "runs",
+		"cancel", "status", "update", "diff", "run", "runs",
 		"schedule", "access",
 		// already flat before the flatten; here so the list reads as the whole
 		// agent surface rather than as "the ones that moved"

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -14,6 +13,7 @@ type Agent struct {
 	Status        string `json:"status"`
 	AgentType     string `json:"agent_type"`
 	Runtime       string `json:"runtime,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
 	WorkspaceName string `json:"workspace_name,omitempty"`
 	SpawnEnabled  bool   `json:"spawn_enabled"`
 	// TWO FIELDS, TWO QUESTIONS (server AgentResponse).
@@ -134,18 +134,26 @@ type AgentCreateRequest struct {
 type AgentUpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
-	MemoryMB    *int    `json:"memory_mb,omitempty"`
-	KeepAlive   *bool   `json:"keep_alive,omitempty"`
-	// WorkspaceName is tri-state to match the backend PATCH /agents
-	// three-way semantic (omitted / null / string):
-	//   - nil (unset)                  → field omitted → no change
-	//   - json.RawMessage("null")      → "workspace_name": null → clear
-	//   - json.RawMessage(`"my-ws"`)   → "workspace_name": "my-ws" → set
-	// json.RawMessage (not *string) is required: *string+omitempty cannot
-	// emit an explicit JSON null while still omitting when unset, and a
-	// non-omitempty *string would make every other update (e.g. rename)
-	// send "workspace_name": null and silently clear the workspace.
-	WorkspaceName json.RawMessage `json:"workspace_name,omitempty"`
+}
+
+// AgentMoveRequest is the body of POST /agents/{agent}/move: the workspace the
+// agent moves to, by name (a person types names). The control plane takes
+// exactly one of workspace_name or workspace_id.
+type AgentMoveRequest struct {
+	WorkspaceName string `json:"workspace_name"`
+}
+
+// AgentMove is POST /agents/{agent}/move's answer. A move REDEPLOYS the agent:
+// Deployment is that redeploy, nil when nothing was serving. Changed is false
+// when the agent already lived in the workspace.
+type AgentMove struct {
+	AgentID           string       `json:"agent_id"`
+	Agent             string       `json:"agent"`
+	Workspace         WorkspaceRef `json:"workspace"`
+	PreviousWorkspace WorkspaceRef `json:"previous_workspace"`
+	Changed           bool         `json:"changed"`
+	Redeployed        bool         `json:"redeployed"`
+	Deployment        *Deployment  `json:"deployment"`
 }
 
 // Deployment represents a deployment

@@ -1333,32 +1333,7 @@ func runScheduleToggle(name string, pause bool) error {
 	return nil
 }
 
-// --- RENAME ---
-var agentsRenameCmd = &cobra.Command{
-	Use:   "rename <current-name> <new-name>",
-	Short: "Rename an agent",
-	Long: `Rename an agent to a new name.
-
-An agent's address is fixed when it is FIRST DEPLOYED, and renaming does not
-move it. The practical rule: rename before your first deploy and the address
-follows the new name; rename after and it stays as it was, so existing
-integrations, links and webhooks keep working.
-
-THE LOCAL FILE IS UPDATED TOO. 'afy deploy' finds its target through the
-'name:' in aetherfy.yaml, so a rename leaves that file naming an agent that no
-longer exists. If the aetherfy.yaml in the current directory declares the OLD
-name, this rewrites that one field and tells you it did. If it declares a
-different agent, or there is no file here, nothing is touched and you are told
-which file to update -- a file naming a different agent belongs to a different
-project, and rewriting it would retarget that project's deploys.`,
-	Args: cobra.ExactArgs(2),
-	RunE: runAgentsRename,
-}
-
-var forceRename bool
-
 func init() {
-	agentsRenameCmd.Flags().BoolVarP(&forceRename, "force", "f", false, "Skip confirmation prompt")
 	// AGENTS ARE THE DEFAULT NOUN — these register at the ROOT, not under an
 	// `agents` group. See the note above the registrations in cmd/root.go.
 	//
@@ -1366,13 +1341,13 @@ func init() {
 	// list is a wall. GroupID is presentation and nothing branches on it.
 	for _, c := range []*cobra.Command{
 		agentsCreateCmd, agentsDeleteCmd, agentsStopCmd, agentsStartCmd,
-		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd, agentsRenameCmd,
+		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd,
 		agentsUpdateCmd, agentsAccessCmd,
 	} {
 		c.GroupID = groupAgentLifecycle
 	}
 	for _, c := range []*cobra.Command{
-		agentsListCmd, agentsStatusCmd, agentsPullCmd, agentsDiffCmd,
+		agentsListCmd, agentsStatusCmd, agentsDiffCmd,
 		agentsRunCmd, agentsRunsCmd, agentsScheduleCmd,
 	} {
 		c.GroupID = groupAgentOps
@@ -1399,9 +1374,7 @@ func init() {
 	rootCmd.AddCommand(agentsRestoreCmd)
 	rootCmd.AddCommand(agentsCancelCmd)
 	rootCmd.AddCommand(agentsStatusCmd)
-	rootCmd.AddCommand(agentsRenameCmd)
 	rootCmd.AddCommand(agentsUpdateCmd)
-	rootCmd.AddCommand(agentsPullCmd)
 	rootCmd.AddCommand(agentsDiffCmd)
 	rootCmd.AddCommand(agentsRunCmd)
 	rootCmd.AddCommand(agentsRunsCmd)
@@ -1415,145 +1388,46 @@ func init() {
 	agentsScheduleCmd.AddCommand(agentsScheduleResumeCmd)
 }
 
-func runAgentsRename(cmd *cobra.Command, args []string) error {
-	if err := checkAuth(); err != nil {
-		return err
-	}
-
-	currentName := args[0]
-	newName := args[1]
-
-	// Validate new name is different
-	if currentName == newName {
-		output.PrintError("New name must be different from current name")
-		return fmt.Errorf("new name must be different from current name")
-	}
-
-	// Get current agent to verify it exists
-	client := api.NewClient()
-	_, err := client.GetAgent(currentName)
-	if err != nil {
-		output.PrintError("Failed to find agent '%s': %v", currentName, err)
-		return err
-	}
-
-	// Confirm rename
-	if !forceRename {
-		output.Warning.Printf("Renaming agent '%s' to '%s'\n", currentName, newName)
-		fmt.Print("Continue? (y/N): ")
-		var confirm string
-		_, _ = fmt.Scanln(&confirm)
-		if confirm != "y" && confirm != "Y" {
-			output.PrintInfo("Rename cancelled.")
-			return nil
-		}
-	}
-
-	sp := output.NewSpinner(fmt.Sprintf("Renaming agent '%s' to '%s'...", currentName, newName))
-	sp.Start()
-
-	// Update agent with new name
-	updatedAgent, err := client.UpdateAgent(currentName, &api.AgentUpdateRequest{
-		Name: &newName,
-	})
-	sp.Stop()
-
-	if err != nil {
-		output.PrintError("Failed to rename agent: %v", err)
-		return err
-	}
-
-	output.PrintSuccess("Agent renamed successfully!")
-	output.Println("")
-	output.KeyValue("Old Name", currentName)
-	output.KeyValue("New Name", updatedAgent.Name)
-	output.KeyValue("ID", updatedAgent.ID)
-
-	printRenameNote(updatedAgent)
-	reportLocalManifestRename(currentName, newName)
-
-	return nil
-}
-
-// reportLocalManifestRename keeps the working directory pointing at the agent
-// that was just renamed, and says out loud what it did or did not do.
-//
-// SAYING SO IS HALF THE FEATURE. The failure this prevents is silent and
-// convincing: `afy deploy` resolves its target by the `name:` in aetherfy.yaml,
-// so after a rename that file names an agent that no longer exists, the deploy
-// gets AGENT_NOT_FOUND, and the prompt that follows offers to CREATE one under
-// the old name. That offer reads like the fix. Taking it leaves the user with
-// two agents and no error to explain it.
-//
-// EVERY BRANCH PRINTS. A silent no-op is indistinguishable from a rewrite that
-// worked, and the case it would hide -- the file lives one directory up -- is
-// the common one.
-func reportLocalManifestRename(oldName, newName string) {
-	dir, err := os.Getwd()
-	if err != nil {
-		output.Println("")
-		output.Dim.Printf("  Could not check this directory for an aetherfy.yaml (%v).\n", err)
-		output.Dim.Printf("  Set 'name: %s' in the aetherfy.yaml you deploy this agent from.\n", newName)
-		return
-	}
-
-	outcome, path, writeErr := archive.RewriteAgentName(dir, oldName, newName)
-	output.Println("")
-	switch outcome {
-	case archive.RewriteDone:
-		output.Info.Printf("i Updated 'name:' in %s\n", path)
-		output.Dim.Printf("  `afy deploy` from this directory still targets this agent.\n")
-	case archive.RewriteNameMismatch:
-		output.Warning.Printf("! %s names a different agent - left untouched.\n", path)
-		output.Dim.Printf("  Set 'name: %s' in whichever aetherfy.yaml declares '%s',\n", newName, oldName)
-		output.Dim.Printf("  or `afy deploy` from that directory will not find this agent.\n")
-	case archive.RewriteNoNameField:
-		output.Dim.Printf("  %s declares no 'name:' - nothing to update here.\n", path)
-	case archive.RewriteUnreadable:
-		if writeErr != nil {
-			output.Warning.Printf("! Could not update %s: %v\n", path, writeErr)
-		} else {
-			output.Warning.Printf("! Could not read %s - left untouched.\n", path)
-		}
-		output.Dim.Printf("  Set 'name: %s' there by hand before your next deploy.\n", newName)
-	default: // RewriteNoFile
-		output.Dim.Printf("  No aetherfy.yaml in this directory.\n")
-		output.Dim.Printf("  Set 'name: %s' in whichever aetherfy.yaml declares '%s',\n", newName, oldName)
-		output.Dim.Printf("  or `afy deploy` from that directory will not find this agent.\n")
-	}
-}
-
 // --- UPDATE ---
 var agentsUpdateCmd = &cobra.Command{
 	Use:   "update <name>",
-	Short: "Update an agent's workspace assignment or description",
-	Long: `Update mutable fields on an existing agent.
+	Short: "Rename an agent, move it to another workspace, or set its description",
+	Long: `Change what the platform owns about an agent: its name, the workspace it
+lives in, and its description. How it runs (runtime, memory, regions, ...) is
+aetherfy.yaml's, and only a deploy changes that.
 
-Use --workspace to move the agent into a workspace, or --no-workspace to
-make it workspaceless (the two are mutually exclusive). Use --description
-to set the agent's description. At least one flag is required; flags that
-aren't given are left unchanged.`,
-	Example: `  # Assign the agent to a workspace
+--name renames the agent. Its address does not change, and the folders linked
+to it keep deploying to it: a link names the agent by id. Code that calls the
+agent by its old name stops finding it.
+
+--workspace moves the agent to another workspace. A MOVE REDEPLOYS the agent,
+so its key reaches the new workspace at once; if it cannot be redeployed, the
+move is refused and says why. Its conversation history stays in the old
+workspace. Grants are unchanged, except a grant to the new home, which is
+dropped as redundant.
+
+At least one flag is required; flags not given are left unchanged.`,
+	Example: `  # Rename the agent
+  afy update my-agent --name invoice-parser
+
+  # Move it to another workspace (it is redeployed there)
   afy update my-agent --workspace invoice-pipeline
 
-  # Make the agent workspaceless (clear its workspace)
-  afy update my-agent --no-workspace
-
-  # Set the description (leaves the workspace untouched)
+  # Set the description
   afy update my-agent --description "Parses inbound invoices"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsUpdate,
 }
 
 var (
+	agentUpdateName        string
 	agentUpdateWorkspace   string
-	agentUpdateNoWorkspace bool
 	agentUpdateDescription string
 )
 
 func init() {
-	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Assign the agent to this workspace")
-	agentsUpdateCmd.Flags().BoolVar(&agentUpdateNoWorkspace, "no-workspace", false, "Clear the agent's workspace (make it workspaceless)")
+	agentsUpdateCmd.Flags().StringVar(&agentUpdateName, "name", "", "Rename the agent")
+	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Move the agent to this workspace (redeploys it)")
 	agentsUpdateCmd.Flags().StringVarP(&agentUpdateDescription, "description", "d", "", "Set the agent's description")
 }
 
@@ -1563,124 +1437,97 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
-
+	nameChanged := cmd.Flags().Changed("name")
 	wsChanged := cmd.Flags().Changed("workspace")
 	descChanged := cmd.Flags().Changed("description")
 
-	// Exactly one of --workspace / --no-workspace must be supplied — they
-	// are distinct intents (set vs clear) and must not be combined.
-	if wsChanged && agentUpdateNoWorkspace {
-		output.PrintError("--workspace and --no-workspace are mutually exclusive")
-		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
-	}
-	if !wsChanged && !agentUpdateNoWorkspace && !descChanged {
-		output.PrintError("Specify at least one of --workspace <name>, --no-workspace, or --description <text>")
+	if !nameChanged && !wsChanged && !descChanged {
+		output.PrintError("Specify at least one of --name <new>, --workspace <name> or --description <text>")
 		return fmt.Errorf("no update specified")
 	}
+	if nameChanged && agentUpdateName == "" {
+		output.PrintError("--name needs the agent's new name")
+		return fmt.Errorf("empty name")
+	}
+	if wsChanged && agentUpdateWorkspace == "" {
+		output.PrintError("--workspace needs the name of the workspace to move the agent to")
+		return fmt.Errorf("empty workspace name")
+	}
 
-	req := &api.AgentUpdateRequest{}
+	client := api.NewClient()
 
-	// Only touch workspace_name when a workspace flag was actually given —
-	// otherwise a description-only update would send a workspace_name and
-	// clobber the existing assignment.
-	if wsChanged {
-		// Reject the empty string: clearing is --no-workspace's job, so we
-		// don't want two ways to express "workspaceless".
-		if agentUpdateWorkspace == "" {
-			output.PrintError("--workspace requires a non-empty name; use --no-workspace to clear")
-			return fmt.Errorf("empty workspace name")
+	// The platform fields first: they change nothing that runs. The move
+	// then addresses the agent by ID, so a rename in the same command cannot
+	// leave it looking for the old name.
+	target := name
+	var updated *api.Agent
+	if nameChanged || descChanged {
+		req := &api.AgentUpdateRequest{}
+		if nameChanged {
+			req.Name = &agentUpdateName
 		}
-		encoded, err := json.Marshal(agentUpdateWorkspace)
+		if descChanged {
+			req.Description = &agentUpdateDescription
+		}
+		agent, err := client.UpdateAgent(name, req)
 		if err != nil {
-			return err
+			return printRefusal("Failed to update agent", err)
 		}
-		req.WorkspaceName = json.RawMessage(encoded)
-	} else if agentUpdateNoWorkspace {
-		// --no-workspace → explicit JSON null clears the assignment.
-		req.WorkspaceName = json.RawMessage("null")
+		updated, target = agent, agent.ID
+		output.PrintSuccess("Agent '%s' updated.", agent.Name)
+		output.KeyValue("Name", agent.Name)
+		if agent.Description != "" {
+			output.KeyValue("Description", agent.Description)
+		}
+		if nameChanged {
+			printRenameNote(agent)
+		}
 	}
 
-	if descChanged {
-		req.Description = &agentUpdateDescription
+	if wsChanged {
+		if updated != nil {
+			output.Println("")
+		}
+		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
+		sp.Start()
+		move, err := client.MoveAgent(target, agentUpdateWorkspace)
+		sp.Stop()
+		if err != nil {
+			if updated != nil {
+				output.PrintWarning("The %s above was applied; the move was not.", updatedWhat(nameChanged, descChanged))
+			}
+			return printRefusal("Failed to move agent", err)
+		}
+		printAgentMove(move)
 	}
+	return nil
+}
 
-	sp := output.NewSpinner(fmt.Sprintf("Updating agent '%s'...", name))
-	sp.Start()
-
-	client := api.NewClient()
-	agent, err := client.UpdateAgent(name, req)
-	sp.Stop()
-
-	if err != nil {
-		output.PrintError("Failed to update agent: %v", err)
-		return err
+func updatedWhat(name, description bool) string {
+	switch {
+	case name && description:
+		return "rename and description"
+	case name:
+		return "rename"
+	default:
+		return "description"
 	}
+}
 
-	output.PrintSuccess("Agent '%s' updated.", agent.Name)
-	output.Println("")
-	output.KeyValue("Name", agent.Name)
-	if agent.WorkspaceName != "" {
-		output.KeyValue("Workspace", agent.WorkspaceName)
+// printAgentMove says where the agent lives now and what the move redeployed.
+func printAgentMove(m *api.AgentMove) {
+	if !m.Changed {
+		output.PrintInfo("Agent '%s' already lives in workspace '%s'. Nothing changed.", m.Agent, m.Workspace.Name)
+		return
+	}
+	output.PrintSuccess("Agent '%s' moved from workspace '%s' to '%s'.", m.Agent, m.PreviousWorkspace.Name, m.Workspace.Name)
+	if m.Redeployed && m.Deployment != nil {
+		output.KeyValue("Redeploy", fmt.Sprintf("version %d (deployment %s)", m.Deployment.Version, m.Deployment.ID))
+		output.Println("Run 'afy logs " + m.Agent + "' to follow it.")
 	} else {
-		output.KeyValue("Workspace", "(none)")
+		output.Dim.Println("  It had no release serving, so nothing was redeployed; its next deploy runs in the new workspace.")
 	}
-	if agent.Description != "" {
-		output.KeyValue("Description", agent.Description)
-	}
-
-	return nil
-}
-
-// --- PULL (export current state as aetherfy.yaml) ---
-var agentsPullCmd = &cobra.Command{
-	Use:   "pull <agent-name>",
-	Short: "Export an agent's current configuration as aetherfy.yaml",
-	Long: `Export an agent's current configuration as aetherfy.yaml.
-
-Use this to re-sync a local aetherfy.yaml after editing the agent via the
-dashboard or API. Prints to stdout by default (so you can redirect it):
-
-  afy pull my-agent > aetherfy.yaml
-
-Or write to a file directly with -o. The YAML is the declarative subset only
-(server-derived fields like id/status are excluded) and re-deploying it is a
-no-op — it's the inverse of 'afy deploy' under merge-patch semantics.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runAgentsPull,
-}
-
-var pullOutputFile string
-
-func init() {
-	agentsPullCmd.Flags().StringVarP(&pullOutputFile, "output", "o", "", "Write YAML to this file instead of stdout")
-}
-
-func runAgentsPull(cmd *cobra.Command, args []string) error {
-	if err := checkAuth(); err != nil {
-		return err
-	}
-
-	name := args[0]
-	client := api.NewClient()
-	data, err := client.GetAgentYAML(name)
-	if err != nil {
-		output.PrintError("Failed to pull agent '%s': %v", name, err)
-		return err
-	}
-
-	if pullOutputFile != "" {
-		if err := os.WriteFile(pullOutputFile, data, 0o644); err != nil {
-			output.PrintError("Failed to write %s: %v", pullOutputFile, err)
-			return err
-		}
-		output.PrintSuccess("Wrote %s", pullOutputFile)
-		return nil
-	}
-
-	// Raw to stdout — no spinner/color/decoration, so `afy pull foo >
-	// foo.yaml` produces a clean file.
-	fmt.Print(string(data))
-	return nil
+	output.Dim.Printf("  Its conversation history stays in workspace '%s'.\n", m.PreviousWorkspace.Name)
 }
 
 // --- DIFF (preview what `afy deploy` would change vs preserve) ---

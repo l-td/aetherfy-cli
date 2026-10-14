@@ -89,7 +89,8 @@ self-updater was renamed when agents became the default noun: every agent verb
 moved to the top level, so `afy agents update <name>` became `afy update <name>`
 and the self-updater had to move out of the way. Run `afy update` once on an
 older binary to reach this version; after that it is `afy upgrade`, and
-`afy update <name>` changes an agent's workspace or description. This is the
+`afy update <name>` renames an agent, moves it to another workspace or sets its
+description. This is the
 only command whose name changed rather than shortening, and the only upgrade
 step that is not automatic.
 
@@ -184,7 +185,9 @@ afy init --name nightly-report --type job --schedule "0 3 * * *"
 | `afy status <name>` | Show detailed agent status |
 | `afy stop <name>` | Pause a running agent |
 | `afy start <name>` | Resume a paused agent |
-| `afy rename <current> <new>` | Rename an agent (URL stays the same) |
+| `afy update <name> --name <new>` | Rename an agent (its URL and the folders linked to it stay the same) |
+| `afy update <name> --workspace <ws>` | Move an agent to another workspace; it is redeployed there |
+| `afy update <name> --description <text>` | Set an agent's description |
 
 ### Runs & Schedules
 
