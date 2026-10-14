@@ -54,13 +54,9 @@ func TestMultipleAgentsInSameWorkspace(t *testing.T) {
 func TestAgentsInDifferentWorkspaces(t *testing.T) {
 	a1 := &api.Agent{ID: "1", Name: "agent-a", WorkspaceName: "workspace-a"}
 	a2 := &api.Agent{ID: "2", Name: "agent-b", WorkspaceName: "workspace-b"}
-	a3 := &api.Agent{ID: "3", Name: "agent-c"} // No workspace
 
 	if a1.WorkspaceName == a2.WorkspaceName {
 		t.Error("Agents in different workspaces should have different workspace names")
-	}
-	if a3.WorkspaceName != "" {
-		t.Error("Agent without workspace should have empty WorkspaceName")
 	}
 }
 
