@@ -130,10 +130,11 @@ removed on the next update if Windows still had it open at the end of this one.
 # Authenticate with your API key
 afy login
 
-# Scaffold an aetherfy.yaml in your project
+# Create an agent for this folder: writes aetherfy.yaml and the link
+# (.aetherfy/agent.json -- commit it)
 afy init
 
-# Deploy from the current directory
+# Deploy the folder to its agent
 afy deploy
 
 # Follow logs in real-time
@@ -162,13 +163,20 @@ afy runs my-job
 
 | Command | Description |
 |---------|-------------|
-| `afy init [path]` | Scaffold an `aetherfy.yaml` by auto-detecting runtime and entrypoint |
+| `afy init [path]` | Create an agent for the folder: asks its workspace, scans for runtime and entrypoint, writes `aetherfy.yaml` and links the folder |
+| `afy init --agent <name>` | Link the folder to an existing agent; writes its current configuration as `aetherfy.yaml` when the folder has none |
+| `afy init --agent <name> --target <t>` | Add another target (e.g. `staging`) beside the folder's others |
 
-Flags: `--name`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--workspace`, `--schedule`, `--force`, `--yes`.
+Flags: `--name`, `--agent`, `--target`, `--workspace`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--schedule`, `--force`, `--yes`.
+The regions and memory sizes offered are the ones your plan allows, read from the server.
 
 ```bash
-# Scaffold a scheduled job agent non-interactively
-afy init --name nightly-report --type job --schedule "0 3 * * *"
+# Create a scheduled job agent non-interactively
+afy init --name nightly-report --workspace default --type job --schedule "0 3 * * *" --yes
+
+# One codebase, two agents: link a staging agent, then deploy to it
+afy init --agent nightly-report-staging --target staging
+afy deploy --target staging
 ```
 
 `--schedule` writes the `schedule:` field into `aetherfy.yaml`. When you pick
@@ -270,10 +278,10 @@ the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`,
 
 | Command | Description |
 |---------|-------------|
-| `afy deploy [path]` | Build and deploy the project (watches by default) |
+| `afy deploy [path]` | Build and deploy the folder to the agent it is linked to (watches by default) |
+| `afy deploy --target <t>` | Deploy to another of the folder's linked agents (default: `default`) |
 | `afy deploy --detach` | Upload and return immediately without streaming |
-| `afy deploy --agent <name>` | Override agent target (otherwise read from `aetherfy.yaml`) |
-| `afy deploy --from-github <owner/repo[@ref]>` | Deploy directly from a public GitHub repo |
+| `afy deploy --from-github <owner/repo[@ref]>` | Deploy a public GitHub repo's code to the agent this folder is linked to |
 | `afy deployments <agent>` | Show deployment history (newest first) |
 | `afy rollback <agent> [version]` | Roll back to a previously deployed version (skips the build step) |
 
@@ -443,34 +451,49 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 
 ## Project Structure
 
-Your agent project must include an `aetherfy.yaml` at the root:
+Your agent project has an `aetherfy.yaml` at the root, saying how the agent
+runs, and a `.aetherfy/agent.json` saying which agent it deploys to:
 
 ```yaml
-name: my-agent
+# yaml-language-server: $schema=https://docs.aetherfy.com/aetherfy-yaml.schema.json
 runtime: python3.11         # python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile
 type: service               # service or job
 entrypoint: main.py         # optional — auto-detected by `afy init`
-regions:                    # optional — us-east-1, eu-central-1, ap-southeast-1
+regions:                    # optional — within your workspace's regions
   - us-east-1
-memory_mb: 512              # 256, 512, or 1024
+memory_mb: 512              # the sizes your plan allows
 keep_alive: false           # always-on billing
 
 # Optional: cron schedule — job agents only
 schedule: "0 3 * * *"
 
-# Optional: attach to a workspace to share secrets and vector collections
-workspace: invoice-pipeline
-
 # Optional: enable multi-agent spawning
 spawn:
   enabled: true
-  workspace: invoice-pipeline
   workers:
     - classifier
     - summarizer
 ```
 
-Required fields: `name`, `runtime`. Run `afy init` to scaffold a valid file.
+Required field: `runtime`. Run `afy init` to scaffold a valid file. The first
+line lets an editor validate the file against the published schema.
+
+The agent's name, description and workspace are NOT in the file: they belong to
+the platform, and change with `afy update <agent> --name / --description /
+--workspace` (or the dashboard). A file declaring `name:`, `description:` or
+`workspace:` is refused at deploy, with the command to use instead.
+
+`.aetherfy/agent.json` links the folder to its agent by id, per target:
+
+```json
+{ "targets": { "default": "<agent id>", "staging": "<agent id>" } }
+```
+
+`afy init` writes it. **Commit `.aetherfy/`** so every clone and CI job deploys
+to the same agent; `afy deploy` warns when git would not carry it. A deploy
+never creates an agent: with no link, no such target, or a link to an agent the
+account does not have, it is refused and names `afy init --agent <name>
+[--target <t>]`. Renaming or moving the agent does not unlink the folder.
 
 `schedule` is a 5-field cron expression, evaluated in **UTC**, with a minimum
 interval of every 5 minutes, and is valid only for `type: job` agents. Omit

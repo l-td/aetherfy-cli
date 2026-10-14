@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -147,6 +149,9 @@ func TestRunAfyDrivesTheRealCommandAndSeesItsRequests(t *testing.T) {
 // as afy (see runAfyProcess). Unit separator: an argument may contain spaces.
 const afyProcessArgs = "AFY_TEST_PROCESS_ARGS"
 
+// afyProcessBound is how long runAfyProcess lets one afy run.
+const afyProcessBound = 60 * time.Second
+
 // TestMain lets the test binary act as afy itself when re-executed by
 // runAfyProcess: some commands end the process (os.Exit with their exit code),
 // which in-process would end the whole test run.
@@ -164,9 +169,16 @@ func TestMain(m *testing.M) {
 // runAfyProcess runs `afy <args>` as its own process (this test binary,
 // re-executed) against cp, logged in, and returns stdout, stderr and the exit
 // code: the shipped command as a user runs it, exit code included.
+//
+// BOUNDED. A command that wrongly gets further than a case expects (a deploy
+// that should have been refused, then waits on a deployment the stand-in
+// cannot answer) would otherwise hold the whole run until go test's own
+// timeout. It is killed at afyProcessBound and the case fails saying so.
 func runAfyProcess(t *testing.T, cp *fakeCP, env []string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
-	cmd := exec.Command(os.Args[0])
+	ctx, cancel := context.WithTimeout(context.Background(), afyProcessBound)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, os.Args[0])
 	cmd.Env = append(os.Environ(),
 		afyProcessArgs+"="+strings.Join(args, "\x1f"),
 		"AETHERFY_CONFIG_DIR="+t.TempDir(),
@@ -180,6 +192,10 @@ func runAfyProcess(t *testing.T, cp *fakeCP, env []string, args ...string) (stdo
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
 	err := cmd.Run()
+	if ctx.Err() != nil {
+		t.Fatalf("afy %s did not finish within %s (killed); it got further than this case expects.\nstdout:\n%s\nstderr:\n%s",
+			strings.Join(args, " "), afyProcessBound, out.String(), errOut.String())
+	}
 	var exitErr *exec.ExitError
 	switch {
 	case err == nil:

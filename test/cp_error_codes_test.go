@@ -79,6 +79,7 @@ var notControlPlaneCodes = map[string]string{
 	"NO_COLOR":              "env var: the no-color convention, honoured by internal/output",
 	"XDG_CONFIG_HOME":       "env var: XDG base-directory lookup on unix",
 	"AETHERFY_CP_ROOT":      "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
+	"PLATFORM_FIELDS":       "the control plane's constant of the keys that left aetherfy.yaml, read by test/cpyaml",
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 

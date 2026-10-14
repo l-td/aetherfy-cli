@@ -27,6 +27,17 @@ const realShape = "UNKNOWN_FIELD_MESSAGE = \"unknown field `{path}`\"\r\n" +
 	"UNKNOWN_FIELD_SUGGESTION = \", did you mean `{suggestion}`?\"\r\n" +
 	"UNKNOWN_FIELD_SUGGESTION_CUTOFF = 0.6\r\n" +
 	"\r\n" +
+	"# The keys that left aetherfy.yaml.\r\n" +
+	"PLATFORM_FIELDS = {\r\n" +
+	"    \"name\": \"the agent's name is set on the platform: rename it with \"\r\n" +
+	"            \"`afy update <agent> --name <new>`\",\r\n" +
+	"    \"workspace\": \"moved with afy update\",\r\n" +
+	"    # a comment inside\r\n" +
+	"    \"description\": (\r\n" +
+	"        \"set on the platform\"\r\n" +
+	"    ),\r\n" +
+	"}\r\n" +
+	"\r\n" +
 	"class SpawnConfig(BaseModel):\r\n" +
 	"    \"\"\"Spawn configuration section.\"\"\"\r\n" +
 	"    model_config = ConfigDict(extra=\"forbid\")\r\n" +
@@ -75,6 +86,19 @@ func TestExtractReadsTheModelsTheirNestingAndTheWording(t *testing.T) {
 	assert.Equal(t, "unknown field `{path}`", src.Message)
 	assert.Equal(t, ", did you mean `{suggestion}`?", src.Suggestion)
 	assert.Equal(t, 0.6, src.SuggestionCutoff)
+	assert.Equal(t, []string{"description", "name", "workspace"}, src.PlatformFields,
+		"PLATFORM_FIELDS' keys, continuation lines and comments not read as keys")
+}
+
+func TestAMissingOrUnreadablePlatformFieldsIsRefused(t *testing.T) {
+	start := strings.Index(realShape, "PLATFORM_FIELDS = {")
+	end := strings.Index(realShape, "}\r\n\r\nclass SpawnConfig") + len("}\r\n")
+	src, err := Extract(fakeCP(t, realShape[:start]+realShape[end:]))
+	require.NoError(t, err)
+	assert.Error(t, Validate(src), "no PLATFORM_FIELDS: an empty pass-through set must not read as agreement")
+
+	_, err = Extract(fakeCP(t, replaceOnce(t, realShape, "    \"workspace\": ", "    WORKSPACE_KEY: ")))
+	assert.Error(t, err, "an entry that is not a quoted key is refused, not skipped")
 }
 
 // The mutation the pair exists for, at the extractor: a field added to the

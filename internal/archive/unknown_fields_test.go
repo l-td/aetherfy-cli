@@ -147,12 +147,28 @@ func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 // one side accepts what the other refuses. Live against the sibling checkout
 // like the other control-plane guards: skipped where there is none, FAILED
 // where cperrors.RequireEnv says there must be (the e2e nightly).
+func TestAPlatformFieldPassesThroughAndATypoOfOneDoesNot(t *testing.T) {
+	for _, key := range PlatformFields {
+		assert.NoError(t, CheckUnknownFields([]byte(key+": x\nruntime: python3.11\n")),
+			"%s: is the server's to refuse, in its own words", key)
+	}
+	assert.Error(t, CheckUnknownFields([]byte("nmae: x\nruntime: python3.11\n")), "a typo is still refused here")
+	assert.Error(t, CheckUnknownFields([]byte("spawn:\n  name: x\n")), "only TOP-LEVEL keys pass through")
+}
+
 func TestKnownFieldsEqualTheControlPlaneModel(t *testing.T) {
 	src := controlPlaneSource(t)
 	assert.Equal(t, cpyaml.Paths(src), KnownFields().Paths(),
 		"archive.AetherfyConfig's yaml tags and the control plane's %s (%s) disagree. Add the field to the "+
 			"struct (typed `any` if the CLI does not read it) -- and to docs-site's aetherfy-yaml schema.",
 		cpyaml.RootModel, cpyaml.SourcePath)
+	// The keys passed through for the server to refuse are exactly the
+	// control plane's PLATFORM_FIELDS: one more here would upload a typo the
+	// CLI should have caught; one fewer would refuse it in the CLI's words,
+	// not the server's. Part of this comparison (not a test of its own) so the
+	// e2e nightly, which lists this test, runs it.
+	assert.Equal(t, src.PlatformFields, PlatformFields,
+		"archive.PlatformFields and the control plane's PLATFORM_FIELDS (%s) disagree", cpyaml.SourcePath)
 	assert.Empty(t, cpyaml.NotForbidding(src),
 		"these control-plane models accept unknown fields, which the CLI refuses: set "+
 			"model_config = ConfigDict(extra=\"forbid\") on them")

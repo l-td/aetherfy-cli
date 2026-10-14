@@ -13,7 +13,6 @@ import (
 type ProjectHints struct {
 	Runtime          string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "node20-ts", "node22-ts", "bun", "dockerfile"
 	Entrypoint       string // e.g. "main.py", "index.js", "index.ts" — empty for dockerfile runtime
-	VectorDB         bool   // qdrant_memory folder found
 	HasMastra        bool   // mastra in package.json dependencies
 	HasPyprojectToml bool   // pyproject.toml found (uv or PEP 517 project)
 	HasUvLock        bool   // uv.lock found alongside pyproject.toml (uv project mode)
@@ -27,9 +26,6 @@ func Project(dir string) ProjectHints {
 	// the user owns the entire container; entrypoint is irrelevant.
 	if fileExists(filepath.Join(dir, "Dockerfile")) {
 		hints.Runtime = "dockerfile"
-		if dirExists(filepath.Join(dir, "qdrant_memory")) {
-			hints.VectorDB = true
-		}
 		return hints
 	}
 
@@ -92,10 +88,6 @@ func Project(dir string) ProjectHints {
 				break
 			}
 		}
-	}
-
-	if dirExists(filepath.Join(dir, "qdrant_memory")) {
-		hints.VectorDB = true
 	}
 
 	return hints
@@ -213,10 +205,6 @@ func fileExists(path string) bool {
 	return err == nil && !info.IsDir()
 }
 
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
-}
 
 func hasMastraDep(packageJSONPath string) bool {
 	data, err := os.ReadFile(packageJSONPath)

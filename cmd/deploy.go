@@ -13,6 +13,7 @@ import (
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/archive"
+	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -23,56 +24,57 @@ var githubRepoRefPattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(
 var deployCmd = &cobra.Command{
 	Use:   "deploy [path]",
 	Short: "Deploy an agent",
-	Long: `Deploy code to an Aetherfy agent.
+	Long: `Deploy code to the agent this folder is linked to.
 
-The path should contain an aetherfy.yaml configuration file.
-If no path is specified, the current directory is used.
+A folder is linked to its agent by .aetherfy/agent.json, which 'afy init'
+writes (for a new agent) or 'afy init --agent <name>' writes (for an existing
+one). Commit .aetherfy/ so every clone and CI job deploys to the same agent.
+A deploy NEVER creates an agent: a folder with no link, no such target, or a
+link to an agent this account does not have is refused, naming the command
+that links it.
 
-The deployment process:
+One codebase can deploy to several agents through targets: --target picks
+one (default: "default"); 'afy init --agent <name> --target <t>' adds one.
+
+The path should contain an aetherfy.yaml; if no path is given, the current
+directory is used. The deployment process:
   1. Validates aetherfy.yaml exists
-  2. Creates a ZIP archive of your code
+  2. Creates an archive of your code (files matching .afyignore are left out)
   3. Uploads to Aetherfy
-  4. Builds a Docker image
+  4. Builds an image
   5. Deploys it and prints the agent's URL
 
 By default the command waits for the deployment to complete and streams
 status updates. Use --detach to return immediately after upload.
 
-Files matching patterns in .afyignore will be excluded.
-
-Use --from-github to deploy directly from a public GitHub repository
-without a local clone. The agent name is read from the repo's aetherfy.yaml
-unless --agent is specified.
+--from-github deploys the code of a public GitHub repository, without a local
+clone, to the agent THIS folder is linked to.
 `,
-	Example: `  # Deploy current directory (waits for completion)
+	Example: `  # Deploy this folder to its linked agent (waits for completion)
   afy deploy
 
-  # Deploy specific directory
-  afy deploy ./my-agent
+  # Deploy to the folder's "staging" target
+  afy deploy --target staging
 
-  # Deploy and return immediately (fire and forget)
-  afy deploy --detach
+  # Deploy a specific directory, and return immediately
+  afy deploy ./my-agent --detach
 
-  # Deploy and specify agent by name
-  afy deploy --agent my-bot
-
-  # Deploy from a public GitHub repo (Level 1)
-  afy deploy --from-github owner/repo
-  afy deploy --from-github owner/repo@v1.2.3 --agent my-bot`,
+  # Deploy a public GitHub repo's code to this folder's agent
+  afy deploy --from-github owner/repo@v1.2.3`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runDeploy,
 }
 
 var (
 	deployDetach     bool
-	deployAgent      string
+	deployTarget     string
 	deployFromGitHub string
 	deployYes        bool
 )
 
 func init() {
 	deployCmd.Flags().BoolVarP(&deployDetach, "detach", "d", false, "Return immediately after upload without waiting for completion")
-	deployCmd.Flags().StringVarP(&deployAgent, "agent", "a", "", "Agent ID or name (reads from aetherfy.yaml if not specified)")
+	deployCmd.Flags().StringVar(&deployTarget, "target", link.DefaultTarget, "Which of the folder's linked agents to deploy to")
 	deployCmd.Flags().StringVar(&deployFromGitHub, "from-github", "", "Deploy from a public GitHub repo: owner/repo[@ref]")
 	deployCmd.Flags().BoolVarP(&deployYes, "yes", "y", false, "Skip the overage confirmation prompt and proceed (non-interactive)")
 }
@@ -153,25 +155,17 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Handle --from-github flag (Level 1: public repo deploy)
-	if deployFromGitHub != "" {
-		return runDeployFromGitHub(deployFromGitHub)
-	}
-
-	// Determine path
+	// The link lives in the folder being deployed; --from-github takes only
+	// the CODE from GitHub, and deploys it to the agent this folder links.
 	path := "."
 	if len(args) > 0 {
 		path = args[0]
 	}
-
-	// Resolve to absolute path
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		output.PrintError("Invalid path: %v", err)
 		os.Exit(1)
 	}
-
-	// Check path exists
 	info, err := os.Stat(absPath)
 	if err != nil {
 		output.PrintError("Path not found: %s", absPath)
@@ -182,92 +176,123 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		os.Exit(1)
 	}
 
+	client := api.NewClient()
+	agent, err := resolveLinkedAgent(client, absPath, deployTarget)
+	if err != nil {
+		output.PrintError("%v", err)
+		os.Exit(1)
+	}
+	warnUnlessLinkCommitted(absPath)
+
+	if deployFromGitHub != "" {
+		return runDeployFromGitHub(client, agent, deployFromGitHub)
+	}
+
 	output.PrintInfo("Deploying from: %s", absPath)
 	output.Println("")
-
-	// Validate aetherfy.yaml exists
 	if err := archive.ValidateAetherfyConfig(absPath); err != nil {
 		output.PrintError("%v", err)
 		if isUnknownFields(err) {
 			// The file exists and names a key the server would refuse: the
-			// sentence above says which. The create-a-file example below
-			// would only point at the wrong problem.
+			// sentence above says which.
 			os.Exit(1)
 		}
 		output.Println("")
-		output.Println("Create an aetherfy.yaml file with your agent configuration.")
-		output.Println("Example:")
+		output.Println("Add an aetherfy.yaml beside your code, with at least a runtime:")
 		output.Println("")
-		output.Dim.Println("  name: my-agent")
 		output.Dim.Println("  runtime: python3.11")
 		output.Dim.Println("  entrypoint: main.py")
+		output.Println("")
+		output.Println("'afy init' scans the folder and writes one.")
 		os.Exit(1)
 	}
+	return deployDir(client, agent, absPath)
+}
 
-	// Parsed once: the agent target falls back to 'name', and a deploy that hits
-	// AGENT_NOT_FOUND needs 'type'/'runtime' to describe what creating it would
-	// make. ValidateAetherfyConfig above already proved this parses.
-	cfg, cfgErr := archive.ParseAetherfyConfig(absPath)
-
-	// Use --agent flag or fall back to 'name' in aetherfy.yaml
-	agentID := deployAgent
-	if agentID == "" {
-		if cfgErr != nil || cfg.Name == "" {
-			output.PrintError("Agent name not found. Use --agent flag or set 'name' in aetherfy.yaml")
-			os.Exit(1)
-		}
-		agentID = cfg.Name
+// resolveLinkedAgent is the agent target names in dir's link file, read back
+// from the control plane by its id. Every refusal names the command that
+// fixes it; none creates anything.
+func resolveLinkedAgent(client *api.Client, dir, target string) (*api.Agent, error) {
+	fix := "afy init --agent <name>"
+	if target != link.DefaultTarget {
+		fix += " --target " + target
 	}
+	f, err := link.Read(dir)
+	if errors.Is(err, link.ErrNotLinked) {
+		return nil, fmt.Errorf("this folder is not linked to an agent (no %s). Link it to an existing agent "+
+			"with '%s', or create one with 'afy init'. A deploy never creates an agent", link.RelPath(), fix)
+	}
+	if err != nil {
+		return nil, err
+	}
+	id, ok := f.Targets[target]
+	if !ok {
+		return nil, fmt.Errorf("this folder has no target '%s' (its targets: %s). Link one with '%s'",
+			target, strings.Join(f.Names(), ", "), fix)
+	}
+	agent, err := client.GetAgent(id)
+	if err != nil {
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) && apiErr.IsNotFound() {
+			return nil, fmt.Errorf("target '%s' links agent %s, which this account does not have (deleted, or "+
+				"another account's). Relink with '%s'", target, id, fix)
+		}
+		return nil, err
+	}
+	return agent, nil
+}
 
-	// Load ignore patterns
-	ignorePatterns, err := archive.LoadIgnorePatterns(absPath)
+// warnUnlessLinkCommitted warns when git will not carry the link to the other
+// clones and CI jobs that deploy this folder. Outside git it says nothing.
+func warnUnlessLinkCommitted(dir string) {
+	switch link.Git(dir) {
+	case link.Untracked:
+		output.PrintWarning("%s is not committed. Commit it so every clone and CI job deploys to the same agent.", link.RelPath())
+	case link.Ignored:
+		output.PrintWarning("%s is ignored by git. Unignore and commit it so every clone and CI job deploys to the same agent.", link.RelPath())
+	}
+}
+
+// deployDir archives dir and deploys it to agent.
+func deployDir(client *api.Client, agent *api.Agent, dir string) error {
+	ignorePatterns, err := archive.LoadIgnorePatterns(dir)
 	if err != nil {
 		output.PrintWarning("Failed to load .afyignore: %v", err)
 	}
 
-	// Create tarball archive (.tar.gz)
 	sp := output.NewSpinner("Creating archive...")
 	sp.Start()
-
-	tarballData, err := archive.CreateTarball(absPath, ignorePatterns)
+	tarballData, err := archive.CreateTarball(dir, ignorePatterns)
 	sp.Stop()
-
 	if err != nil {
 		output.PrintError("Failed to create archive: %v", err)
 		os.Exit(1)
 	}
+	output.PrintSuccess("Archive created (%.2f MB)", float64(len(tarballData))/1024/1024)
 
-	sizeMB := float64(len(tarballData)) / 1024 / 1024
-	output.PrintSuccess("Archive created (%.2f MB)", sizeMB)
-
-	// Upload and deploy
+	output.PrintInfo("Deploying to %s...", agent.Name)
 	sp = output.NewSpinner("Uploading and deploying...")
 	sp.Start()
-
-	client := api.NewClient()
-	resp, err := client.Deploy(agentID, tarballData, false)
+	resp, err := client.Deploy(agent.ID, tarballData, false)
 	sp.Stop()
-	// Handle the D2 Part 6 overage confirm + freeze/pause 403s + the consented
-	// create-on-deploy (may prompt, which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agentID, tarballData, resp, err)
-
+	// The D2 Part 6 overage confirm and the freeze/pause 403s (may prompt,
+	// which is why the spinner is stopped first).
+	resp, err = handleDeployResult(client, agent.ID, tarballData, resp, err)
 	if err != nil {
-		output.PrintError("Deployment failed: %v", err)
+		_ = printRefusal("Deployment failed", err)
 		os.Exit(1)
 	}
 
 	output.KeyValue("Deployment ID", resp.DeploymentID)
 	output.Println("")
-
 	if deployDetach {
 		output.PrintSuccess("Deployment queued.")
-		output.Println("Run 'afy logs " + agentID + "' to follow progress.")
-	} else {
-		if err := watchDeployment(client, agentID, resp.DeploymentID, deploymentPollInterval, deploymentWatchTimeout); err != nil {
-			os.Exit(1)
-		}
+		output.Println("Run 'afy logs " + agent.Name + "' to follow progress.")
+		return nil
 	}
-
+	if err := watchDeployment(client, agent.ID, resp.DeploymentID, deploymentPollInterval, deploymentWatchTimeout); err != nil {
+		os.Exit(1)
+	}
 	return nil
 }
 
@@ -330,7 +355,7 @@ func printBuildFailureDetail(detail string) {
 
 // runDeployFromGitHub clones a public GitHub repo and feeds it into the standard deploy pipeline.
 // repoRef has the form "owner/repo" or "owner/repo@ref".
-func runDeployFromGitHub(repoRef string) error {
+func runDeployFromGitHub(client *api.Client, agent *api.Agent, repoRef string) error {
 	// Validate format
 	if !githubRepoRefPattern.MatchString(repoRef) {
 		output.PrintError("Invalid --from-github format. Expected: owner/repo or owner/repo@ref")
@@ -391,76 +416,15 @@ func runDeployFromGitHub(repoRef string) error {
 	// Validate aetherfy.yaml exists in the clone
 	if err := archive.ValidateAetherfyConfig(tmpDir); err != nil {
 		output.PrintError("%v", err)
-		if isUnknownFields(err) {
-			os.Exit(1)
+		if !isUnknownFields(err) {
+			output.Println("")
+			output.Println("The repository must contain an aetherfy.yaml file.")
 		}
-		output.Println("")
-		output.Println("The repository must contain an aetherfy.yaml file.")
 		os.Exit(1)
 	}
-
-	// Parsed once — same two readers as the local deploy: the agent target, and
-	// the type/runtime a consented create would use.
-	cfg, cfgErr := archive.ParseAetherfyConfig(tmpDir)
-
-	// Determine agent ID
-	agentID := deployAgent
-	if agentID == "" {
-		if cfgErr != nil || cfg.Name == "" {
-			output.PrintError("Agent name not found. Use --agent flag or set 'name' in aetherfy.yaml")
-			os.Exit(1)
-		}
-		agentID = cfg.Name
-	}
-
-	// Load ignore patterns and create tarball
-	ignorePatterns, _ := archive.LoadIgnorePatterns(tmpDir)
-
-	sp = output.NewSpinner("Creating archive...")
-	sp.Start()
-	tarballData, err := archive.CreateTarball(tmpDir, ignorePatterns)
-	sp.Stop()
-
-	if err != nil {
-		output.PrintError("Failed to create archive: %v", err)
-		os.Exit(1)
-	}
-
-	sizeMB := float64(len(tarballData)) / 1024 / 1024
-	output.PrintSuccess("Archive created (%.2f MB)", sizeMB)
-
-	// Upload and deploy
-	sp = output.NewSpinner("Uploading and deploying...")
-	sp.Start()
-
-	client := api.NewClient()
-	resp, err := client.Deploy(agentID, tarballData, false)
-	sp.Stop()
-	// Handle the D2 Part 6 overage confirm + freeze/pause 403s + the consented
-	// create-on-deploy (may prompt, which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agentID, tarballData, resp, err)
-
-	if err != nil {
-		output.PrintError("Deployment failed: %v", err)
-		os.Exit(1)
-	}
-
-	output.KeyValue("Deployment ID", resp.DeploymentID)
-	output.Println("")
-
-	if deployDetach {
-		output.PrintSuccess("Deployment queued.")
-		output.Println("Run 'afy logs " + agentID + "' to follow progress.")
-	} else {
-		if err := watchDeployment(client, agentID, resp.DeploymentID, deploymentPollInterval, deploymentWatchTimeout); err != nil {
-			os.Exit(1)
-		}
-	}
-
-	return nil
+	return deployDir(client, agent, tmpDir)
 }
 
-// runGitCommand runs a git subcommand with the given args.
 func runGitCommand(args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
