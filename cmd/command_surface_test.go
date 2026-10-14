@@ -319,8 +319,13 @@ func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
 				t.Errorf("`%s` declares --%s itself; it belongs to the group", c.CommandPath(), flag)
 			}
 			// The top-level group, above a nested one (afy collections schema).
+			// A group in between must not declare its own copy: the leaf would
+			// inherit that copy, not the top-level group's.
 			group := c.Parent()
 			for group.Parent() != rootCmd {
+				if group.PersistentFlags().Lookup(flag) != nil || group.LocalNonPersistentFlags().Lookup(flag) != nil {
+					t.Errorf("`%s` declares --%s itself; it belongs to the top-level group", group.CommandPath(), flag)
+				}
 				group = group.Parent()
 			}
 			if group.PersistentFlags().Lookup(flag) == nil {

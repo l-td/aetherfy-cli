@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -40,7 +41,7 @@ func (st *schemaStore) handle(r vecRequest) (int, string) {
 			return 412, `{"error":{"code":"SCHEMA_VERSION_MISMATCH","message":"Schema has been modified since you last fetched it",` +
 				`"current_etag":"` + st.etag + `","provided_etag":"` + strings.Trim(r.IfMatch, `"`) + `"}}`
 		}
-		st.etag = "v" + string(rune('0'+st.puts+2))
+		st.etag = "v" + strconv.Itoa(st.puts+2)
 		st.schema = `{"fields":{"written":{"type":"string"}}}`
 		return 200, `{"success":true,"etag":"` + st.etag + `","processing_time_ms":1}`
 	case r.Method == "DELETE" && r.Path == schemaPath:
