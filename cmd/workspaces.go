@@ -261,8 +261,8 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to delete workspace: %v", err)
-		return err
+		// WORKSPACE_IS_LAST and the not-empty refusals say what to do: printed as written.
+		return printRefusal("Failed to delete workspace", err)
 	}
 
 	output.PrintSuccess("Workspace '%s' deleted.", name)
@@ -277,12 +277,21 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 
 var workspacesUpdateCmd = &cobra.Command{
 	Use:   "update <name>",
-	Short: "Update a workspace's description",
-	Long: `Update mutable fields on an existing workspace. Currently only the
-description is mutable. A workspace name is fixed once created, because
-other resources reference it by name and nothing rewrites those
-references. To "rename" a workspace, delete and recreate it.`,
-	Example: `  # Update the description
+	Short: "Rename a workspace or change its description",
+	Long: `Rename a workspace (--name), change its description (--description), or both.
+
+Everything inside refers to a workspace by id, so a rename moves nothing: its
+agents keep running and are not redeployed, and its collections, secrets and
+grants stay where they are. What changes is the name people and code use: code
+that addresses the workspace by its old name (an SDK's workspace="old-name",
+'--workspace old-name') stops finding it. Agents using workspace="auto" are
+unaffected.
+
+A name already used by another of your workspaces is refused.`,
+	Example: `  # Rename a workspace
+  afy workspaces update invoice-pipeline --name invoices
+
+  # Update the description
   afy workspaces update invoice-pipeline --description "Updated invoice processing agents"
 
   # Clear the description (set to empty string)
@@ -291,17 +300,16 @@ references. To "rename" a workspace, delete and recreate it.`,
 	RunE: runWorkspacesUpdate,
 }
 
-// Separate variable from create's flag so the two commands don't share
+// Separate variables from create's flags so the two commands don't share
 // state across invocations. cobra binds these per-flag-definition.
-var workspaceUpdateDescription string
+var (
+	workspaceUpdateName        string
+	workspaceUpdateDescription string
+)
 
 func init() {
+	workspacesUpdateCmd.Flags().StringVar(&workspaceUpdateName, "name", "", "New workspace name")
 	workspacesUpdateCmd.Flags().StringVarP(&workspaceUpdateDescription, "description", "d", "", "New workspace description")
-	// Cobra has no built-in way to detect "user explicitly passed empty
-	// string" vs "user didn't pass flag"; we use Changed() at runtime
-	// below. Make the flag required to enforce that the user passed
-	// SOMETHING to mutate.
-	_ = workspacesUpdateCmd.MarkFlagRequired("description")
 }
 
 func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
@@ -310,22 +318,38 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
+	req := &api.WorkspaceUpdateRequest{}
+	if cmd.Flags().Changed("name") {
+		if workspaceUpdateName == "" {
+			output.PrintError("--name needs the workspace's new name")
+			return fmt.Errorf("empty name")
+		}
+		req.Name = &workspaceUpdateName
+	}
+	// Changed, not the value: --description "" is how a description is cleared.
+	if cmd.Flags().Changed("description") {
+		req.Description = &workspaceUpdateDescription
+	}
+	if req.Name == nil && req.Description == nil {
+		output.PrintError("Specify --name <new> and/or --description <text>")
+		return fmt.Errorf("no update specified")
+	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Updating workspace '%s'...", name))
 	sp.Start()
-
 	client := api.NewClient()
-	workspace, err := client.UpdateWorkspace(name, &api.WorkspaceUpdateRequest{
-		Description: workspaceUpdateDescription,
-	})
+	workspace, err := client.UpdateWorkspace(name, req)
 	sp.Stop()
-
 	if err != nil {
-		output.PrintError("Failed to update workspace: %v", err)
-		return err
+		return printRefusal("Failed to update workspace", err)
 	}
 
-	output.PrintSuccess("Workspace '%s' updated.", workspace.Name)
+	if req.Name != nil && workspace.Name != name {
+		output.PrintSuccess("Workspace '%s' renamed to '%s'.", name, workspace.Name)
+		output.Dim.Printf("  Its agents keep running. Code that names it '%s' must use '%s' now.\n", name, workspace.Name)
+	} else {
+		output.PrintSuccess("Workspace '%s' updated.", workspace.Name)
+	}
 	output.Println("")
 	output.KeyValue("Name", workspace.Name)
 	if workspace.Description != "" {
@@ -333,7 +357,6 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	} else {
 		output.KeyValue("Description", "(none)")
 	}
-
 	return nil
 }
 

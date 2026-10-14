@@ -353,12 +353,13 @@ type WorkspaceCreateRequest struct {
 	Description string `json:"description,omitempty"`
 }
 
-// WorkspaceUpdateRequest is the request body for PATCH /workspaces/{name}.
-// Only description is mutable; name is intentionally not included here —
-// the API rejects rename attempts with 400 WORKSPACE_NAME_IMMUTABLE
-// (see docs/REVIEW_FAQ.md §53 in the control-plane repo).
+// WorkspaceUpdateRequest is the request body for PATCH /workspaces/{name}: a
+// new name, a new description, or both. A nil field is left out and left
+// unchanged; a pointer to "" clears the description. Every internal reference
+// to a workspace is by id, so a rename moves nothing and redeploys no agent.
 type WorkspaceUpdateRequest struct {
-	Description string `json:"description"`
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // WorkspaceDeleteResponse is the response from deleting a workspace

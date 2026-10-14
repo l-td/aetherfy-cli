@@ -252,7 +252,9 @@ Workspaces group related agents so they can share secrets and vector collections
 | `afy workspaces list` | List all workspaces with agent counts |
 | `afy workspaces info <name>` | Show workspace details |
 | `afy workspaces agents <name>` | List agents in a workspace |
-| `afy workspaces delete <name>` | Delete an empty workspace and its secrets |
+| `afy workspaces update <name> --name <new>` | Rename a workspace (its agents keep running; code naming the old name stops finding it) |
+| `afy workspaces update <name> --description <text>` | Change a workspace's description |
+| `afy workspaces delete <name>` | Delete an empty workspace and its secrets (your last workspace cannot be deleted) |
 
 ### Vectors
 
