@@ -210,7 +210,11 @@ func (e *NetworkError) Error() string { return e.Message }
 // twenty files under backend/); middleware/errorHandler.js has an ERROR_CODES
 // map, but only its global handler uses it, and most codes a route answers
 // (NOT_FOUND, COLLECTION_LIST_ERROR, INVALID_POINT_ID, ...) are not in it. So
-// nothing here switches on a code: the CLI prints it and exits non-zero.
+// nothing here switches on a code: the CLI prints it and exits non-zero. The
+// one exception is `afy collections schema set` (cmd/collection_schema.go),
+// which branches on the two codes the contract sheet's 1.5 makes public:
+// SCHEMA_NOT_DEFINED (no schema yet) and SCHEMA_VERSION_MISMATCH (a stale
+// If-Match).
 type APIError struct {
 	Status  int
 	Code    string

@@ -26,7 +26,9 @@ type vecRequest struct {
 	Method string
 	Path   string // escaped, as sent
 	Auth   string
-	Body   map[string]interface{}
+	// IfMatch is the If-Match header, "" when not sent.
+	IfMatch string
+	Body    map[string]interface{}
 }
 
 // vecServer answers each request with handler, and records it. RUNAWAY GUARD:
@@ -45,7 +47,7 @@ func newVecServer(t *testing.T, handler func(r vecRequest) (int, string)) *vecSe
 	s := &vecServer{t: t, maxRequests: 50}
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		raw, _ := io.ReadAll(req.Body)
-		r := vecRequest{Method: req.Method, Path: req.URL.EscapedPath(), Auth: req.Header.Get("Authorization")}
+		r := vecRequest{Method: req.Method, Path: req.URL.EscapedPath(), Auth: req.Header.Get("Authorization"), IfMatch: req.Header.Get("If-Match")}
 		if len(raw) > 0 {
 			if err := json.Unmarshal(raw, &r.Body); err != nil {
 				t.Errorf("request body is not a JSON object: %s", raw)
@@ -611,6 +613,7 @@ func TestNotLoggedInIsExitThreeAndJSONUnderJSON(t *testing.T) {
 // and the API's status, code and message on stderr, unchanged.
 func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 	const message = "Collection 'articles' not found"
+	versionedSchemaFile := writeSchemaFile(t, `{"schema":{"fields":{}},"etag":"v1"}`)
 	commands := map[string]func(r *vecRun) int{
 		"collections list":   func(r *vecRun) int { return collectionsList(r) },
 		"collections get":    func(r *vecRun) int { return collectionsGet(r, "articles") },
@@ -630,12 +633,20 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		},
 		// Reaches only the control plane; the refusing server answers it too.
 		"collections region-limits": func(r *vecRun) int { return collectionsRegionLimits(r) },
-		"index create":              func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
-		"index delete":              func(r *vecRun) int { return indexDelete(r, "articles", "f") },
-		"points count":              func(r *vecRun) int { return pointsCount(r, "articles", "") },
-		"points get":                func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
-		"points search":             func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
-		"points list":               func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
+		// The schema commands. set's file carries a version, so its one
+		// request is the PUT (without one it would read the schema first).
+		"collections schema get":     func(r *vecRun) int { return schemaGet(r, "articles", "") },
+		"collections schema set":     func(r *vecRun) int { return schemaSet(r, "articles", versionedSchemaFile) },
+		"collections schema analyze": func(r *vecRun) int { return schemaAnalyze(r, "articles", 0) },
+		"collections schema delete": func(r *vecRun) int {
+			return schemaDelete(r, "articles", true, strings.NewReader(""), false)
+		},
+		"index create":  func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
+		"index delete":  func(r *vecRun) int { return indexDelete(r, "articles", "f") },
+		"points count":  func(r *vecRun) int { return pointsCount(r, "articles", "") },
+		"points get":    func(r *vecRun) int { return pointsGet(r, "articles", []string{"1"}) },
+		"points search": func(r *vecRun) int { return pointsSearch(r, "articles", "[1]", 10, "") },
+		"points list":   func(r *vecRun) int { return pointsList(r, "articles", 10, "", "", false) },
 		"points delete": func(r *vecRun) int {
 			return pointsDelete(r, "articles", []string{"1"}, "", true, strings.NewReader(""), false)
 		},

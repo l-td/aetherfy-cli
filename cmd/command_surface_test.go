@@ -237,11 +237,23 @@ func TestTheNonDefaultNounsKeepTheirGroups(t *testing.T) {
 	}
 }
 
-// vectorLeaves is every runnable command under the three vector groups.
+// vectorLeaves is every runnable command under the three vector groups, at
+// any depth: a nested group (afy collections schema) is walked to its leaves,
+// not counted as one.
 func vectorLeaves() []*cobra.Command {
 	var leaves []*cobra.Command
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, sub := range c.Commands() {
+			if sub.HasSubCommands() {
+				walk(sub)
+			} else {
+				leaves = append(leaves, sub)
+			}
+		}
+	}
 	for _, group := range []*cobra.Command{collectionsCmd, indexCmd, pointsCmd} {
-		leaves = append(leaves, group.Commands()...)
+		walk(group)
 	}
 	return leaves
 }
@@ -258,10 +270,17 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// collections region-limits was the owner's (2026-10-12), the CLI's half
 	// of the dashboard's Usage figures for region changes; collections update
 	// was the workspaces-required brief's (decision 1.17, the rename approved
-	// 2026-10-14): renaming a collection from the CLI as from the dashboard.
+	// 2026-10-14): renaming a collection from the CLI as from the dashboard;
+	// collections schema get/set/delete/analyze were the supervisor's
+	// workspaces-required-cli-schema brief (2026-10-14), under the owner's rule
+	// that the CLI can do what a person can in the dashboard: its per-collection
+	// schema page. Schema conformance is NOT here on purpose: the dashboard does
+	// not offer it, so parity does not ask for it.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
 		"afy collections move", "afy collections region-limits", "afy collections regions",
+		"afy collections schema analyze", "afy collections schema delete", "afy collections schema get",
+		"afy collections schema set",
 		"afy collections update",
 		"afy index create", "afy index delete",
 		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
@@ -299,8 +318,13 @@ func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
 			if c.LocalNonPersistentFlags().Lookup(flag) != nil {
 				t.Errorf("`%s` declares --%s itself; it belongs to the group", c.CommandPath(), flag)
 			}
-			if c.Parent().PersistentFlags().Lookup(flag) == nil {
-				t.Errorf("`%s` is not a persistent flag of `%s`", flag, c.Parent().CommandPath())
+			// The top-level group, above a nested one (afy collections schema).
+			group := c.Parent()
+			for group.Parent() != rootCmd {
+				group = group.Parent()
+			}
+			if group.PersistentFlags().Lookup(flag) == nil {
+				t.Errorf("`%s` is not a persistent flag of `%s`", flag, group.CommandPath())
 			}
 		}
 		if c.GroupID != "" {

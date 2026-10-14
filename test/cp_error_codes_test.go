@@ -101,11 +101,16 @@ var notControlPlaneCodes = map[string]string{
 	// commands talk to vectordb, not the control plane, and vectordb has no
 	// code registry to pin them against: it writes each code as a literal in
 	// the route that raises it (see the APIError comment in
-	// internal/vectors/client.go). Nothing in the CLI branches on any of them; the
-	// commands print the code they are sent.
-	"NOT_FOUND":         "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
-	"PROXY_ERROR":       "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
-	"PAYLOAD_TOO_LARGE": "vectordb code: an upsert body over the byte cap (middleware/streamingPointsParser.js), in cmd/points_upsert_test.go",
+	// internal/vectors/client.go). The commands print the code they are sent;
+	// only `afy collections schema set` branches, on SCHEMA_NOT_DEFINED and
+	// SCHEMA_VERSION_MISMATCH (contract sheet 1.5).
+	"NOT_FOUND":               "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
+	"PROXY_ERROR":             "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
+	"PAYLOAD_TOO_LARGE":       "vectordb code: an upsert body over the byte cap (middleware/streamingPointsParser.js), in cmd/points_upsert_test.go",
+	"SCHEMA_NOT_DEFINED":      "vectordb code: GET …/schema with no schema (routes/schema.js); schema set branches on it to set a first schema",
+	"SCHEMA_VERSION_MISMATCH": "vectordb code: PUT …/schema with a stale If-Match (routes/schema.js); schema set prints its own sentence for it",
+	"ADDRESSED_AN_ALIAS":      "vectordb code: a schema write through an alias, 409 (routes/schema.js, sheet 1.6), in cmd/collection_schema_test.go",
+	"SPARSE_FIELD":            "vectordb analyzer warning, not an error code (services/schemaAnalyzer.js), in cmd/collection_schema_test.go",
 
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.
