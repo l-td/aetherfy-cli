@@ -25,7 +25,7 @@ func TestDiffComparesWithTheLinkedAgentsExport(t *testing.T) {
 		t.Fatalf("an identical configuration must exit 0, got %d\n%s%s", code, stdout, stderr)
 	}
 	if len(cp.called("GET", "/agents/"+prodID+"/yaml")) != 1 {
-		t.Errorf("the export must be read by the linked id; calls: %+v", cp.calls)
+		t.Errorf("the export must be read by the linked id; calls: %+v", cp.all())
 	}
 	if !strings.Contains(stdout, "= idle_timeout_minutes: 5 (default)") {
 		t.Errorf("an omitted field must show its default:\n%s", stdout)
@@ -46,6 +46,25 @@ func TestDiffShowsAnOmittedFieldGoingToItsDefault(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "~ memory_mb: 1024 → 256 (default)") {
 		t.Errorf("want the default as the change's new value:\n%s", stdout)
+	}
+}
+
+// THE FOLDER `afy init` WRITES diffs clean against the agent it deployed.
+// The export carries no regions; the agent's footprint does, and a declared
+// regions: is compared with it. Without that, every init'd folder would show
+// "+ regions" forever and fail a CI gate.
+func TestAFreshlyInitialisedFolderDiffsClean(t *testing.T) {
+	dir := agentFolder(t, buildAetherfyYAML("python3.11", "service", "eu-central-1", 1024, false, "main.py", ""))
+	linkFolder(t, dir, map[string]string{"default": prodID})
+	cp := diffCP(t)
+	cp.on("GET", "/agents/"+prodID, 200, `{"id":"`+prodID+`","name":"invoice-parser","regions":["eu-central-1"]}`)
+
+	stdout, stderr, code := runAfyProcess(t, cp, nil, "diff", "--path", dir)
+	if code != 0 {
+		t.Fatalf("an init'd, deployed folder must diff clean; exit %d\n%s%s", code, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "= regions: [eu-central-1]") {
+		t.Errorf("regions must be compared with the deployed footprint:\n%s", stdout)
 	}
 }
 

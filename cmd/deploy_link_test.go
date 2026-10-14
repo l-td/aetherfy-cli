@@ -56,7 +56,7 @@ func deployCP(t *testing.T) *fakeCP {
 
 func deploysSent(cp *fakeCP) int {
 	n := 0
-	for _, c := range cp.calls {
+	for _, c := range cp.all() {
 		if c.Method == "POST" && strings.HasSuffix(c.Path, "/deploy") {
 			n++
 		}
@@ -74,7 +74,7 @@ func TestDeployGoesToTheLinkedAgentByID(t *testing.T) {
 		t.Fatalf("exit %d\n%s%s", code, stdout, stderr)
 	}
 	if len(cp.called("POST", "/agents/"+prodID+"/deploy")) != 1 || deploysSent(cp) != 1 {
-		t.Errorf("want exactly one deploy, to the default target's id; calls: %+v", cp.calls)
+		t.Errorf("want exactly one deploy, to the default target's id; calls: %+v", cp.all())
 	}
 	if !strings.Contains(stdout, "Deploying to invoice-parser...") {
 		t.Errorf("the deploy must say which agent it goes to; stdout:\n%s", stdout)
@@ -91,7 +91,7 @@ func TestDeployTargetPicksAmongTheLinkedAgents(t *testing.T) {
 		t.Fatalf("exit %d\n%s%s", code, stdout, stderr)
 	}
 	if len(cp.called("POST", "/agents/"+stagingID+"/deploy")) != 1 || deploysSent(cp) != 1 {
-		t.Errorf("want one deploy, to staging's id; calls: %+v", cp.calls)
+		t.Errorf("want one deploy, to staging's id; calls: %+v", cp.all())
 	}
 	if !strings.Contains(stdout, "Deploying to invoice-parser-staging...") {
 		t.Errorf("stdout:\n%s", stdout)
@@ -131,7 +131,7 @@ func TestDeployRefusesAndCreatesNothing(t *testing.T) {
 				}
 			}
 			if deploysSent(cp) != 0 || len(cp.called("POST", "/agents")) != 0 {
-				t.Errorf("nothing may be deployed or created; calls: %+v", cp.calls)
+				t.Errorf("nothing may be deployed or created; calls: %+v", cp.all())
 			}
 		})
 	}
@@ -150,8 +150,8 @@ func TestDeployHasNoAgentOrCreateFlag(t *testing.T) {
 		if code == 0 || !strings.Contains(stderr, "unknown flag: "+flag) {
 			t.Errorf("%s: want unknown flag, got exit %d: %s", flag, code, stderr)
 		}
-		if len(cp.calls) != 0 {
-			t.Errorf("%s: sent %+v", flag, cp.calls)
+		if len(cp.all()) != 0 {
+			t.Errorf("%s: sent %+v", flag, cp.all())
 		}
 	}
 }
@@ -222,7 +222,7 @@ func TestAPlatformFieldInTheYamlGetsTheServersSentence(t *testing.T) {
 		t.Fatal("the deploy must fail")
 	}
 	if deploysSent(cp) != 1 {
-		t.Fatalf("the file must reach the server, which owns the refusal; calls: %+v", cp.calls)
+		t.Fatalf("the file must reach the server, which owns the refusal; calls: %+v", cp.all())
 	}
 	if !strings.Contains(stderr, "Error: "+sentence+"\n") {
 		t.Errorf("the server's sentence must be printed unaltered:\n%s", stderr)

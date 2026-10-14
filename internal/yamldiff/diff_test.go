@@ -137,6 +137,29 @@ spawn:
 	}
 }
 
+func TestRegionsAreASet(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\nregions: [eu-central-1, us-east-1]\n")
+	diffs := Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1, eu-central-1]\n"), server)
+	if d := find(t, diffs, "regions"); d.Kind != NoOp {
+		t.Errorf("the same regions in another order = %+v, want NoOp", d)
+	}
+	diffs = Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\n"), server)
+	if d := find(t, diffs, "regions"); d.Kind != Change {
+		t.Errorf("fewer regions = %+v, want Change", d)
+	}
+}
+
+// A field the export never carries cannot be compared: shown, never counted.
+func TestADeclaredFieldTheExportNeverCarriesIsNotCompared(t *testing.T) {
+	diffs := Diff(mustMap(t, "runtime: python3.11\ngithub_dependencies: [org/lib@v1]\n"), mustMap(t, "runtime: python3.11\n"))
+	if d := find(t, diffs, "github_dependencies"); d.Kind != NotCompared {
+		t.Errorf("github_dependencies = %+v, want NotCompared", d)
+	}
+	if HasChanges(diffs) {
+		t.Error("a field that cannot be compared is not a change")
+	}
+}
+
 func TestNullOnAbsentServerFieldIsNoOp(t *testing.T) {
 	server := mustMap(t, "runtime: python3.11\n")
 	diffs := Diff(mustMap(t, "runtime: python3.11\nschedule: null\n"), server)

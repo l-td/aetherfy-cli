@@ -382,10 +382,15 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 		}
 	}
 
-	// --- Region: one the plan allows ---
-	allowedRegions := opts.AllowedRegions()
+	// --- Region: one the plan allows, inside the workspace's ---
+	// A deploy refuses regions outside the agent's workspace's
+	// (DEPLOY_REGIONS_NOT_IN_SCOPE), so only those are offered. A workspace
+	// with no regions yet takes them from the agent's first deploy (the home
+	// region on a single-region plan), so then every region the plan allows is.
+	allowedRegions := regionsInScope(opts.AllowedRegions(), ws.Regions)
 	if len(allowedRegions) == 0 {
-		return fmt.Errorf("your plan allows no region to deploy to; check your plan on the dashboard")
+		return fmt.Errorf("none of workspace '%s''s regions (%s) is one your plan allows; change the workspace's "+
+			"regions (afy workspaces regions %s --regions ...) or your plan", ws.Name, strings.Join(ws.Regions, ", "), ws.Name)
 	}
 	defaultRegion := allowedRegions[0]
 	if opts.HomeRegion != nil && contains(allowedRegions, *opts.HomeRegion) {
@@ -395,7 +400,8 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	switch {
 	case region != "":
 		if !contains(allowedRegions, region) {
-			return refuse("--region %s is not one your plan allows (allowed: %s)", region, strings.Join(allowedRegions, ", "))
+			return refuse("--region %s is not one your plan allows in workspace '%s' (allowed: %s)",
+				region, ws.Name, strings.Join(allowedRegions, ", "))
 		}
 	case interactive:
 		regionSelect := promptui.Select{
@@ -502,6 +508,21 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	printConfigSummary(agent.Name, ws.Name, runtime, agentType, region, memoryMB, keepAlive, schedule)
 	printLinkNextSteps(initTarget)
 	return nil
+}
+
+// regionsInScope is allowed (the plan's, in the platform's order) narrowed to
+// the workspace's regions; all of allowed when the workspace has none yet.
+func regionsInScope(allowed, workspace []string) []string {
+	if len(workspace) == 0 {
+		return allowed
+	}
+	var out []string
+	for _, r := range allowed {
+		if contains(workspace, r) {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 func indexOf(list []string, s string) int {

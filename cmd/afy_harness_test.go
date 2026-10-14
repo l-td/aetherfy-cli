@@ -74,6 +74,14 @@ func (f *fakeCP) on(method, path string, status int, body string) {
 	f.routes[method+" "+path] = cpAnswer{status, body}
 }
 
+// all returns every request received, in order, under the lock (the server
+// records from its own goroutines).
+func (f *fakeCP) all() []cpCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]cpCall(nil), f.calls...)
+}
+
 // called returns the requests made to method+path, in order.
 func (f *fakeCP) called(method, path string) []cpCall {
 	f.mu.Lock()
@@ -138,7 +146,7 @@ func TestRunAfyDrivesTheRealCommandAndSeesItsRequests(t *testing.T) {
 		t.Fatal("an unrouted request must fail the command")
 	}
 	if len(cp.called("PATCH", "/agents/bot")) != 1 {
-		t.Fatalf("the command's request was not recorded; calls: %+v", cp.calls)
+		t.Fatalf("the command's request was not recorded; calls: %+v", cp.all())
 	}
 	if !strings.Contains(stderr, "stand-in-unrouted") && !strings.Contains(stderr, "the stand-in has no answer") {
 		t.Errorf("stderr did not carry the stand-in's refusal: %q", stderr)

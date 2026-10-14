@@ -22,7 +22,7 @@ func TestUpdateNameSendsOnlyTheName(t *testing.T) {
 	}
 	calls := cp.called("PATCH", "/agents/bot")
 	if len(calls) != 1 {
-		t.Fatalf("want one PATCH /agents/bot, got %+v", cp.calls)
+		t.Fatalf("want one PATCH /agents/bot, got %+v", cp.all())
 	}
 	if len(calls[0].Body) != 1 || calls[0].Body["name"] != "invoice-parser" {
 		t.Errorf("the PATCH must carry exactly {name}; got %v", calls[0].Body)
@@ -47,7 +47,7 @@ func TestUpdateWorkspaceMovesThroughTheMoveRoute(t *testing.T) {
 	}
 	calls := cp.called("POST", "/agents/bot/move")
 	if len(calls) != 1 {
-		t.Fatalf("want one POST /agents/bot/move, got %+v", cp.calls)
+		t.Fatalf("want one POST /agents/bot/move, got %+v", cp.all())
 	}
 	if len(calls[0].Body) != 1 || calls[0].Body["workspace_name"] != "acme" {
 		t.Errorf("the move must carry exactly {workspace_name}; got %v", calls[0].Body)
@@ -78,7 +78,7 @@ func TestUpdateRenameThenMoveAddressesTheAgentByID(t *testing.T) {
 		t.Error("the move went to the OLD name")
 	}
 	if len(cp.called("POST", "/agents/7d1c2f4e-0000-4000-8000-000000000001/move")) != 1 {
-		t.Errorf("the move did not go to the agent's id; calls: %+v", cp.calls)
+		t.Errorf("the move did not go to the agent's id; calls: %+v", cp.all())
 	}
 }
 
@@ -113,8 +113,8 @@ func TestUpdateHasNoNoWorkspace(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "unknown flag: --no-workspace") {
 		t.Fatalf("--no-workspace must be an unknown flag, got %v", err)
 	}
-	if len(cp.calls) != 0 {
-		t.Errorf("nothing may be sent; got %+v", cp.calls)
+	if len(cp.all()) != 0 {
+		t.Errorf("nothing may be sent; got %+v", cp.all())
 	}
 }
 

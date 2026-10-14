@@ -28,7 +28,7 @@ func TestCreateUsesTheOnlyWorkspaceAndSendsItsID(t *testing.T) {
 	}
 	posts := cp.called("POST", "/agents")
 	if len(posts) != 1 {
-		t.Fatalf("want one POST /agents, got %+v", cp.calls)
+		t.Fatalf("want one POST /agents, got %+v", cp.all())
 	}
 	b := posts[0].Body
 	if len(b) != 3 || b["name"] != "invoice-parser" || b["description"] != "Parses invoices" || b["workspace_id"] != "w-1" {

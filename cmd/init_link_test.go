@@ -20,9 +20,13 @@ const deployOptions = `{"regions":[{"code":"us-east-1","allowed":false},{"code":
 	"memory_mb":[{"memory_mb":256,"allowed":false},{"memory_mb":512,"allowed":true},{"memory_mb":1024,"allowed":true}],
 	"max_memory_mb":1024}`
 
+// initWorkspaces' one workspace has regions within the plan's (deployOptions): eu-central-1
+// and ap-southeast-1.
+const initWorkspaces = `[{"id":"w-1","name":"default","regions":["eu-central-1","ap-southeast-1"]}]`
+
 func initCP(t *testing.T) *fakeCP {
 	cp := newFakeCP(t)
-	cp.on("GET", "/workspaces", 200, oneWorkspace)
+	cp.on("GET", "/workspaces", 200, initWorkspaces)
 	cp.on("GET", "/deploy-options", 200, deployOptions)
 	cp.on("POST", "/agents", 201, `{"id":"`+prodID+`","name":"invoice-parser","workspace_id":"w-1","workspace_name":"default"}`)
 	return cp
@@ -48,7 +52,7 @@ func TestInitCreatesTheAgentThenWritesTheYamlAndTheLink(t *testing.T) {
 
 	posts := cp.called("POST", "/agents")
 	if len(posts) != 1 {
-		t.Fatalf("want one POST /agents, got %+v", cp.calls)
+		t.Fatalf("want one POST /agents, got %+v", cp.all())
 	}
 	if b := posts[0].Body; len(b) != 2 || b["name"] != "invoice-parser" || b["workspace_id"] != "w-1" {
 		t.Errorf("POST /agents body = %v, want exactly {name, workspace_id}", b)
@@ -81,6 +85,44 @@ func TestInitCreatesTheAgentThenWritesTheYamlAndTheLink(t *testing.T) {
 	f, err := link.Read(dir)
 	if err != nil || f.Targets["default"] != prodID || len(f.Targets) != 1 {
 		t.Errorf("link = %+v, %v; want {default: %s}", f, err, prodID)
+	}
+}
+
+// A deploy refuses regions outside the workspace's, so init offers only the
+// plan's regions that are inside it, and a workspace with none yet all of them.
+func TestInitOffersOnlyRegionsInsideTheWorkspace(t *testing.T) {
+	for _, c := range []struct {
+		name, workspace, flag, want string
+		refused                     bool
+	}{
+		{"the home region is outside the workspace", `[{"id":"w-1","name":"default","regions":["eu-central-1"]}]`, "", "eu-central-1", false},
+		{"a plan region outside the workspace", `[{"id":"w-1","name":"default","regions":["eu-central-1"]}]`, "ap-southeast-1", "", true},
+		{"a workspace with no regions yet", `[{"id":"w-1","name":"default","regions":[]}]`, "", "ap-southeast-1", false},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cp := initCP(t)
+			cp.on("GET", "/workspaces", 200, c.workspace)
+			args := []string{"init", dir, "-y", "--runtime", "python3.11"}
+			if c.flag != "" {
+				args = append(args, "--region", c.flag)
+			}
+			_, stderr, err := runAfy(t, cp, args...)
+			if c.refused {
+				if err == nil || ExitCode(err) != exitInputRefused || len(cp.called("POST", "/agents")) != 0 {
+					t.Fatalf("want a refusal before anything is created, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("init: %v\n%s", err, stderr)
+			}
+			var doc map[string]interface{}
+			_ = yaml.Unmarshal([]byte(readFile(t, filepath.Join(dir, "aetherfy.yaml"))), &doc)
+			if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != c.want {
+				t.Errorf("regions = %v, want [%s]", doc["regions"], c.want)
+			}
+		})
 	}
 }
 
@@ -130,8 +172,8 @@ func TestInitRefusesToRelinkALinkedTargetToANewAgent(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "already linked to agent "+stagingID) {
 		t.Fatalf("want a refusal naming the linked agent, got %v", err)
 	}
-	if len(cp.calls) != 0 {
-		t.Errorf("nothing may be sent: %+v", cp.calls)
+	if len(cp.all()) != 0 {
+		t.Errorf("nothing may be sent: %+v", cp.all())
 	}
 }
 

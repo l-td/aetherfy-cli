@@ -55,7 +55,8 @@ func printDeployments(client *api.Client, agentID string) error {
 	if len(deployments) == 0 {
 		output.PrintInfo("No deployments found for agent '%s'", agentID)
 		output.Println("")
-		output.Printf("Deploy with: afy deploy --agent %s\n", agentID)
+		// A deploy goes to the agent a folder links (.aetherfy/agent.json).
+		output.Printf("Deploy from its code: afy init --agent %s (once, to link the folder), then afy deploy\n", agentID)
 		return nil
 	}
 

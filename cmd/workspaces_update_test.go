@@ -20,7 +20,7 @@ func TestWorkspacesUpdateNameRenames(t *testing.T) {
 	}
 	calls := cp.called("PATCH", "/workspaces/invoice-pipeline")
 	if len(calls) != 1 || len(calls[0].Body) != 1 || calls[0].Body["name"] != "invoices" {
-		t.Fatalf("want one PATCH carrying exactly {name}, got %+v", cp.calls)
+		t.Fatalf("want one PATCH carrying exactly {name}, got %+v", cp.all())
 	}
 	for _, want := range []string{"renamed to 'invoices'", "Its agents keep running", "must use 'invoices' now"} {
 		if !strings.Contains(stdout, want) {
@@ -38,7 +38,7 @@ func TestWorkspacesUpdateDescriptionOnlyAndClearing(t *testing.T) {
 	}
 	calls := cp.called("PATCH", "/workspaces/invoices")
 	if len(calls) != 1 || len(calls[0].Body) != 1 {
-		t.Fatalf("want one PATCH carrying exactly {description}, got %+v", cp.calls)
+		t.Fatalf("want one PATCH carrying exactly {description}, got %+v", cp.all())
 	}
 	if v, ok := calls[0].Body["description"]; !ok || v != "" {
 		t.Errorf(`--description "" must send an empty description, got %v`, calls[0].Body)
@@ -51,8 +51,8 @@ func TestWorkspacesUpdateNeedsAFlag(t *testing.T) {
 	if err == nil || !strings.Contains(stderr, "--name <new> and/or --description <text>") {
 		t.Errorf("want the no-flag refusal, got %v\n%s", err, stderr)
 	}
-	if len(cp.calls) != 0 {
-		t.Errorf("nothing may be sent: %+v", cp.calls)
+	if len(cp.all()) != 0 {
+		t.Errorf("nothing may be sent: %+v", cp.all())
 	}
 }
 

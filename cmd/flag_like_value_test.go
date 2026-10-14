@@ -94,8 +94,8 @@ func TestTheEmptyWorkspaceFormsAreRefused(t *testing.T) {
 			if !strings.Contains(stderr, "empty workspace name") {
 				t.Errorf("stderr %q", stderr)
 			}
-			if len(cp.calls) != 0 {
-				t.Errorf("sent %+v", cp.calls)
+			if len(cp.all()) != 0 {
+				t.Errorf("sent %+v", cp.all())
 			}
 		})
 	}
