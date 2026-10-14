@@ -12,6 +12,7 @@ package cmd
 // and 3 when not logged in. The human output is secondary.
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,7 +47,7 @@ var (
 const (
 	vecJSONHelp       = "Print one JSON object with stable field names (same as --output json)"
 	vecVectorsURLHelp = "Vectors API endpoint (overrides " + vectors.EnvVectorsURL + " and --api-region)"
-	vecAPIRegionHelp  = "API region to connect to: us-east-1, eu-central-1 or ap-southeast-1, resolved by region discovery (or " + vectors.EnvAPIRegion + ")"
+	vecAPIRegionHelp  = "API region to connect to, resolved by region discovery, which lists the regions it serves (or " + vectors.EnvAPIRegion + ")"
 	vecWorkspaceHelp  = "Workspace the collection belongs to (the account's only one when it has one; asked, or required without a terminal, when it has several)"
 )
 
@@ -201,7 +202,7 @@ func (r *vecRun) workspace(named bool) (string, error) {
 		}
 		return vecWorkspace, nil
 	}
-	ws, err := pickWorkspace(r.controlPlane(), "", false, !r.json && isInteractive(), os.Stdin, r.stderr)
+	ws, err := pickWorkspace(r.controlPlane(), "", false, !r.json && isInteractive(), &prompter{in: bufio.NewReader(os.Stdin), out: r.stderr})
 	if err != nil {
 		return "", err
 	}
@@ -260,7 +261,7 @@ type vecErrorJSON struct {
 func (r *vecRun) fail(err error) int {
 	code := exitRequestFailed
 	var in *inputError
-	var region *vectors.InvalidRegionError
+	var region *vectors.UnknownRegionError
 	if errors.As(err, &in) || errors.As(err, &region) {
 		code = exitInputRefused
 	}

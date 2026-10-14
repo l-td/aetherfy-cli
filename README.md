@@ -462,7 +462,7 @@ runs, and a `.aetherfy/agent.json` saying which agent it deploys to:
 
 ```yaml
 # yaml-language-server: $schema=https://docs.aetherfy.com/aetherfy-yaml.schema.json
-runtime: python3.11         # python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile
+runtime: python3.11         # a runtime the platform accepts; `afy init` lists them
 type: service               # service or job
 entrypoint: main.py         # optional — auto-detected by `afy init`
 regions:                    # optional — within your workspace's regions

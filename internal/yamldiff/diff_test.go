@@ -162,6 +162,23 @@ func TestRegionsAndGithubDependenciesAreComparedLikeAnyField(t *testing.T) {
 	}
 }
 
+// regions is a SET: the same regions in another order are not a change; a
+// different set is.
+func TestRegionsReorderedAreNotAChange(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\nregions: [eu-central-1, us-east-1]\n")
+	diffs := Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1, eu-central-1]\n"), server)
+	if d := find(t, diffs, "regions"); d.Kind != NoOp {
+		t.Errorf("the same regions reordered = %+v, want NoOp", d)
+	}
+	if HasChanges(diffs) {
+		t.Error("a reordering is never a change")
+	}
+	diffs = Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\n"), server)
+	if d := find(t, diffs, "regions"); d.Kind != Change {
+		t.Errorf("a different set = %+v, want Change", d)
+	}
+}
+
 func TestNullOnAbsentServerFieldIsNoOp(t *testing.T) {
 	server := mustMap(t, "runtime: python3.11\n")
 	diffs := Diff(mustMap(t, "runtime: python3.11\nschedule: null\n"), server)

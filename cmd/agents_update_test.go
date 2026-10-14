@@ -62,23 +62,57 @@ func TestUpdateWorkspaceMovesThroughTheMoveRoute(t *testing.T) {
 	}
 }
 
-func TestUpdateRenameThenMoveAddressesTheAgentByID(t *testing.T) {
-	// After a rename in the same command the old name is gone: the move must
-	// address the agent by the id the rename answered with.
-	cp := newFakeCP(t)
-	cp.on("PATCH", "/agents/bot", 200, updatedAgent)
-	cp.on("POST", "/agents/7d1c2f4e-0000-4000-8000-000000000001/move", 200, `{"agent_id":"a1","agent":"invoice-parser",
-		"workspace":{"id":"w2","name":"acme"},"previous_workspace":{"id":"w1","name":"default"},
-		"changed":true,"redeployed":false,"deployment":null}`)
+const movedBot = `{"agent_id":"7d1c2f4e-0000-4000-8000-000000000001","agent":"bot",
+	"workspace":{"id":"w2","name":"acme"},"previous_workspace":{"id":"w1","name":"default"},
+	"changed":true,"redeployed":false,"deployment":null}`
 
-	if _, _, err := runAfy(t, cp, "update", "bot", "--name", "invoice-parser", "--workspace", "acme"); err != nil {
-		t.Fatalf("update --name --workspace: %v", err)
+// --name with --workspace: the MOVE first (the step most likely refused), then
+// the rename, by the id the move answered with.
+func TestUpdateMovesFirstThenRenamesByID(t *testing.T) {
+	cp := newFakeCP(t)
+	cp.on("POST", "/agents/bot/move", 200, movedBot)
+	cp.on("PATCH", "/agents/7d1c2f4e-0000-4000-8000-000000000001", 200, updatedAgent)
+
+	if _, stderr, err := runAfy(t, cp, "update", "bot", "--name", "invoice-parser", "--workspace", "acme"); err != nil {
+		t.Fatalf("update --name --workspace: %v\n%s", err, stderr)
 	}
-	if len(cp.called("POST", "/agents/bot/move")) != 0 {
-		t.Error("the move went to the OLD name")
+	calls := cp.all()
+	if len(calls) != 2 || calls[0].Path != "/agents/bot/move" || calls[1].Path != "/agents/7d1c2f4e-0000-4000-8000-000000000001" {
+		t.Errorf("want the move, then the rename by id; calls: %+v", calls)
 	}
-	if len(cp.called("POST", "/agents/7d1c2f4e-0000-4000-8000-000000000001/move")) != 1 {
-		t.Errorf("the move did not go to the agent's id; calls: %+v", cp.all())
+}
+
+// A refused move applies NOTHING: the rename is never sent.
+func TestUpdateARefusedMoveAppliesNothing(t *testing.T) {
+	cp := newFakeCP(t)
+	cp.on("POST", "/agents/bot/move", 409, `{"detail":{"code":"AGENT_PAUSED_CANNOT_MOVE","message":"Agent 'bot' is paused; resume it before moving it."}}`)
+
+	_, stderr, err := runAfy(t, cp, "update", "bot", "--name", "invoice-parser", "--workspace", "acme")
+	if err == nil {
+		t.Fatal("a refused move must fail the command")
+	}
+	if len(cp.called("PATCH", "/agents/bot")) != 0 || len(cp.all()) != 1 {
+		t.Errorf("nothing may be applied after a refused move; calls: %+v", cp.all())
+	}
+	if !strings.Contains(stderr, "Agent 'bot' is paused; resume it before moving it.") {
+		t.Errorf("stderr:\n%s", stderr)
+	}
+}
+
+// A rename refused after a move that succeeded says exactly that, once.
+func TestUpdateARenameRefusedAfterTheMoveSaysWhatHappened(t *testing.T) {
+	const taken = "An agent named 'invoice-parser' already exists."
+	cp := newFakeCP(t)
+	cp.on("POST", "/agents/bot/move", 200, movedBot)
+	cp.on("PATCH", "/agents/7d1c2f4e-0000-4000-8000-000000000001", 409, `{"detail":{"code":"AGENT_NAME_TAKEN","message":"`+taken+`"}}`)
+
+	_, stderr, err := runAfy(t, cp, "update", "bot", "--name", "invoice-parser", "--workspace", "acme")
+	if err == nil {
+		t.Fatal("a refused rename must fail the command")
+	}
+	want := "Agent 'bot' moved to workspace 'acme'; rename refused: " + taken
+	if !strings.Contains(stderr, want) || strings.Count(stderr, taken) != 1 {
+		t.Errorf("want %q, once:\n%s", want, stderr)
 	}
 }
 

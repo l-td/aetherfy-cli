@@ -244,6 +244,9 @@ func warnUnlessLinkCommitted(dir string) {
 		output.PrintWarning("%s is not committed. Commit it so every clone and CI job deploys to the same agent.", link.RelPath())
 	case link.Ignored:
 		output.PrintWarning("%s is ignored by git. Unignore and commit it so every clone and CI job deploys to the same agent.", link.RelPath())
+	case link.GitUnavailable:
+		output.PrintWarning("This folder is in a git repository, but git is not on PATH: could not check that %s is committed. "+
+			"Commit it so every clone and CI job deploys to the same agent.", link.RelPath())
 	}
 }
 

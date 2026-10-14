@@ -15,7 +15,10 @@ import (
 // written), or --agent: an existing one linked by id, its configuration
 // written unchanged when the folder has none.
 
-const deployOptions = `{"regions":[{"code":"us-east-1","allowed":false},{"code":"eu-central-1","allowed":true},{"code":"ap-southeast-1","allowed":true}],
+// deployOptions is GET /deploy-options (sheet 2.5, CP b96c5fd): the runtimes
+// as models.agent.RuntimeEnum lists them, and the plan's regions and sizes.
+const deployOptions = `{"runtimes":["python3.11","python3.12","python3.13","node20","node22","node20-ts","node22-ts","bun","dockerfile"],
+	"regions":[{"code":"us-east-1","allowed":false},{"code":"eu-central-1","allowed":true},{"code":"ap-southeast-1","allowed":true}],
 	"max_regions":1,"home_region":"ap-southeast-1",
 	"memory_mb":[{"memory_mb":256,"allowed":false},{"memory_mb":512,"allowed":true},{"memory_mb":1024,"allowed":true}],
 	"max_memory_mb":1024}`
@@ -88,26 +91,35 @@ func TestInitCreatesTheAgentThenWritesTheYamlAndTheLink(t *testing.T) {
 	}
 }
 
-// A deploy refuses regions outside the workspace's, so init offers only the
-// plan's regions that are inside it, and a workspace with none yet all of them.
-func TestInitOffersOnlyRegionsInsideTheWorkspace(t *testing.T) {
+// THE SERVER NARROWS, THE CLI OFFERS EXACTLY THAT. init asks
+// /deploy-options for the agent's workspace and offers the regions it marks
+// allowed -- the deploy's own verdict -- with no rule of its own. The answer
+// below disagrees on purpose with the workspace's region list (it is the
+// server's to decide, back-fill included): a CLI that narrowed again by that
+// list would offer nothing, and this test would show it.
+func TestInitOffersExactlyTheRegionsTheServerAllowsInTheWorkspace(t *testing.T) {
+	narrowed := strings.Replace(deployOptions, `{"code":"ap-southeast-1","allowed":true}`, `{"code":"ap-southeast-1","allowed":false}`, 1)
 	for _, c := range []struct {
-		name, workspace, flag, want string
-		refused                     bool
+		name, flag, want string
+		refused          bool
 	}{
-		{"the home region is outside the workspace", `[{"id":"w-1","name":"default","regions":["eu-central-1"]}]`, "", "eu-central-1", false},
-		{"a plan region outside the workspace", `[{"id":"w-1","name":"default","regions":["eu-central-1"]}]`, "ap-southeast-1", "", true},
-		{"a workspace with no regions yet", `[{"id":"w-1","name":"default","regions":[]}]`, "", "ap-southeast-1", false},
+		{"the default", "", "eu-central-1", false},
+		{"a region the server does not allow there", "ap-southeast-1", "", true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			dir := t.TempDir()
 			cp := initCP(t)
-			cp.on("GET", "/workspaces", 200, c.workspace)
+			cp.on("GET", "/workspaces", 200, `[{"id":"w-1","name":"default","regions":["ap-southeast-1"]}]`)
+			cp.on("GET", "/deploy-options", 200, narrowed)
 			args := []string{"init", dir, "-y", "--runtime", "python3.11"}
 			if c.flag != "" {
 				args = append(args, "--region", c.flag)
 			}
 			_, stderr, err := runAfy(t, cp, args...)
+			asked := cp.called("GET", "/deploy-options")
+			if len(asked) != 1 || asked[0].Query != "workspace_id=w-1" {
+				t.Errorf("deploy-options must be asked for the workspace: %+v", asked)
+			}
 			if c.refused {
 				if err == nil || ExitCode(err) != exitInputRefused || len(cp.called("POST", "/agents")) != 0 {
 					t.Fatalf("want a refusal before anything is created, got %v", err)
@@ -120,9 +132,30 @@ func TestInitOffersOnlyRegionsInsideTheWorkspace(t *testing.T) {
 			var doc map[string]interface{}
 			_ = yaml.Unmarshal([]byte(readFile(t, filepath.Join(dir, "aetherfy.yaml"))), &doc)
 			if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != c.want {
-				t.Errorf("regions = %v, want [%s]", doc["regions"], c.want)
+				t.Errorf("regions = %v, want [%s]: exactly what the server allows", doc["regions"], c.want)
 			}
 		})
+	}
+}
+
+// The runtimes are the server's list: one it does not accept is refused,
+// naming its list, and one it adds is accepted without a CLI release.
+func TestInitRuntimesAreTheServersList(t *testing.T) {
+	dir := t.TempDir()
+	cp := initCP(t)
+	_, _, err := runAfy(t, cp, "init", dir, "-y", "--runtime", "python3.10")
+	if err == nil || ExitCode(err) != exitInputRefused || !strings.Contains(err.Error(), "python3.11, python3.12") {
+		t.Errorf("an unknown runtime must be refused with the server's list, got %v", err)
+	}
+
+	dir = t.TempDir()
+	cp = initCP(t)
+	cp.on("GET", "/deploy-options", 200, strings.Replace(deployOptions, `"runtimes":["python3.11",`, `"runtimes":["python3.14","python3.11",`, 1))
+	if _, stderr, err := runAfy(t, cp, "init", dir, "-y", "--runtime", "python3.14"); err != nil {
+		t.Fatalf("a runtime the server lists must be accepted: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir, "aetherfy.yaml")), "runtime: python3.14") {
+		t.Error("the yaml must carry the runtime")
 	}
 }
 
@@ -238,7 +271,8 @@ func draftCP(t *testing.T) *fakeCP {
 	cp.on("GET", "/agents/"+prodID+"/yaml", 404,
 		`{"detail":{"code":"AGENT_NOT_DEPLOYED","message":"Agent 'invoice-parser' has no release to export: it has never been deployed.","agent":"invoice-parser"}}`)
 	cp.on("GET", "/workspaces", 200, `[{"id":"w-1","name":"default","regions":["ap-southeast-1"]},{"id":"w-2","name":"acme","regions":["eu-central-1"]}]`)
-	cp.on("GET", "/deploy-options", 200, deployOptions)
+	// The server's answer for acme: only eu-central-1 is open there.
+	cp.on("GET", "/deploy-options", 200, strings.Replace(deployOptions, `{"code":"ap-southeast-1","allowed":true}`, `{"code":"ap-southeast-1","allowed":false}`, 1))
 	return cp
 }
 
@@ -263,7 +297,10 @@ func TestInitAgentOnADraftGeneratesTheYamlAndLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "eu-central-1" {
-		t.Errorf("regions = %v, want [eu-central-1]: the draft's workspace (acme), not the home region", doc["regions"])
+		t.Errorf("regions = %v, want [eu-central-1]: what the server allows in the draft's workspace (acme)", doc["regions"])
+	}
+	if asked := cp.called("GET", "/deploy-options"); len(asked) != 1 || asked[0].Query != "workspace_id=w-2" {
+		t.Errorf("deploy-options must be asked for the draft's own workspace: %+v", asked)
 	}
 	if doc["memory_mb"] != 512 || doc["runtime"] != "python3.11" {
 		t.Errorf("memory_mb / runtime = %v / %v", doc["memory_mb"], doc["runtime"])

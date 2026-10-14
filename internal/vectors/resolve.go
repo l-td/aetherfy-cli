@@ -12,10 +12,6 @@ import (
 // asked, and where requests go when nothing else names an endpoint.
 const DefaultEndpoint = "https://vectors.aetherfy.com"
 
-// ValidRegions are the API regions --api-region accepts, the SDKs'
-// VALID_REGIONS.
-var ValidRegions = []string{"us-east-1", "eu-central-1", "ap-southeast-1"}
-
 // Environment variables, the SDKs' names.
 const (
 	EnvVectorsURL = "AETHERFY_VECTORS_URL"
@@ -31,12 +27,17 @@ const (
 	discoveryRoute = "regions"
 )
 
-// InvalidRegionError is an API region outside ValidRegions, refused before any
-// request.
-type InvalidRegionError struct{ Region string }
+// UnknownRegionError is an API region the discovery endpoint does not list.
+// The list is the server's (GET /api/v1/regions): the CLI keeps none of its
+// own, so a region added or retired there is right here at once.
+type UnknownRegionError struct {
+	Region    string
+	Available []string
+}
 
-func (e *InvalidRegionError) Error() string {
-	return fmt.Sprintf("api_region must be one of %s, got '%s'", strings.Join(ValidRegions, ", "), e.Region)
+func (e *UnknownRegionError) Error() string {
+	return fmt.Sprintf("Region '%s' not configured at the discovery endpoint (available: [%s]).",
+		e.Region, strings.Join(e.Available, ", "))
 }
 
 // Options are what the user gave on the command line.
@@ -83,15 +84,12 @@ func NewResolver(getenv func(string) string, apiKey string) *Resolver {
 //     GET /api/v1/regions on the default endpoint;
 //  4. the default endpoint.
 //
-// An API region outside ValidRegions is refused before any request, as the
-// SDKs refuse it at construction.
+// An API region the discovery endpoint does not list is refused
+// (UnknownRegionError), naming the ones it does.
 func (r *Resolver) Resolve(o Options) (*Resolved, error) {
 	region := o.APIRegion
 	if region == "" {
 		region = r.Getenv(EnvAPIRegion)
-	}
-	if region != "" && !contains(ValidRegions, region) {
-		return nil, &InvalidRegionError{Region: region}
 	}
 
 	out := &Resolved{}
@@ -145,17 +143,7 @@ func (r *Resolver) discover(region string) (string, error) {
 			known = append(known, k)
 		}
 		sort.Strings(known)
-		return "", fmt.Errorf("Region '%s' not configured at the discovery endpoint (available: [%s]).",
-			region, strings.Join(known, ", "))
+		return "", &UnknownRegionError{Region: region, Available: known}
 	}
 	return u, nil
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

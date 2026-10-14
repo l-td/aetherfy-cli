@@ -48,6 +48,23 @@ func TestAFileThatIsNotALinkIsRefusedAndNeverOverwritten(t *testing.T) {
 	}
 }
 
+// A repository on a machine without git: the check cannot run, and says so,
+// rather than reading as "not in git". Outside a repository, without git,
+// there is nothing to say.
+func TestWithoutGitARepositoryIsGitUnavailable(t *testing.T) {
+	prev := lookGit
+	lookGit = func(string) (string, error) { return "", exec.ErrNotFound }
+	t.Cleanup(func() { lookGit = prev })
+
+	repo := t.TempDir()
+	require.NoError(t, os.Mkdir(filepath.Join(repo, ".git"), 0o755))
+	sub := filepath.Join(repo, "services", "bot")
+	require.NoError(t, os.MkdirAll(sub, 0o755))
+	assert.Equal(t, GitUnavailable, Git(sub), "a .git above the folder counts")
+
+	assert.Equal(t, NotInGit, Git(t.TempDir()))
+}
+
 func TestGitSaysWhetherTheLinkTravels(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git on PATH")

@@ -205,6 +205,28 @@ func TestDeployWarnsWhenGitWillNotCarryTheLink(t *testing.T) {
 	}
 }
 
+// A repository on a machine without git: one warning that the check could
+// not run, and the deploy goes ahead. The real command, with PATH emptied.
+func TestDeployWarnsWhenGitIsMissingInARepository(t *testing.T) {
+	dir := agentFolder(t, "")
+	linkFolder(t, dir, map[string]string{"default": prodID})
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cp := deployCP(t)
+	stdout, stderr, code := runAfyProcess(t, cp, []string{"PATH=" + t.TempDir()}, "deploy", dir, "--detach")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, stdout, stderr)
+	}
+	all := stdout + stderr
+	if n := strings.Count(all, "git is not on PATH: could not check that .aetherfy/agent.json is committed"); n != 1 {
+		t.Errorf("want the warning once, got %d:\n%s", n, all)
+	}
+	if deploysSent(cp) != 1 {
+		t.Error("the warning must not stop the deploy")
+	}
+}
+
 // R6: a yaml still declaring name:, description: or workspace: is not refused
 // by the CLI in words of its own; the control plane's sentence, which says
 // where the property is set now, reaches the user unaltered.

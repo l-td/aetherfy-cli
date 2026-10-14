@@ -27,6 +27,7 @@ import (
 type cpCall struct {
 	Method string
 	Path   string
+	Query  string
 	Body   map[string]interface{}
 }
 
@@ -54,7 +55,7 @@ func newFakeCP(t *testing.T) *fakeCP {
 		var body map[string]interface{}
 		_ = json.Unmarshal(raw, &body)
 		f.mu.Lock()
-		f.calls = append(f.calls, cpCall{Method: r.Method, Path: path, Body: body})
+		f.calls = append(f.calls, cpCall{Method: r.Method, Path: path, Query: r.URL.RawQuery, Body: body})
 		a, ok := f.routes[r.Method+" "+path]
 		f.mu.Unlock()
 		if !ok {

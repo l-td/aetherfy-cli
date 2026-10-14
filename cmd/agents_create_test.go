@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"bytes"
 	"strings"
 	"testing"
@@ -87,9 +88,9 @@ func TestPickWorkspaceAsksOnATerminal(t *testing.T) {
 	cp.on("GET", "/workspaces", 200, twoWorkspaces)
 	client := api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key")
 
-	for answer, want := range map[string]string{"2\n": "default", "acme\n": "acme"} {
+	for answer, want := range map[string]string{"2\n": "default", "acme\n": "acme", "\n": "acme"} {
 		var out bytes.Buffer
-		ws, err := pickWorkspace(client, "", false, true, strings.NewReader(answer), &out)
+		ws, err := pickWorkspace(client, "", false, true, &prompter{in: bufio.NewReader(strings.NewReader(answer)), out: &out})
 		if err != nil || ws.Name != want {
 			t.Errorf("answer %q: got %v, %v; want %s", answer, ws, err, want)
 		}
@@ -97,7 +98,10 @@ func TestPickWorkspaceAsksOnATerminal(t *testing.T) {
 			t.Errorf("the question must list the workspaces by number:\n%s", out.String())
 		}
 	}
-	if _, err := pickWorkspace(client, "", false, true, strings.NewReader("9\n"), &bytes.Buffer{}); ExitCode(err) != exitInputRefused {
-		t.Errorf("an answer outside the list must be refused, got %v", err)
+	for _, answer := range []string{"9\n", ""} {
+		_, err := pickWorkspace(client, "", false, true, &prompter{in: bufio.NewReader(strings.NewReader(answer)), out: &bytes.Buffer{}})
+		if ExitCode(err) != exitInputRefused {
+			t.Errorf("answer %q (outside the list, or no input) must be refused, got %v", answer, err)
+		}
 	}
 }

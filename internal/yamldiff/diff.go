@@ -95,7 +95,7 @@ func Diff(local, server map[string]interface{}) []FieldDiff {
 			d.Current = render(sv)
 		}
 		switch {
-		case sp && equalValues(lv, sv), !sp && isUnset(lv):
+		case sp && equalField(key, lv, sv), !sp && isUnset(lv):
 			d.Kind = NoOp
 		case !sp:
 			d.Kind = Add
@@ -155,6 +155,41 @@ func orderedKeys(local, server map[string]interface{}) []string {
 	}
 	sort.Strings(extras)
 	return append(keys, extras...)
+}
+
+// setFields are compared as sets: their order means nothing (a deploy places
+// an agent in the same regions whatever order the file lists them in), so a
+// reordering is never a change.
+var setFields = map[string]bool{"regions": true}
+
+// equalField compares one field's two values, by the field's own rule.
+func equalField(key string, a, b interface{}) bool {
+	if setFields[key] {
+		if as, ok := sortedStrings(a); ok {
+			if bs, ok := sortedStrings(b); ok {
+				return reflect.DeepEqual(as, bs)
+			}
+		}
+	}
+	return equalValues(a, b)
+}
+
+// sortedStrings is a list of strings, sorted, or false for anything else.
+func sortedStrings(v interface{}) ([]string, bool) {
+	l, ok := v.([]interface{})
+	if !ok {
+		return nil, false
+	}
+	out := make([]string, 0, len(l))
+	for _, e := range l {
+		s, ok := e.(string)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out, true
 }
 
 func equalValues(a, b interface{}) bool {

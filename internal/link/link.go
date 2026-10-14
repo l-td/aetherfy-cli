@@ -116,12 +116,45 @@ const (
 	Untracked
 	// Ignored: a .gitignore rule hides it.
 	Ignored
+	// GitUnavailable: the folder is in a repository (a .git here or above)
+	// but git is not on PATH, so whether the link is committed could not be
+	// checked.
+	GitUnavailable
 )
+
+// lookGit finds the git binary. A var so a test can take git away.
+var lookGit = exec.LookPath
+
+// inRepository reports a .git (directory or file, as a worktree has) in dir
+// or any directory above it.
+func inRepository(dir string) bool {
+	d, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(d, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return false
+		}
+		d = parent
+	}
+}
 
 // Git reports dir's link file's state in git.
 func Git(dir string) GitState {
+	gitPath, err := lookGit("git")
+	if err != nil {
+		if inRepository(dir) {
+			return GitUnavailable
+		}
+		return NotInGit
+	}
 	git := func(args ...string) error {
-		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd := exec.Command(gitPath, append([]string{"-C", dir}, args...)...)
 		cmd.Stdout, cmd.Stderr = nil, nil
 		return cmd.Run()
 	}

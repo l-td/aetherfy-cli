@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -180,7 +181,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 
 	name := args[0]
 	client := api.NewClient()
-	ws, err := pickWorkspace(client, agentWorkspace, cmd.Flags().Changed("workspace"), isInteractive(), os.Stdin, os.Stdout)
+	ws, err := pickWorkspace(client, agentWorkspace, cmd.Flags().Changed("workspace"), isInteractive(), newPrompter())
 	if err != nil {
 		return printRefusal("Failed to find the workspace", err)
 	}
@@ -1462,12 +1463,29 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient()
 
-	// The platform fields first: they change nothing that runs. The move
-	// then addresses the agent by ID, so a rename in the same command cannot
-	// leave it looking for the old name.
+	// THE MOVE FIRST: it is the step most likely to be refused (a frozen
+	// account, a paused agent, regions outside the new workspace), and a
+	// refused move then leaves everything as it was. The rename and the
+	// description follow, addressing the agent by the id the move answered
+	// with, so the order of the two cannot lose track of it.
 	target := name
-	var updated *api.Agent
+	var moved *api.AgentMove
+	if wsChanged {
+		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
+		sp.Start()
+		move, err := client.MoveAgent(name, agentUpdateWorkspace)
+		sp.Stop()
+		if err != nil {
+			return printRefusal("Failed to move agent", err)
+		}
+		printAgentMove(move)
+		moved, target = move, move.AgentID
+	}
+
 	if nameChanged || descChanged {
+		if moved != nil {
+			output.Println("")
+		}
 		req := &api.AgentUpdateRequest{}
 		if nameChanged {
 			req.Name = &agentUpdateName
@@ -1475,11 +1493,17 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		if descChanged {
 			req.Description = &agentUpdateDescription
 		}
-		agent, err := client.UpdateAgent(name, req)
+		agent, err := client.UpdateAgent(target, req)
 		if err != nil {
+			var apiErr *api.APIError
+			if moved != nil && errors.As(err, &apiErr) && apiErr.Message != "" {
+				// Exactly what happened: the move stands, the rest does not.
+				output.PrintError("Agent '%s' moved to workspace '%s'; %s refused: %s",
+					moved.Agent, moved.Workspace.Name, updatedWhat(nameChanged, descChanged), apiErr.Message)
+				return &printedError{err}
+			}
 			return printRefusal("Failed to update agent", err)
 		}
-		updated, target = agent, agent.ID
 		output.PrintSuccess("Agent '%s' updated.", agent.Name)
 		output.KeyValue("Name", agent.Name)
 		if agent.Description != "" {
@@ -1488,23 +1512,6 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		if nameChanged {
 			printRenameNote(agent)
 		}
-	}
-
-	if wsChanged {
-		if updated != nil {
-			output.Println("")
-		}
-		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
-		sp.Start()
-		move, err := client.MoveAgent(target, agentUpdateWorkspace)
-		sp.Stop()
-		if err != nil {
-			if updated != nil {
-				output.PrintWarning("The %s above was applied; the move was not.", updatedWhat(nameChanged, descChanged))
-			}
-			return printRefusal("Failed to move agent", err)
-		}
-		printAgentMove(move)
 	}
 	return nil
 }

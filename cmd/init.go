@@ -13,9 +13,7 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/detect"
 	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
-	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
 
 // yamlSchemaModeline is aetherfy.yaml's first line: an editor that speaks the
@@ -83,7 +81,7 @@ func init() {
 	initCmd.Flags().StringVar(&initAgent, "agent", "", "Link this folder to this existing agent instead of creating one")
 	initCmd.Flags().StringVar(&initTarget, "target", link.DefaultTarget, "Name of the link written (other targets are kept)")
 	initCmd.Flags().StringVar(&initWorkspace, "workspace", "", "Workspace the new agent lives in (asked when the account has several)")
-	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile (skips prompt)")
+	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime, one the server accepts (afy init lists them; skips prompt)")
 	initCmd.Flags().StringVar(&initEntrypoint, "entrypoint", "", "Entrypoint file, e.g. main.py or index.js (skips prompt)")
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
 	initCmd.Flags().StringVar(&initRegion, "region", "", "Region, one your plan allows (skips prompt)")
@@ -108,7 +106,7 @@ var (
 // When false (CI, piped input, e2e tests), prompts are skipped and
 // defaults are used for any missing flags.
 func isInteractive() bool {
-	return term.IsTerminal(int(os.Stdin.Fd()))
+	return stdinIsTerminal()
 }
 
 // slugify turns a string into a safe agent name
@@ -135,17 +133,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return refuse("--target needs a name")
 	}
 	client := api.NewClient()
+	p := newPrompter() // every question of this run reads from it
 	if cmd.Flags().Changed("agent") {
-		return initLinkExisting(cmd, client, absDir, initAgent, initTarget)
+		return initLinkExisting(cmd, client, p, absDir, initAgent, initTarget)
 	}
-	return initNewAgent(cmd, client, absDir)
+	return initNewAgent(cmd, client, p, absDir)
 }
 
 // initLinkExisting links dir's target to an existing agent, by its id, and
 // writes the agent's configuration as aetherfy.yaml when the folder has none.
 // The file is the control plane's export, written unchanged: the server owns
 // its shape, its modeline included.
-func initLinkExisting(cmd *cobra.Command, client *api.Client, dir, name, target string) error {
+func initLinkExisting(cmd *cobra.Command, client *api.Client, p *prompter, dir, name, target string) error {
 	if strings.TrimSpace(name) == "" {
 		return refuse("--agent needs the name of the agent to link")
 	}
@@ -168,7 +167,7 @@ func initLinkExisting(cmd *cobra.Command, client *api.Client, dir, name, target 
 			if err != nil {
 				return printRefusal("Failed to find agent '"+agent.Name+"''s workspace", err)
 			}
-			gen, err := generateConfig(cmd, client, dir, ws, isInteractive() && !initYes)
+			gen, err := generateConfig(cmd, client, p, dir, ws, isInteractive() && !initYes)
 			if err != nil {
 				return err
 			}
@@ -223,7 +222,7 @@ func printLinkNextSteps(target string) {
 // initNewAgent creates an agent for dir: it asks what it needs, creates the
 // agent (in a workspace, by id), then writes aetherfy.yaml and the link. A
 // refused create writes nothing.
-func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
+func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir string) error {
 	if f, err := link.Read(absDir); err == nil {
 		if id, ok := f.Targets[initTarget]; ok {
 			return refuse("this folder's target '%s' is already linked to agent %s. To link it to another "+
@@ -234,7 +233,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	}
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
-	if proceed, err := confirmOverwrite(configPath); err != nil || !proceed {
+	if proceed, err := confirmOverwrite(p, configPath); err != nil || !proceed {
 		return err
 	}
 
@@ -249,20 +248,9 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	if agentName == "" {
 		defaultName := slugify(filepath.Base(absDir))
 		if interactive {
-			namePrompt := promptui.Prompt{
-				Label:   "Agent name",
-				Default: defaultName,
-				Validate: func(s string) error {
-					if strings.TrimSpace(s) == "" {
-						return fmt.Errorf("name cannot be empty")
-					}
-					return nil
-				},
-			}
 			var err error
-			agentName, err = namePrompt.Run()
-			if err != nil {
-				return fmt.Errorf("prompt cancelled")
+			if agentName, err = p.text("Agent name", defaultName); err != nil {
+				return err
 			}
 		} else {
 			agentName = defaultName
@@ -271,12 +259,12 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	agentName = slugify(strings.TrimSpace(agentName))
 
 	// --- Workspace: where the agent lives. Not in aetherfy.yaml. ---
-	ws, err := pickWorkspace(client, initWorkspace, cmd.Flags().Changed("workspace"), interactive, os.Stdin, os.Stdout)
+	ws, err := pickWorkspace(client, initWorkspace, cmd.Flags().Changed("workspace"), interactive, p)
 	if err != nil {
 		return printRefusal("Failed to find the workspace", err)
 	}
 
-	gen, err := generateConfig(cmd, client, absDir, ws, interactive)
+	gen, err := generateConfig(cmd, client, p, absDir, ws, interactive)
 	if err != nil {
 		return err
 	}
@@ -311,17 +299,17 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 // confirmOverwrite applies init's rule for an existing aetherfy.yaml: --force
 // overwrites; otherwise a terminal is asked, and without one it is refused.
 // It reports whether to go on (false with no error: the person declined).
-func confirmOverwrite(configPath string) (bool, error) {
+func confirmOverwrite(p *prompter, configPath string) (bool, error) {
 	if fileExists(configPath) && !initForce {
 		if !isInteractive() {
 			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
 			return false, fmt.Errorf("aetherfy.yaml already exists")
 		}
-		prompt := promptui.Prompt{
-			Label:     "aetherfy.yaml already exists. Overwrite",
-			IsConfirm: true,
+		yes, err := p.confirm("aetherfy.yaml already exists. Overwrite")
+		if err != nil {
+			return false, err
 		}
-		if _, err := prompt.Run(); err != nil {
+		if !yes {
 			output.Println("Aborted.")
 			return false, nil
 		}
@@ -343,7 +331,7 @@ type generatedConfig struct {
 // the memory sizes the plan allows (GET /deploy-options). The content is the
 // file `afy init` writes: the schema modeline first, nothing the platform owns.
 // Used for a new agent and for a draft (an agent with no release to export).
-func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *api.Workspace, interactive bool) (*generatedConfig, error) {
+func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir string, ws *api.Workspace, interactive bool) (*generatedConfig, error) {
 	output.Println("")
 	output.PrintInfo("Scanning your project...")
 
@@ -382,40 +370,37 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 	}
 	output.Println("")
 
-	// The regions and sizes this plan allows, from the server.
-	opts, err := client.GetDeployOptions()
+	// The runtimes, and the regions and sizes an agent in ws may have, from
+	// the server: offered exactly as returned, with no rule of the CLI's own.
+	opts, err := client.GetDeployOptions(ws.ID)
 	if err != nil {
 		return nil, printRefusal("Failed to read the regions and memory sizes your plan allows", err)
 	}
 
 	// --- Runtime ---
+	runtimeOptions := opts.Runtimes
+	if len(runtimeOptions) == 0 {
+		return nil, fmt.Errorf("the server listed no runtimes to deploy with")
+	}
 	runtime := initRuntime
+	if runtime != "" && !contains(runtimeOptions, runtime) {
+		return nil, refuse("--runtime %s is not one the server accepts (%s)", runtime, strings.Join(runtimeOptions, ", "))
+	}
 	if runtime == "" {
 		if interactive {
-			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "node22-ts", "node20-ts", "bun", "dockerfile"}
-			runtimeDefault := 2 // python3.11
-			if hints.Runtime != "" {
-				for i, r := range runtimeOptions {
-					if r == hints.Runtime {
-						runtimeDefault = i
-						break
-					}
-				}
+			runtimeDefault := 0
+			if i := indexOf(runtimeOptions, hints.Runtime); hints.Runtime != "" && runtimeOptions[i] == hints.Runtime {
+				runtimeDefault = i
 			}
-			runtimeSelect := promptui.Select{
-				Label:     "Runtime",
-				Items:     runtimeOptions,
-				CursorPos: runtimeDefault,
-			}
-			var err error
-			_, runtime, err = runtimeSelect.Run()
+			i, err := p.choose("Runtime", runtimeOptions, runtimeDefault)
 			if err != nil {
-				return nil, fmt.Errorf("prompt cancelled")
+				return nil, err
 			}
-		} else if hints.Runtime != "" {
+			runtime = runtimeOptions[i]
+		} else if hints.Runtime != "" && contains(runtimeOptions, hints.Runtime) {
 			runtime = hints.Runtime
 		} else {
-			return nil, fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile)")
+			return nil, refuse("could not detect the runtime. Pass --runtime, one of: %s", strings.Join(runtimeOptions, ", "))
 		}
 	}
 
@@ -423,16 +408,12 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 	agentType := initType
 	if agentType == "" {
 		if interactive {
-			typeSelect := promptui.Select{
-				Label: "Agent type",
-				Items: []string{
-					"service  (always-on listener, e.g. API or webhook handler)",
-					"job      (ephemeral, wakes up, runs, then stops)",
-				},
-			}
-			typeIdx, _, err := typeSelect.Run()
+			typeIdx, err := p.choose("Agent type", []string{
+				"service  (always-on listener, e.g. API or webhook handler)",
+				"job      (ephemeral, wakes up, runs, then stops)",
+			}, 0)
 			if err != nil {
-				return nil, fmt.Errorf("prompt cancelled")
+				return nil, err
 			}
 			agentType = "service"
 			if typeIdx == 1 {
@@ -449,25 +430,20 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 	// aetherfy.yaml. The --schedule flag skips the prompt.
 	schedule := initSchedule
 	if schedule == "" && interactive {
-		schedulePrompt := promptui.Prompt{
-			Label:   "Schedule — UTC, 5-field cron (min every 5 minutes), e.g. '0 3 * * *' — leave blank for none",
-			Default: "",
+		s, err := p.text("Schedule — UTC, 5-field cron (min every 5 minutes), e.g. '0 3 * * *' — leave blank for none", "")
+		if err != nil {
+			return nil, err
 		}
-		s, sErr := schedulePrompt.Run()
-		if sErr == nil {
-			schedule = strings.TrimSpace(s)
-		}
+		schedule = s
 	}
 
-	// --- Region: one the plan allows, inside the workspace's ---
-	// A deploy refuses regions outside the agent's workspace's
-	// (DEPLOY_REGIONS_NOT_IN_SCOPE), so only those are offered. A workspace
-	// with no regions yet takes them from the agent's first deploy (the home
-	// region on a single-region plan), so then every region the plan allows is.
-	allowedRegions := regionsInScope(opts.AllowedRegions(), ws.Regions)
+	// --- Region: exactly the ones the server allows an agent in ws ---
+	// (the deploy's own region checks, workspace scope and back-fill
+	// included: GET /deploy-options?workspace_id).
+	allowedRegions := opts.AllowedRegions()
 	if len(allowedRegions) == 0 {
-		return nil, fmt.Errorf("none of workspace '%s''s regions (%s) is one your plan allows; change the workspace's "+
-			"regions (afy workspaces regions %s --regions ...) or your plan", ws.Name, strings.Join(ws.Regions, ", "), ws.Name)
+		return nil, fmt.Errorf("no region is open to an agent in workspace '%s' on your plan; change the workspace's "+
+			"regions (afy workspaces regions %s --regions ...) or your plan", ws.Name, ws.Name)
 	}
 	defaultRegion := allowedRegions[0]
 	if opts.HomeRegion != nil && contains(allowedRegions, *opts.HomeRegion) {
@@ -481,14 +457,9 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 				region, ws.Name, strings.Join(allowedRegions, ", "))
 		}
 	case interactive:
-		regionSelect := promptui.Select{
-			Label:     "Region",
-			Items:     allowedRegions,
-			CursorPos: indexOf(allowedRegions, defaultRegion),
-		}
-		idx, _, err := regionSelect.Run()
+		idx, err := p.choose("Region", allowedRegions, indexOf(allowedRegions, defaultRegion))
 		if err != nil {
-			return nil, fmt.Errorf("prompt cancelled")
+			return nil, err
 		}
 		region = allowedRegions[idx]
 	default:
@@ -511,10 +482,9 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 		for i, m := range allowedMemory {
 			items[i] = fmt.Sprintf("%d MB", m)
 		}
-		memorySelect := promptui.Select{Label: "Memory", Items: items}
-		idx, _, err := memorySelect.Run()
+		idx, err := p.choose("Memory", items, 0)
 		if err != nil {
-			return nil, fmt.Errorf("prompt cancelled")
+			return nil, err
 		}
 		memoryMB = allowedMemory[idx]
 	default:
@@ -524,16 +494,12 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 	// --- Billing mode ---
 	keepAlive := initKeepAlive
 	if !cmd.Flags().Changed("keep-alive") && interactive {
-		billingSelect := promptui.Select{
-			Label: "Billing mode",
-			Items: []string{
-				"auto-sleep  ($0 when idle, ~500ms cold start)",
-				"always-on   (+$10/mo, 0ms cold start)",
-			},
-		}
-		billingIdx, _, err := billingSelect.Run()
+		billingIdx, err := p.choose("Billing mode", []string{
+			"auto-sleep  ($0 when idle, ~500ms cold start)",
+			"always-on   (+$10/mo, 0ms cold start)",
+		}, 0)
 		if err != nil {
-			return nil, fmt.Errorf("prompt cancelled")
+			return nil, err
 		}
 		keepAlive = billingIdx == 1
 	}
@@ -547,14 +513,11 @@ func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *a
 			entrypoint = hints.Entrypoint
 		}
 		if entrypoint == "" && interactive {
-			epPrompt := promptui.Prompt{
-				Label:   "Entrypoint file (e.g. main.py, index.js) — leave blank to set later",
-				Default: "",
+			ep, err := p.text("Entrypoint file (e.g. main.py, index.js) — leave blank to set later", "")
+			if err != nil {
+				return nil, err
 			}
-			ep, epErr := epPrompt.Run()
-			if epErr == nil {
-				entrypoint = strings.TrimSpace(ep)
-			}
+			entrypoint = ep
 		}
 	}
 
@@ -584,21 +547,6 @@ func workspaceOf(client *api.Client, agent *api.Agent) (*api.Workspace, error) {
 		}
 	}
 	return nil, fmt.Errorf("workspace %s of agent '%s' is not among the account's workspaces", agent.WorkspaceID, agent.Name)
-}
-
-// regionsInScope is allowed (the plan's, in the platform's order) narrowed to
-// the workspace's regions; all of allowed when the workspace has none yet.
-func regionsInScope(allowed, workspace []string) []string {
-	if len(workspace) == 0 {
-		return allowed
-	}
-	var out []string
-	for _, r := range allowed {
-		if contains(workspace, r) {
-			out = append(out, r)
-		}
-	}
-	return out
 }
 
 func indexOf(list []string, s string) int {

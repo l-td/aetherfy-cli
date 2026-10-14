@@ -78,3 +78,28 @@ func TestShortenErrorCutsOnCharacters(t *testing.T) {
 		t.Errorf("a short error must pass unchanged, got %q %v", got, cut)
 	}
 }
+
+// The server's order is not trusted: deployments answered OLDEST first still
+// put the newest release deploy first, for afy status and afy deployments.
+func TestDeploymentsAreOrderedNewestFirstWhateverTheServersOrder(t *testing.T) {
+	reversed := `[
+		{"id":"d1","agent_id":"a1","version":1,"state":"superseded","created_at":"2026-10-12T10:00:00Z"},
+		{"id":"d2","agent_id":"a1","version":2,"state":"active","created_at":"2026-10-13T10:00:00Z"},
+		{"id":"d3","agent_id":"a1","version":3,"state":"failed","error_message":"` + pushWithoutYAML + `","created_at":"2026-10-14T10:00:00Z"}]`
+	if out := statusAgainst(t, reversed); !strings.Contains(out, "v3 failed") {
+		t.Errorf("afy status must report the newest (v3) whatever the order served:\n%s", out)
+	}
+
+	cp := newFakeCP(t)
+	cp.on("GET", "/agents/bot/deployments", 200, reversed)
+	stdout, _, err := runAfy(t, cp, "deployments", "bot")
+	if err != nil {
+		t.Fatalf("deployments: %v", err)
+	}
+	if i3, i1 := strings.Index(stdout, "v3"), strings.Index(stdout, "v1 "); i3 < 0 || i1 < 0 || i3 > i1 {
+		t.Errorf("the table must list v3 before v1:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "Latest deployment failed.") {
+		t.Errorf("the latest (v3) failed, and the hint must say so:\n%s", stdout)
+	}
+}

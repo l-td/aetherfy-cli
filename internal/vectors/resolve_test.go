@@ -88,7 +88,11 @@ func TestAnEnvURLOverAnAPIRegionWarns(t *testing.T) {
 	}
 }
 
-func TestAnUnknownAPIRegionIsRefusedBeforeAnyRequest(t *testing.T) {
+// An API region the discovery endpoint does not list is refused with the
+// regions it DOES list: the server's list, never one kept here. A region the
+// server adds is accepted without a CLI release (the control: one it lists
+// beyond today's three).
+func TestAnUnknownAPIRegionIsRefusedWithTheServersList(t *testing.T) {
 	for _, o := range []struct {
 		opts Options
 		env  map[string]string
@@ -98,13 +102,15 @@ func TestAnUnknownAPIRegionIsRefusedBeforeAnyRequest(t *testing.T) {
 	} {
 		d := &discoveryStub{status: 200, body: regionsBody}
 		_, err := resolver(o.env, d).Resolve(o.opts)
-		var ir *InvalidRegionError
-		if !errors.As(err, &ir) || err.Error() != "api_region must be one of us-east-1, eu-central-1, ap-southeast-1, got 'us-west-2'" {
+		var ur *UnknownRegionError
+		if !errors.As(err, &ur) || ur.Region != "us-west-2" || len(ur.Available) == 0 {
 			t.Errorf("err = %v", err)
 		}
-		if len(d.calls) != 0 {
-			t.Errorf("a refused region still asked discovery: %v", d.calls)
-		}
+	}
+	d := &discoveryStub{status: 200, body: `{"sa-east-1":"https://sae1.test"}`}
+	got, err := resolver(nil, d).Resolve(Options{APIRegion: "sa-east-1"})
+	if err != nil || got.Endpoint != "https://sae1.test" {
+		t.Errorf("a region the server lists must be accepted: %+v, %v", got, err)
 	}
 }
 
@@ -128,14 +134,11 @@ func TestDiscoveryFailuresSayWhatFailed(t *testing.T) {
 }
 
 func TestTheDefaultEndpointIsTheSDKs(t *testing.T) {
-	// aetherfy_vectors/client.py DEFAULT_ENDPOINT and VALID_REGIONS. The CLI
+	// aetherfy_vectors/client.py DEFAULT_ENDPOINT. The CLI
 	// hard-codes no other vectors host: every regional one comes from
 	// discovery.
 	if DefaultEndpoint != "https://vectors.aetherfy.com" {
 		t.Errorf("DefaultEndpoint = %s", DefaultEndpoint)
-	}
-	if strings.Join(ValidRegions, ",") != "us-east-1,eu-central-1,ap-southeast-1" {
-		t.Errorf("ValidRegions = %v", ValidRegions)
 	}
 }
 

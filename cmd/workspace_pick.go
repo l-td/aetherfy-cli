@@ -1,11 +1,8 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
-	"io"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
@@ -22,7 +19,7 @@ import (
 //     script must never hang on a question nobody can answer.
 //
 // No environment variable is read: a person names the workspace.
-func pickWorkspace(cp *api.Client, name string, named, interactive bool, in io.Reader, out io.Writer) (*api.Workspace, error) {
+func pickWorkspace(cp *api.Client, name string, named, interactive bool, p *prompter) (*api.Workspace, error) {
 	if named {
 		if name == "" {
 			return nil, refuse("--workspace got an empty workspace name: everything lives in a named workspace. Nothing was sent.")
@@ -50,20 +47,11 @@ func pickWorkspace(cp *api.Client, name string, named, interactive bool, in io.R
 		return nil, refuse("this account has %d workspaces (%s): pass --workspace <name> to say which. "+
 			"Nothing was sent.", len(all), strings.Join(names, ", "))
 	}
-	fmt.Fprintln(out, "Which workspace?")
-	for i, n := range names {
-		fmt.Fprintf(out, "  %d) %s\n", i+1, n)
+	// Asked through the run's prompter: the same input as every other
+	// question of the flow, so nothing typed ahead is lost.
+	i, err := p.choose("Workspace", names, 0)
+	if err != nil {
+		return nil, err
 	}
-	fmt.Fprintf(out, "Workspace [1-%d]: ", len(all))
-	line, _ := bufio.NewReader(in).ReadString('\n')
-	answer := strings.TrimSpace(line)
-	if i, err := strconv.Atoi(answer); err == nil && i >= 1 && i <= len(all) {
-		return &all[i-1], nil
-	}
-	for i, n := range names {
-		if n == answer {
-			return &all[i], nil
-		}
-	}
-	return nil, refuse("no workspace chosen (%q is not one of 1-%d or a workspace name). Nothing was sent.", answer, len(all))
+	return &all[i], nil
 }
