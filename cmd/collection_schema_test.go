@@ -341,3 +341,28 @@ func sentOne(t *testing.T, reqs []vecRequest) vecRequest {
 	}
 	return reqs[0]
 }
+
+// get --save keeps an existing file unless --force, as afy init keeps an
+// existing aetherfy.yaml: exit 2, nothing sent, the file as it was.
+// CONTROL: with the refusal removed, the file is overwritten, red.
+func TestSchemaGetSaveKeepsAnExistingFileUnlessForce(t *testing.T) {
+	s, _ := schemaFake(t, "v2")
+	file := writeSchemaFile(t, `{"mine":true}`)
+	stdout, stderr, code := runAfyProcess(t, nil, schemaEnv(s), "collections", "schema", "get", "articles", "--workspace", "research", "--save", file)
+	if code != exitInputRefused || len(s.got()) != 0 || stdout != "" {
+		t.Errorf("exit %d, %d requests, stdout %q; want exit %d and nothing sent", code, len(s.got()), stdout, exitInputRefused)
+	}
+	if n := strings.Count(stderr, file+" already exists. Use --force to overwrite."); n != 1 {
+		t.Errorf("want the sentence once, got %d: %q", n, stderr)
+	}
+	if got := readFile(t, file); got != `{"mine":true}` {
+		t.Errorf("the existing file changed: %s", got)
+	}
+
+	if _, stderr, err := runAfy(t, nil, "collections", "schema", "get", "articles", "--workspace", "research", "--save", file, "--force"); err != nil {
+		t.Fatalf("--force: %v\n%s", err, stderr)
+	}
+	if saved := decode(t, readFile(t, file)); saved["etag"] != "v2" {
+		t.Errorf("--force did not replace the file: %v", saved)
+	}
+}

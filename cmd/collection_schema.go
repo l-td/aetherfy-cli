@@ -56,7 +56,8 @@ version (etag).
 
 --save <file> writes them to a JSON file instead, ready to edit and pass to
 'afy collections schema set --file'. The file keeps the version, so the set is
-refused if someone changes the schema in the meantime.`,
+refused if someone changes the schema in the meantime. An existing file is kept
+unless --force.`,
 	Example: `  # Show the schema
   afy collections schema get articles --workspace research
 
@@ -64,13 +65,19 @@ refused if someone changes the schema in the meantime.`,
   afy collections schema get articles --save schema.json`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runVec(cmd, func(r *vecRun) int { return schemaGet(r, args[0], schemaSavePath) })
+		return runVec(cmd, func(r *vecRun) int { return schemaGet(r, args[0], schemaSavePath, schemaSaveForce) })
 	},
 }
 
-var schemaSavePath string
+var (
+	schemaSavePath  string
+	schemaSaveForce bool
+)
 
-func schemaGet(r *vecRun, collection, savePath string) int {
+func schemaGet(r *vecRun, collection, savePath string, force bool) int {
+	if savePath != "" && !force && fileExists(savePath) {
+		return r.fail(refuse("%s already exists. Use --force to overwrite. Nothing was sent.", savePath))
+	}
 	client, code := r.open()
 	if code != 0 {
 		return code
@@ -134,6 +141,10 @@ To change an existing schema, read it with 'afy collections schema get
 <collection> --save <file>', edit that file, and set it from it. The file's
 etag is the version it was read at: if the schema has changed since, the set is
 refused and nothing is written.
+
+The whole schema is replaced, description included: a file without
+"description" clears the stored one. get --save writes it into the file, so
+the read-edit-set flow keeps it.
 
 A file without an etag sets a FIRST schema, and is refused when the collection
 already has one, so a hand-written file never overwrites someone's schema. Two
@@ -373,6 +384,7 @@ func shares(m map[string]float64) string {
 
 func init() {
 	collectionsSchemaGetCmd.Flags().StringVar(&schemaSavePath, "save", "", "Write the schema and its version to this JSON file, to edit and pass to set --file")
+	collectionsSchemaGetCmd.Flags().BoolVarP(&schemaSaveForce, "force", "f", false, "With --save, overwrite an existing file")
 	collectionsSchemaSetCmd.Flags().StringVar(&schemaFilePath, "file", "", "JSON file with the schema (from get --save, or written by hand for a first schema), required")
 	collectionsSchemaDeleteCmd.Flags().BoolVarP(&schemaDeleteYes, "yes", "y", false, "Delete without asking")
 	collectionsSchemaAnalyzeCmd.Flags().IntVar(&schemaSampleSize, "sample-size", 0, "Points to sample (default: the server's)")

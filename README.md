@@ -273,8 +273,8 @@ lives in a workspace, and a name is unique within it.
 | `afy collections update <name> --name <new>` | Rename a collection in its workspace (data, aliases, schema and regions stay; the old name stops answering) |
 | `afy collections update <name> --description <text>` | Change a collection's description (`""` clears it) |
 | `afy collections delete <name> --yes` | Delete a collection and its points |
-| `afy collections schema get <collection>` | Show a collection's payload schema and its version (`--save <file>` writes both to a JSON file to edit) |
-| `afy collections schema set <collection> --file <file>` | Set the schema from a file. A file from `get --save` carries its version: if the schema changed since, nothing is written. A file without one sets a first schema only |
+| `afy collections schema get <collection>` | Show a collection's payload schema and its version (`--save <file>` writes both to a JSON file to edit; an existing file is kept unless `--force`) |
+| `afy collections schema set <collection> --file <file>` | Set the schema from a file. A file from `get --save` carries its version: if the schema changed since, nothing is written. A file without one sets a first schema only. The whole schema is replaced: a file without `description` clears it |
 | `afy collections schema delete <collection> --yes` | Delete a collection's schema (its points stay) |
 | `afy collections schema analyze <collection>` | Sample the points and suggest a schema (`--sample-size`) |
 | `afy index create <collection> <field> --type keyword` | Index a payload field; returns once the index is built |

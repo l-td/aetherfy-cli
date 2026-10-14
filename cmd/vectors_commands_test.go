@@ -635,7 +635,7 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		"collections region-limits": func(r *vecRun) int { return collectionsRegionLimits(r) },
 		// The schema commands. set's file carries a version, so its one
 		// request is the PUT (without one it would read the schema first).
-		"collections schema get":     func(r *vecRun) int { return schemaGet(r, "articles", "") },
+		"collections schema get":     func(r *vecRun) int { return schemaGet(r, "articles", "", false) },
 		"collections schema set":     func(r *vecRun) int { return schemaSet(r, "articles", versionedSchemaFile) },
 		"collections schema analyze": func(r *vecRun) int { return schemaAnalyze(r, "articles", 0) },
 		"collections schema delete": func(r *vecRun) int {
