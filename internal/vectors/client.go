@@ -139,6 +139,12 @@ func (c *Client) headers(withBody bool) http.Header {
 // out (when out is not nil). A non-2xx answer is an *APIError; no answer is a
 // *TimeoutError or a *NetworkError. Nothing is retried here.
 func (c *Client) do(method, path string, body interface{}, timeout time.Duration, out interface{}) error {
+	return c.doWith(method, path, body, nil, timeout, out)
+}
+
+// doWith is do with extra request headers (the schema write's If-Match), set
+// over the client's own.
+func (c *Client) doWith(method, path string, body interface{}, extra http.Header, timeout time.Duration, out interface{}) error {
 	var payload []byte
 	if body != nil {
 		var err error
@@ -146,7 +152,11 @@ func (c *Client) do(method, path string, body interface{}, timeout time.Duration
 			return fmt.Errorf("encoding the request: %w", err)
 		}
 	}
-	status, data, err := c.send(method, apiURL(c.endpoint, path), payload, c.headers(body != nil), timeout)
+	headers := c.headers(body != nil)
+	for k, v := range extra {
+		headers[k] = v
+	}
+	status, data, err := c.send(method, apiURL(c.endpoint, path), payload, headers, timeout)
 	if err != nil {
 		if isTimeout(err) {
 			return &TimeoutError{Message: fmt.Sprintf("Request to %s timed out after %s seconds", path, seconds(timeout))}
