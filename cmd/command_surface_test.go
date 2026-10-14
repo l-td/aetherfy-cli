@@ -256,10 +256,13 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// points upsert was the owner's (2026-10-08), writing a few points while
 	// debugging a collection, without the SDKs' chunking or retries;
 	// collections region-limits was the owner's (2026-10-12), the CLI's half
-	// of the dashboard's Usage figures for region changes.
+	// of the dashboard's Usage figures for region changes; collections update
+	// was the workspaces-required brief's (decision 1.17, the rename approved
+	// 2026-10-14): renaming a collection from the CLI as from the dashboard.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
 		"afy collections move", "afy collections region-limits", "afy collections regions",
+		"afy collections update",
 		"afy index create", "afy index delete",
 		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
 		"afy points upsert",

@@ -269,6 +269,8 @@ lives in a workspace, and a name is unique within it.
 | `afy collections list` | List the collections in a workspace |
 | `afy collections get <name>` | Show one collection |
 | `afy collections create <name> --size N --distance cosine` | Create a collection (`--regions` to pin it) |
+| `afy collections update <name> --name <new>` | Rename a collection in its workspace (data, aliases, schema and regions stay; the old name stops answering) |
+| `afy collections update <name> --description <text>` | Change a collection's description (`""` clears it) |
 | `afy collections delete <name> --yes` | Delete a collection and its points |
 | `afy index create <collection> <field> --type keyword` | Index a payload field; returns once the index is built |
 | `afy index delete <collection> <field>` | Drop a payload index |

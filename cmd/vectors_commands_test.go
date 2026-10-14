@@ -624,6 +624,10 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 			return collectionsRegions(r, "articles", []string{"us-east-1"}, true, false, strings.NewReader(""), false)
 		},
 		"collections move": func(r *vecRun) int { return collectionsMove(r, "articles", "research", true, false) },
+		"collections update": func(r *vecRun) int {
+			n := "articles-v1"
+			return collectionsUpdate(r, "articles", &n, nil)
+		},
 		// Reaches only the control plane; the refusing server answers it too.
 		"collections region-limits": func(r *vecRun) int { return collectionsRegionLimits(r) },
 		"index create":              func(r *vecRun) int { return indexCreate(r, "articles", "f", "keyword", nil) },
