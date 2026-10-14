@@ -164,7 +164,7 @@ afy runs my-job
 | Command | Description |
 |---------|-------------|
 | `afy init [path]` | Create an agent for the folder: asks its workspace, scans for runtime and entrypoint, writes `aetherfy.yaml` and links the folder |
-| `afy init --agent <name>` | Link the folder to an existing agent; writes its current configuration as `aetherfy.yaml` when the folder has none |
+| `afy init --agent <name>` | Link the folder to an existing agent; when the folder has no `aetherfy.yaml`, writes the agent's live release as one, or, for an agent with no release yet, generates one from the folder |
 | `afy init --agent <name> --target <t>` | Add another target (e.g. `staging`) beside the folder's others |
 
 Flags: `--name`, `--agent`, `--target`, `--workspace`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--schedule`, `--force`, `--yes`.

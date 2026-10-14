@@ -136,7 +136,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	client := api.NewClient()
 	if cmd.Flags().Changed("agent") {
-		return initLinkExisting(client, absDir, initAgent, initTarget)
+		return initLinkExisting(cmd, client, absDir, initAgent, initTarget)
 	}
 	return initNewAgent(cmd, client, absDir)
 }
@@ -145,7 +145,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 // writes the agent's configuration as aetherfy.yaml when the folder has none.
 // The file is the control plane's export, written unchanged: the server owns
 // its shape, its modeline included.
-func initLinkExisting(client *api.Client, dir, name, target string) error {
+func initLinkExisting(cmd *cobra.Command, client *api.Client, dir, name, target string) error {
 	if strings.TrimSpace(name) == "" {
 		return refuse("--agent needs the name of the agent to link")
 	}
@@ -154,28 +154,36 @@ func initLinkExisting(client *api.Client, dir, name, target string) error {
 		return printRefusal("Failed to find agent '"+name+"'", err)
 	}
 
+	// ONE RULE: export when the agent has a release, generate when it does
+	// not. An existing aetherfy.yaml is kept unless --force.
 	configPath := filepath.Join(dir, "aetherfy.yaml")
-	wroteYAML, draft := false, false
+	wroteYAML, generated := false, false
 	if !fileExists(configPath) || initForce {
 		data, err := client.GetAgentYAML(agent.ID)
 		switch {
 		case isNotDeployed(err):
-			// A draft (made with `afy create`): there is no configuration to
-			// write yet. The folder is still linked; its first deploy releases it.
-			draft = true
+			// A draft (made with `afy create`): nothing to export, so the
+			// file is generated from this folder, in the draft's workspace.
+			ws, err := workspaceOf(client, agent)
+			if err != nil {
+				return printRefusal("Failed to find agent '"+agent.Name+"''s workspace", err)
+			}
+			gen, err := generateConfig(cmd, client, dir, ws, isInteractive() && !initYes)
+			if err != nil {
+				return err
+			}
+			data, generated = []byte(gen.content), true
 		case err != nil:
 			// RELEASE_CONFIG_NOT_ON_RECORD and the rest: as the server wrote them.
 			return printRefusal("Failed to read agent '"+agent.Name+"''s configuration", err)
 		}
-		if !draft {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(configPath, data, 0o644); err != nil {
-				return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
-			}
-			wroteYAML = true
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
 		}
+		if err := os.WriteFile(configPath, data, 0o644); err != nil {
+			return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
+		}
+		wroteYAML = true
 	}
 
 	previous := ""
@@ -191,8 +199,8 @@ func initLinkExisting(client *api.Client, dir, name, target string) error {
 		output.Dim.Printf("  Target '%s' pointed at agent %s before.\n", target, previous)
 	}
 	switch {
-	case draft:
-		output.PrintInfo("%s. Add an aetherfy.yaml here (at least `runtime:`), then 'afy deploy'.", noReleaseYet(agent.Name))
+	case generated:
+		output.PrintInfo("%s has no release yet: wrote a new aetherfy.yaml from this folder; `afy deploy` ships the first release.", agent.Name)
 	case wroteYAML:
 		output.PrintInfo("Wrote aetherfy.yaml from the agent's live release.")
 	default:
@@ -226,58 +234,9 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	}
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
-	if fileExists(configPath) && !initForce {
-		if !isInteractive() {
-			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
-			return fmt.Errorf("aetherfy.yaml already exists")
-		}
-		prompt := promptui.Prompt{
-			Label:     "aetherfy.yaml already exists. Overwrite",
-			IsConfirm: true,
-		}
-		if _, err := prompt.Run(); err != nil {
-			output.Println("Aborted.")
-			return nil
-		}
+	if proceed, err := confirmOverwrite(configPath); err != nil || !proceed {
+		return err
 	}
-
-	output.Println("")
-	output.PrintInfo("Scanning your project...")
-
-	hints := detect.Project(absDir)
-	if hints.Runtime != "" {
-		output.PrintSuccess("Detected runtime: %s", hints.Runtime)
-	}
-	if hints.Entrypoint != "" {
-		output.PrintSuccess("Detected entrypoint: %s", hints.Entrypoint)
-	}
-	if hints.Runtime == "" && initRuntime == "" {
-		if isInteractive() {
-			output.PrintWarning("Could not detect runtime — you will be asked to choose")
-		} else {
-			output.PrintWarning("Could not detect runtime — use --runtime to specify one")
-		}
-	}
-	selectedRuntime := initRuntime
-	if selectedRuntime == "" {
-		selectedRuntime = hints.Runtime
-	}
-	if hints.Entrypoint == "" && initEntrypoint == "" && selectedRuntime != "dockerfile" {
-		if isInteractive() {
-			output.PrintWarning("Could not detect entrypoint — you will be asked to specify one")
-		} else {
-			output.PrintWarning("Could not detect entrypoint — add 'entrypoint:' to aetherfy.yaml before deploying")
-		}
-	}
-	if hints.HasMastra {
-		output.PrintSuccess("Detected 'mastra' in dependencies")
-	}
-	if hints.HasUvLock {
-		output.PrintSuccess("Detected uv.lock — will use 'uv sync --frozen' for reproducible installs")
-	} else if hints.HasPyprojectToml {
-		output.PrintWarning("pyproject.toml found but uv.lock is missing — run 'uv lock' and commit uv.lock before deploying")
-	}
-	output.Println("")
 
 	// -y / --yes disables the interactive path entirely, reusing the
 	// non-interactive default fallbacks for every prompt. Does NOT imply
@@ -317,10 +276,116 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 		return printRefusal("Failed to find the workspace", err)
 	}
 
+	gen, err := generateConfig(cmd, client, absDir, ws, interactive)
+	if err != nil {
+		return err
+	}
+
+	output.Println("")
+	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s' in workspace '%s'...", agentName, ws.Name))
+	sp.Start()
+	agent, err := createAgentRecord(client, agentName, "", ws.ID)
+	sp.Stop()
+	if err != nil {
+		return printRefusal("Failed to create agent", err)
+	}
+	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
+
+	if err := os.WriteFile(configPath, []byte(gen.content), 0o644); err != nil {
+		output.PrintError("The agent was created, but aetherfy.yaml could not be written (%v). "+
+			"Link the folder with 'afy init --agent %s'.", err, agent.Name)
+		return err
+	}
+	if err := link.Write(absDir, initTarget, agent.ID); err != nil {
+		output.PrintError("The agent was created, but %s could not be written (%v). "+
+			"Link the folder with 'afy init --agent %s'.", link.RelPath(), err, agent.Name)
+		return err
+	}
+	output.PrintSuccess("aetherfy.yaml and %s written.", link.RelPath())
+	output.Println("")
+	printConfigSummary(agent.Name, ws.Name, gen.runtime, gen.agentType, gen.region, gen.memoryMB, gen.keepAlive, gen.schedule)
+	printLinkNextSteps(initTarget)
+	return nil
+}
+
+// confirmOverwrite applies init's rule for an existing aetherfy.yaml: --force
+// overwrites; otherwise a terminal is asked, and without one it is refused.
+// It reports whether to go on (false with no error: the person declined).
+func confirmOverwrite(configPath string) (bool, error) {
+	if fileExists(configPath) && !initForce {
+		if !isInteractive() {
+			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
+			return false, fmt.Errorf("aetherfy.yaml already exists")
+		}
+		prompt := promptui.Prompt{
+			Label:     "aetherfy.yaml already exists. Overwrite",
+			IsConfirm: true,
+		}
+		if _, err := prompt.Run(); err != nil {
+			output.Println("Aborted.")
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// generatedConfig is the aetherfy.yaml init writes for an agent that has no
+// release, and what the summary prints of it.
+type generatedConfig struct {
+	content, runtime, agentType, region, schedule string
+	memoryMB                                      int
+	keepAlive                                     bool
+}
+
+// generateConfig scans dir and asks (or takes from flags, or defaults) how the
+// agent runs, offering only the regions the plan allows inside workspace ws and
+// the memory sizes the plan allows (GET /deploy-options). The content is the
+// file `afy init` writes: the schema modeline first, nothing the platform owns.
+// Used for a new agent and for a draft (an agent with no release to export).
+func generateConfig(cmd *cobra.Command, client *api.Client, absDir string, ws *api.Workspace, interactive bool) (*generatedConfig, error) {
+	output.Println("")
+	output.PrintInfo("Scanning your project...")
+
+	hints := detect.Project(absDir)
+	if hints.Runtime != "" {
+		output.PrintSuccess("Detected runtime: %s", hints.Runtime)
+	}
+	if hints.Entrypoint != "" {
+		output.PrintSuccess("Detected entrypoint: %s", hints.Entrypoint)
+	}
+	if hints.Runtime == "" && initRuntime == "" {
+		if isInteractive() {
+			output.PrintWarning("Could not detect runtime — you will be asked to choose")
+		} else {
+			output.PrintWarning("Could not detect runtime — use --runtime to specify one")
+		}
+	}
+	selectedRuntime := initRuntime
+	if selectedRuntime == "" {
+		selectedRuntime = hints.Runtime
+	}
+	if hints.Entrypoint == "" && initEntrypoint == "" && selectedRuntime != "dockerfile" {
+		if isInteractive() {
+			output.PrintWarning("Could not detect entrypoint — you will be asked to specify one")
+		} else {
+			output.PrintWarning("Could not detect entrypoint — add 'entrypoint:' to aetherfy.yaml before deploying")
+		}
+	}
+	if hints.HasMastra {
+		output.PrintSuccess("Detected 'mastra' in dependencies")
+	}
+	if hints.HasUvLock {
+		output.PrintSuccess("Detected uv.lock — will use 'uv sync --frozen' for reproducible installs")
+	} else if hints.HasPyprojectToml {
+		output.PrintWarning("pyproject.toml found but uv.lock is missing — run 'uv lock' and commit uv.lock before deploying")
+	}
+	output.Println("")
+
 	// The regions and sizes this plan allows, from the server.
 	opts, err := client.GetDeployOptions()
 	if err != nil {
-		return printRefusal("Failed to read the regions and memory sizes your plan allows", err)
+		return nil, printRefusal("Failed to read the regions and memory sizes your plan allows", err)
 	}
 
 	// --- Runtime ---
@@ -342,14 +407,15 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 				Items:     runtimeOptions,
 				CursorPos: runtimeDefault,
 			}
+			var err error
 			_, runtime, err = runtimeSelect.Run()
 			if err != nil {
-				return fmt.Errorf("prompt cancelled")
+				return nil, fmt.Errorf("prompt cancelled")
 			}
 		} else if hints.Runtime != "" {
 			runtime = hints.Runtime
 		} else {
-			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile)")
+			return nil, fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile)")
 		}
 	}
 
@@ -366,7 +432,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 			}
 			typeIdx, _, err := typeSelect.Run()
 			if err != nil {
-				return fmt.Errorf("prompt cancelled")
+				return nil, fmt.Errorf("prompt cancelled")
 			}
 			agentType = "service"
 			if typeIdx == 1 {
@@ -400,7 +466,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	// region on a single-region plan), so then every region the plan allows is.
 	allowedRegions := regionsInScope(opts.AllowedRegions(), ws.Regions)
 	if len(allowedRegions) == 0 {
-		return fmt.Errorf("none of workspace '%s''s regions (%s) is one your plan allows; change the workspace's "+
+		return nil, fmt.Errorf("none of workspace '%s''s regions (%s) is one your plan allows; change the workspace's "+
 			"regions (afy workspaces regions %s --regions ...) or your plan", ws.Name, strings.Join(ws.Regions, ", "), ws.Name)
 	}
 	defaultRegion := allowedRegions[0]
@@ -411,7 +477,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	switch {
 	case region != "":
 		if !contains(allowedRegions, region) {
-			return refuse("--region %s is not one your plan allows in workspace '%s' (allowed: %s)",
+			return nil, refuse("--region %s is not one your plan allows in workspace '%s' (allowed: %s)",
 				region, ws.Name, strings.Join(allowedRegions, ", "))
 		}
 	case interactive:
@@ -422,7 +488,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 		}
 		idx, _, err := regionSelect.Run()
 		if err != nil {
-			return fmt.Errorf("prompt cancelled")
+			return nil, fmt.Errorf("prompt cancelled")
 		}
 		region = allowedRegions[idx]
 	default:
@@ -432,13 +498,13 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 	// --- Memory: a size the plan allows ---
 	allowedMemory := opts.AllowedMemory()
 	if len(allowedMemory) == 0 {
-		return fmt.Errorf("your plan allows no memory size; check your plan on the dashboard")
+		return nil, fmt.Errorf("your plan allows no memory size; check your plan on the dashboard")
 	}
 	memoryMB := initMemory
 	switch {
 	case memoryMB != 0:
 		if !containsInt(allowedMemory, memoryMB) {
-			return refuse("--memory %d is not a size your plan allows (allowed: %s MB)", memoryMB, joinInts(allowedMemory))
+			return nil, refuse("--memory %d is not a size your plan allows (allowed: %s MB)", memoryMB, joinInts(allowedMemory))
 		}
 	case interactive:
 		items := make([]string, len(allowedMemory))
@@ -448,7 +514,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 		memorySelect := promptui.Select{Label: "Memory", Items: items}
 		idx, _, err := memorySelect.Run()
 		if err != nil {
-			return fmt.Errorf("prompt cancelled")
+			return nil, fmt.Errorf("prompt cancelled")
 		}
 		memoryMB = allowedMemory[idx]
 	default:
@@ -467,7 +533,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 		}
 		billingIdx, _, err := billingSelect.Run()
 		if err != nil {
-			return fmt.Errorf("prompt cancelled")
+			return nil, fmt.Errorf("prompt cancelled")
 		}
 		keepAlive = billingIdx == 1
 	}
@@ -492,33 +558,32 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, absDir string) error {
 		}
 	}
 
-	content := buildAetherfyYAML(runtime, agentType, region, memoryMB, keepAlive, entrypoint, schedule)
+	return &generatedConfig{
+		content:   buildAetherfyYAML(runtime, agentType, region, memoryMB, keepAlive, entrypoint, schedule),
+		runtime:   runtime,
+		agentType: agentType,
+		region:    region,
+		memoryMB:  memoryMB,
+		keepAlive: keepAlive,
+		schedule:  schedule,
+	}, nil
 
-	output.Println("")
-	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s' in workspace '%s'...", agentName, ws.Name))
-	sp.Start()
-	agent, err := createAgentRecord(client, agentName, "", ws.ID)
-	sp.Stop()
+}
+
+// workspaceOf is the workspace agent lives in, found by its id among the
+// account's (the agent's read names it by id and name; its regions come from
+// the workspace's own record).
+func workspaceOf(client *api.Client, agent *api.Agent) (*api.Workspace, error) {
+	all, err := client.ListWorkspaces()
 	if err != nil {
-		return printRefusal("Failed to create agent", err)
+		return nil, err
 	}
-	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
-
-	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
-		output.PrintError("The agent was created, but aetherfy.yaml could not be written (%v). "+
-			"Link the folder with 'afy init --agent %s'.", err, agent.Name)
-		return err
+	for i := range all {
+		if all[i].ID == agent.WorkspaceID {
+			return &all[i], nil
+		}
 	}
-	if err := link.Write(absDir, initTarget, agent.ID); err != nil {
-		output.PrintError("The agent was created, but %s could not be written (%v). "+
-			"Link the folder with 'afy init --agent %s'.", link.RelPath(), err, agent.Name)
-		return err
-	}
-	output.PrintSuccess("aetherfy.yaml and %s written.", link.RelPath())
-	output.Println("")
-	printConfigSummary(agent.Name, ws.Name, runtime, agentType, region, memoryMB, keepAlive, schedule)
-	printLinkNextSteps(initTarget)
-	return nil
+	return nil, fmt.Errorf("workspace %s of agent '%s' is not among the account's workspaces", agent.WorkspaceID, agent.Name)
 }
 
 // regionsInScope is allowed (the plan's, in the platform's order) narrowed to

@@ -229,31 +229,80 @@ func TestInitAgentWithATargetKeepsTheOtherTargetsAndTheYaml(t *testing.T) {
 	}
 }
 
-// `afy create` then `afy init --agent`: the agent is a draft, with no release
-// to export. The folder is linked all the same, no aetherfy.yaml is written,
-// and the plain sentence says what to do -- never the raw 404.
-func TestInitAgentOnADraftLinksAndSaysItHasNoReleaseYet(t *testing.T) {
-	dir := t.TempDir()
+// draftCP answers for a draft (made with `afy create`) living in workspace
+// "acme", whose regions narrow the plan's: the export is 404
+// AGENT_NOT_DEPLOYED, so init generates instead.
+func draftCP(t *testing.T) *fakeCP {
 	cp := newFakeCP(t)
-	cp.on("GET", "/agents/invoice-parser", 200, `{"id":"`+prodID+`","name":"invoice-parser"}`)
+	cp.on("GET", "/agents/invoice-parser", 200, `{"id":"`+prodID+`","name":"invoice-parser","workspace_id":"w-2","workspace_name":"acme"}`)
 	cp.on("GET", "/agents/"+prodID+"/yaml", 404,
 		`{"detail":{"code":"AGENT_NOT_DEPLOYED","message":"Agent 'invoice-parser' has no release to export: it has never been deployed.","agent":"invoice-parser"}}`)
+	cp.on("GET", "/workspaces", 200, `[{"id":"w-1","name":"default","regions":["ap-southeast-1"]},{"id":"w-2","name":"acme","regions":["eu-central-1"]}]`)
+	cp.on("GET", "/deploy-options", 200, deployOptions)
+	return cp
+}
 
-	stdout, stderr, err := runAfy(t, cp, "init", dir, "--agent", "invoice-parser")
+// ONE RULE: export when the agent has a release, GENERATE when it does not.
+// `afy create` then `afy init --agent` leaves a folder that can deploy: the
+// generated aetherfy.yaml (modeline first, a region of the draft's OWN
+// workspace, a size the plan allows) and the link.
+func TestInitAgentOnADraftGeneratesTheYamlAndLinks(t *testing.T) {
+	dir := t.TempDir()
+	cp := draftCP(t)
+
+	stdout, stderr, err := runAfy(t, cp, "init", dir, "--agent", "invoice-parser", "-y", "--runtime", "python3.11")
 	if err != nil {
 		t.Fatalf("init --agent on a draft: %v\n%s", err, stderr)
 	}
-	if !strings.Contains(stdout, "invoice-parser has no release yet: deploy it first") {
-		t.Errorf("want the plain sentence:\n%s", stdout)
+	body := readFile(t, filepath.Join(dir, "aetherfy.yaml"))
+	if !strings.HasPrefix(body, yamlSchemaModeline+"\n") {
+		t.Errorf("the modeline must be the first line:\n%s", body)
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatal(err)
+	}
+	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "eu-central-1" {
+		t.Errorf("regions = %v, want [eu-central-1]: the draft's workspace (acme), not the home region", doc["regions"])
+	}
+	if doc["memory_mb"] != 512 || doc["runtime"] != "python3.11" {
+		t.Errorf("memory_mb / runtime = %v / %v", doc["memory_mb"], doc["runtime"])
+	}
+	if err := archive.CheckUnknownFields([]byte(body)); err != nil {
+		t.Errorf("the generated file names a key a deploy refuses: %v", err)
+	}
+	if f, err := link.Read(dir); err != nil || f.Targets["default"] != prodID {
+		t.Errorf("the folder must be linked: %+v %v", f, err)
+	}
+	want := "invoice-parser has no release yet: wrote a new aetherfy.yaml from this folder; `afy deploy` ships the first release"
+	if !strings.Contains(stdout, want) {
+		t.Errorf("want %q:\n%s", want, stdout)
 	}
 	if strings.Contains(stdout+stderr, "404") || strings.Contains(stdout+stderr, "AGENT_NOT_DEPLOYED") {
 		t.Errorf("no raw 404:\n%s%s", stdout, stderr)
 	}
-	if fileExists(filepath.Join(dir, "aetherfy.yaml")) {
-		t.Error("a draft has no configuration to write")
+	if len(cp.called("POST", "/agents")) != 0 {
+		t.Error("linking a draft must not create an agent")
 	}
-	if f, err := link.Read(dir); err != nil || f.Targets["default"] != prodID {
-		t.Errorf("the folder must be linked: %+v %v", f, err)
+}
+
+// A draft whose folder already has an aetherfy.yaml: kept, as for a released
+// agent (--force replaces it); nothing is generated.
+func TestInitAgentOnADraftKeepsAnExistingYaml(t *testing.T) {
+	dir := t.TempDir()
+	const own = "runtime: node22\n# mine\n"
+	if err := os.WriteFile(filepath.Join(dir, "aetherfy.yaml"), []byte(own), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cp := draftCP(t)
+	if _, stderr, err := runAfy(t, cp, "init", dir, "--agent", "invoice-parser", "-y"); err != nil {
+		t.Fatalf("init --agent: %v\n%s", err, stderr)
+	}
+	if got := readFile(t, filepath.Join(dir, "aetherfy.yaml")); got != own {
+		t.Errorf("an existing aetherfy.yaml must be kept without --force; got:\n%s", got)
+	}
+	if len(cp.called("GET", "/deploy-options")) != 0 {
+		t.Error("nothing may be generated when the yaml is kept")
 	}
 }
 
