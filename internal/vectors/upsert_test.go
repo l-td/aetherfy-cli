@@ -202,7 +202,12 @@ func TestUpsertTimeoutOnTheSecondRequestIsUnconfirmed(t *testing.T) {
 	defer srv.Close()
 	defer close(release)
 	c := New(srv.URL, "k", "default")
-	c.upsertTimeout = 200 * time.Millisecond
+	// The budget is per request, and the FIRST request carries
+	// UpsertPointsMax points: it must fit easily even on a loaded runner (200ms
+	// did not, under the full suite: the first upload timed out too). Only the
+	// second request is held, until its context ends, so the test still takes
+	// one budget, not a guess at how long a server takes.
+	c.upsertTimeout = 2 * time.Second
 	progress, err := c.Upsert("articles", manyPoints(UpsertPointsMax+5, 1))
 	var te *TimeoutError
 	if !errors.As(err, &te) {
