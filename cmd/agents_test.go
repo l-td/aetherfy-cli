@@ -124,8 +124,9 @@ keep_alive: false
 	if byKey["memory_mb"].Kind != yamldiff.Change {
 		t.Errorf("memory_mb want Change, got %v", byKey["memory_mb"].Kind)
 	}
-	if byKey["idle_timeout_minutes"].Kind != yamldiff.Preserve {
-		t.Errorf("idle_timeout_minutes want Preserve, got %v", byKey["idle_timeout_minutes"].Kind)
+	// Omitted locally: compared as its default (5), which the agent has.
+	if d := byKey["idle_timeout_minutes"]; d.Kind != yamldiff.NoOp || !d.Defaulted {
+		t.Errorf("idle_timeout_minutes want NoOp (default), got %+v", d)
 	}
 	if byKey["keep_alive"].Kind != yamldiff.NoOp {
 		t.Errorf("keep_alive want NoOp, got %v", byKey["keep_alive"].Kind)

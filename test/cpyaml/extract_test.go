@@ -90,6 +90,26 @@ func TestExtractReadsTheModelsTheirNestingAndTheWording(t *testing.T) {
 		"PLATFORM_FIELDS' keys, continuation lines and comments not read as keys")
 }
 
+func TestDefaultsReadsEachFieldsDefaultAcrossLines(t *testing.T) {
+	defaults, required, err := Defaults(fakeCP(t, realShape))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"description": nil, "spawn": nil, "memory_mb": 256}, defaults,
+		"a multi-line Field(...) default, a nested model's None and an int, as yaml.v3 decodes them")
+	assert.Equal(t, []string{"name"}, required, "Field(...) is required: no default")
+}
+
+func TestDefaultsRefusesADefaultItCannotRead(t *testing.T) {
+	for _, decl := range []string{
+		"    memory_mb: Optional[int] = Field(default=DEFAULT_MB, gt=0)\r\n",
+		"    memory_mb: Optional[int] = Field(default_factory=make_it)\r\n",
+		"    memory_mb: Optional[int] = compute()\r\n",
+	} {
+		_, _, err := Defaults(fakeCP(t, replaceOnce(t, realShape,
+			"    memory_mb: Optional[int] = Field(default=256, gt=0)\r\n", decl)))
+		assert.Error(t, err, "%q must be refused, not left out", decl)
+	}
+}
+
 func TestAMissingOrUnreadablePlatformFieldsIsRefused(t *testing.T) {
 	start := strings.Index(realShape, "PLATFORM_FIELDS = {")
 	end := strings.Index(realShape, "}\r\n\r\nclass SpawnConfig") + len("}\r\n")

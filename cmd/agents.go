@@ -12,6 +12,7 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/archive"
 	"github.com/l-td/aetherfy-cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/yamldiff"
 	"github.com/spf13/cobra"
@@ -1505,29 +1506,36 @@ func printAgentMove(m *api.AgentMove) {
 	output.Dim.Printf("  Its conversation history stays in workspace '%s'.\n", m.PreviousWorkspace.Name)
 }
 
-// --- DIFF (preview what `afy deploy` would change vs preserve) ---
+// --- DIFF (preview what `afy deploy` would change) ---
 var agentsDiffCmd = &cobra.Command{
 	Use:   "diff",
-	Short: "Preview what `afy deploy` would change vs preserve",
-	Long: `Compare the local aetherfy.yaml against the agent's current state and
-print what 'afy deploy' would do, under merge-patch semantics:
+	Short: "Preview what `afy deploy` would change",
+	Long: `Compare the local aetherfy.yaml with the configuration of the agent this
+folder is linked to (.aetherfy/agent.json), and print what 'afy deploy' would
+change:
 
   ~ field: old → new   would change
   + field: value       would set (currently unset)
-  - field              would clear (declared null)
-  = field: value       no-op (declared, already matches)
-    field: value       preserved (omitted locally — deploy keeps it)
+  - field              would unset (declared null)
+  = field: value       no change
 
-Auto-detects aetherfy.yaml in the current directory (like 'afy deploy').
+A deploy applies the whole file: a field the file leaves out takes its
+DEFAULT, shown with "(default)", never the value the agent had before.
+
+--target picks among the folder's linked agents (default: "default").
 Exits non-zero when there are changes, so it's usable as a CI gate.`,
 	Args: cobra.NoArgs,
 	RunE: runAgentsDiff,
 }
 
-var diffPath string
+var (
+	diffPath   string
+	diffTarget string
+)
 
 func init() {
 	agentsDiffCmd.Flags().StringVarP(&diffPath, "path", "p", ".", "Project directory containing aetherfy.yaml")
+	agentsDiffCmd.Flags().StringVar(&diffTarget, "target", link.DefaultTarget, "Which of the folder's linked agents to compare with")
 }
 
 func runAgentsDiff(cmd *cobra.Command, args []string) error {
@@ -1535,10 +1543,13 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Parse the local aetherfy.yaml into a map (NOT the typed struct) so we
-	// preserve the declared / omitted / explicit-null distinction merge-patch
-	// depends on.
-	localPath := filepath.Join(diffPath, "aetherfy.yaml")
+	// Parse the local aetherfy.yaml into a map (NOT the typed struct) so the
+	// declared / omitted / explicit-null distinction survives.
+	absPath, err := filepath.Abs(diffPath)
+	if err != nil {
+		return err
+	}
+	localPath := filepath.Join(absPath, "aetherfy.yaml")
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		output.PrintError("Could not read %s: %v", localPath, err)
@@ -1555,17 +1566,25 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 		output.PrintError("%v", err)
 		return err
 	}
-	name, _ := local["name"].(string)
-	if name == "" {
-		output.PrintError("aetherfy.yaml has no 'name' — cannot resolve the agent to diff against")
-		return fmt.Errorf("missing name in aetherfy.yaml")
+	for _, f := range archive.PlatformFields {
+		if _, declared := local[f]; declared {
+			// The server refuses the file at deploy; nothing it would change
+			// is worth showing until the key is gone.
+			output.PrintError("aetherfy.yaml declares '%s:', which a deploy refuses: the agent's %s is set on the "+
+				"platform ('afy update <agent> --%s'), not in the file. Remove it.", f, f, f)
+			return fmt.Errorf("aetherfy.yaml declares %s", f)
+		}
 	}
 
 	client := api.NewClient()
-	serverYAML, err := client.GetAgentYAML(name)
+	agent, err := resolveLinkedAgent(client, absPath, diffTarget)
 	if err != nil {
-		output.PrintError("Failed to fetch current state for '%s': %v", name, err)
+		output.PrintError("%v", err)
 		return err
+	}
+	serverYAML, err := client.GetAgentYAML(agent.ID)
+	if err != nil {
+		return printRefusal("Failed to fetch the configuration of '"+agent.Name+"'", err)
 	}
 	var server map[string]interface{}
 	if err := yaml.Unmarshal(serverYAML, &server); err != nil {
@@ -1574,7 +1593,7 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	}
 
 	diffs := yamldiff.Diff(local, server)
-	printAgentDiff(name, diffs)
+	printAgentDiff(agent.Name, diffs)
 
 	// CI-friendly: non-zero exit when a deploy would change something.
 	if yamldiff.HasChanges(diffs) {
@@ -1583,14 +1602,18 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printAgentDiff renders the merge-patch diff with the project's color scheme.
+// printAgentDiff renders the diff with the project's color scheme.
 func printAgentDiff(name string, diffs []yamldiff.FieldDiff) {
 	output.Header(fmt.Sprintf("Diff for agent: %s", name))
 	output.Println("")
 	for _, d := range diffs {
+		declared := d.Declared
+		if d.Defaulted {
+			declared += " (default)"
+		}
 		switch d.Kind {
 		case yamldiff.Change:
-			line := fmt.Sprintf("~ %s: %s → %s", d.Key, d.Current, d.Declared)
+			line := fmt.Sprintf("~ %s: %s → %s", d.Key, d.Current, declared)
 			// runtime is immutable post-create (the deploy rejects a change
 			// with RUNTIME_IMMUTABLE) — flag it so the preview isn't misleading.
 			if d.Key == "runtime" {
@@ -1599,13 +1622,11 @@ func printAgentDiff(name string, diffs []yamldiff.FieldDiff) {
 				output.Yellow.Println(line)
 			}
 		case yamldiff.Add:
-			output.Green.Printf("+ %s: %s\n", d.Key, d.Declared)
+			output.Green.Printf("+ %s: %s\n", d.Key, declared)
 		case yamldiff.Clear:
 			output.Red.Printf("- %s  (clear; currently %s)\n", d.Key, d.Current)
 		case yamldiff.NoOp:
-			output.Dim.Printf("= %s: %s\n", d.Key, d.Declared)
-		case yamldiff.Preserve:
-			output.Dim.Printf("  %s: %s (preserved by deploy)\n", d.Key, d.Current)
+			output.Dim.Printf("= %s: %s\n", d.Key, declared)
 		}
 	}
 	output.Println("")

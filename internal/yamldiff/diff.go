@@ -1,16 +1,18 @@
 // Package yamldiff computes the per-field difference between a local
-// aetherfy.yaml and an agent's current server state, under JSON Merge Patch
-// (RFC 7396) semantics — the model `afy deploy` applies (REVIEW_FAQ §64).
+// aetherfy.yaml and an agent's current configuration: what `afy deploy` of
+// that file would change.
 //
-// Both inputs are AetherfyConfig-shaped maps parsed by yaml.v3:
-//   - a key PRESENT with a non-nil value → the field is declared
-//   - a key PRESENT with a nil value     → declared as explicit `null` (clear)
-//   - a key ABSENT                        → omitted (deploy preserves it)
+// aetherfy.yaml owns how the agent runs, and a deploy applies the WHOLE file:
+//   - a key PRESENT with a value      → the field becomes that value;
+//   - a key PRESENT as `null`         → the field is unset;
+//   - a key ABSENT                    → the field becomes its DEFAULT (Defaults),
+//     never the value the agent had before.
 //
-// The server map comes from the control-plane GET /agents/{name}/yaml export
-// (serialize_agent_to_yaml), so it contains the current value for every set
-// field and omits unset nullable fields — exactly the shape the local file
-// uses. Keeping the comparison purely over maps makes it trivially testable.
+// There is no "preserved" field: nothing outside the file survives a deploy.
+//
+// The server map comes from the control-plane GET /agents/{id}/yaml export
+// (serialize_agent_to_yaml): the current value of every set field, unset
+// nullable fields omitted.
 package yamldiff
 
 import (
@@ -20,36 +22,53 @@ import (
 	"strings"
 )
 
+// Defaults is what a field left out of aetherfy.yaml becomes on deploy: the
+// control plane's AetherfyConfig defaults (shared/config_parser.py), decoded
+// as yaml.v3 decodes the same value in a file. A COPY, held to the model by
+// archive's TestKnownFieldsEqualTheControlPlaneModel (read by test/cpyaml), so
+// a default changed there turns this repo's tests red. runtime is required and
+// has none.
+var Defaults = map[string]interface{}{
+	"type":                 "service",
+	"spawn":                nil,
+	"regions":              nil,
+	"memory_mb":            256,
+	"idle_timeout_minutes": 5,
+	"keep_alive":           false,
+	"entrypoint":           nil,
+	"schedule":             nil,
+	"github_dependencies":  []interface{}{},
+}
+
 // Kind classifies what `afy deploy` would do to a field.
 type Kind int
 
 const (
-	// NoOp: declared locally with the same value the server already has.
+	// NoOp: the deploy leaves the field as it is.
 	NoOp Kind = iota
-	// Change: declared locally with a value different from the server's.
+	// Change: the field gets a different value.
 	Change
-	// Add: declared locally; the server has no value for it yet.
+	// Add: the field is unset now and gets a value.
 	Add
-	// Clear: declared locally as `null`; the server has a value to clear.
+	// Clear: the field has a value and becomes unset.
 	Clear
-	// Preserve: omitted locally; the server has a value deploy will keep.
-	Preserve
 )
 
 // FieldDiff is one field's classification, with rendered values for display.
+// Defaulted says the file leaves the field out, so Declared is its default.
 type FieldDiff struct {
-	Key      string
-	Kind     Kind
-	Current  string // rendered current (server) value; "" if none
-	Declared string // rendered local value; "" if omitted; "null" if explicit null
+	Key       string
+	Kind      Kind
+	Current   string // rendered current (server) value; "" if unset
+	Declared  string // rendered value the deploy gives it; "null" if unset
+	Defaulted bool
 }
 
-// canonicalOrder mirrors a hand-written aetherfy.yaml / serialize_agent_to_yaml
-// so the diff reads top-to-bottom like the file. Unknown keys follow, sorted.
+// canonicalOrder mirrors serialize_agent_to_yaml so the diff reads
+// top-to-bottom like the file. Unknown keys follow, sorted.
 var canonicalOrder = []string{
-	"name", "runtime", "type", "description",
-	"memory_mb", "idle_timeout_minutes", "keep_alive",
-	"workspace", "database_collection", "entrypoint", "spawn", "regions",
+	"runtime", "type", "memory_mb", "idle_timeout_minutes", "keep_alive",
+	"entrypoint", "schedule", "spawn", "regions", "github_dependencies",
 }
 
 // Diff classifies every field present in either map.
@@ -59,37 +78,54 @@ func Diff(local, server map[string]interface{}) []FieldDiff {
 		lv, lp := local[key]
 		sv, sp := server[key]
 
-		switch {
-		case !lp && sp:
-			// Omitted locally, server has it → preserved on deploy.
-			out = append(out, FieldDiff{key, Preserve, render(sv), ""})
-		case lp && lv == nil:
-			// Explicit `null` → clear (only meaningful when the server has a
-			// value; clearing an already-absent field is a no-op).
-			if sp {
-				out = append(out, FieldDiff{key, Clear, render(sv), "null"})
-			} else {
-				out = append(out, FieldDiff{key, NoOp, "", "null"})
+		defaulted := false
+		if !lp {
+			def, has := Defaults[key]
+			if !sp || !has {
+				// Unset on both sides, or a field with no default (runtime)
+				// left out: nothing this file would change.
+				continue
 			}
-		case equalValues(lv, sv):
-			out = append(out, FieldDiff{key, NoOp, render(sv), render(lv)})
-		case sp:
-			out = append(out, FieldDiff{key, Change, render(sv), render(lv)})
-		default:
-			out = append(out, FieldDiff{key, Add, "", render(lv)})
+			lv, defaulted = def, true
 		}
+
+		d := FieldDiff{Key: key, Declared: render(lv), Defaulted: defaulted}
+		if sp {
+			d.Current = render(sv)
+		}
+		switch {
+		case sp && equalValues(lv, sv), !sp && isUnset(lv):
+			d.Kind = NoOp
+		case !sp:
+			d.Kind = Add
+		case isUnset(lv):
+			d.Kind = Clear
+		default:
+			d.Kind = Change
+		}
+		out = append(out, d)
 	}
 	return out
 }
 
 // HasChanges reports whether any field would change on deploy (Change / Add /
-// Clear). NoOp and Preserve are not changes. Drives the CI-friendly exit code.
+// Clear). Drives the CI-friendly exit code.
 func HasChanges(diffs []FieldDiff) bool {
 	for _, d := range diffs {
-		switch d.Kind {
-		case Change, Add, Clear:
+		if d.Kind != NoOp {
 			return true
 		}
+	}
+	return false
+}
+
+// isUnset: a value that leaves the field unset (null, or an empty list).
+func isUnset(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+	if l, ok := v.([]interface{}); ok && len(l) == 0 {
+		return true
 	}
 	return false
 }
@@ -121,6 +157,9 @@ func orderedKeys(local, server map[string]interface{}) []string {
 }
 
 func equalValues(a, b interface{}) bool {
+	if isUnset(a) && isUnset(b) {
+		return true
+	}
 	return reflect.DeepEqual(a, b)
 }
 

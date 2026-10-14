@@ -23,11 +23,12 @@ type AetherfyConfig struct {
 	MemoryMB   int      `yaml:"memory_mb"`
 	KeepAlive  bool     `yaml:"keep_alive"`
 	Entrypoint string   `yaml:"entrypoint,omitempty"`
-	// Schedule is a 5-field UTC cron expression for a top-level agent of either type.
-	// The server is the authoritative validator (CP-2) — the CLI never
-	// validates cron client-side; it is mutable via push (merge-patch:
-	// omitted=preserve, null=clear), so it must NOT get a runtime-style
-	// immutability special-case in the diff view.
+	// Schedule is a 5-field UTC cron expression, valid on an agent of either
+	// type. The server is the authoritative validator (CP-2) — the CLI never
+	// validates cron client-side. Like every field here, a deploy applies the
+	// file whole: omitted (or null), the agent has no schedule. It changes
+	// with any deploy, so it must NOT get a runtime-style immutability
+	// special-case in the diff view.
 	Schedule string `yaml:"schedule,omitempty"`
 
 	// Declared so they are KNOWN, not because the CLI reads them. Typed `any`

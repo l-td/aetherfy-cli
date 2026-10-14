@@ -496,9 +496,10 @@ account does not have, it is refused and names `afy init --agent <name>
 [--target <t>]`. Renaming or moving the agent does not unlink the folder.
 
 `schedule` is a 5-field cron expression, evaluated in **UTC**, with a minimum
-interval of every 5 minutes, and is valid only for `type: job` agents. Omit
-the field on a re-deploy to keep the existing schedule; set `schedule: null`
-to clear it.
+interval of every 5 minutes, and is valid on an agent of either type. A deploy
+applies the file whole: a field it leaves out takes its default, so a deploy
+without `schedule:` removes the agent's schedule. `afy diff` shows what a
+deploy of the file would change, defaults included.
 
 ### .afyignore
 
