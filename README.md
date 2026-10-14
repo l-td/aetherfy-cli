@@ -180,7 +180,7 @@ afy init --name nightly-report --type job --schedule "0 3 * * *"
 | Command | Description |
 |---------|-------------|
 | `afy list` | List all agents |
-| `afy create <name>` | Create a new agent (`--type service\|job`, `--runtime`, `--spawn-enabled`, `--description`) |
+| `afy create <name>` | Create an agent in a workspace (`--workspace`, asked when the account has several; `--description`); link a folder to it with `afy init --agent <name>` |
 | `afy delete <name>` | Delete an agent and all its deployments |
 | `afy status <name>` | Show detailed agent status |
 | `afy stop <name>` | Pause a running agent |
@@ -273,7 +273,6 @@ the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`,
 | `afy deploy [path]` | Build and deploy the project (watches by default) |
 | `afy deploy --detach` | Upload and return immediately without streaming |
 | `afy deploy --agent <name>` | Override agent target (otherwise read from `aetherfy.yaml`) |
-| `afy deploy --create` | Create the agent from `aetherfy.yaml`'s `type` and `runtime` if it does not exist |
 | `afy deploy --from-github <owner/repo[@ref]>` | Deploy directly from a public GitHub repo |
 | `afy deployments <agent>` | Show deployment history (newest first) |
 | `afy rollback <agent> [version]` | Roll back to a previously deployed version (skips the build step) |

@@ -120,14 +120,12 @@ type LastRun struct {
 
 // AgentCreateRequest is the request body for creating an agent
 type AgentCreateRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description,omitempty"`
-	AgentType    string `json:"agent_type,omitempty"`
-	Runtime      string `json:"runtime,omitempty"`
-	SpawnEnabled bool   `json:"spawn_enabled,omitempty"`
-	// The agents it may spawn, or ["*"] for any. Required by the control plane
-	// when SpawnEnabled is true (422 AGENT_SPAWN_WORKERS_REQUIRED).
-	AllowedWorkers []string `json:"allowed_workers,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// The workspace the agent lives in, by id (the control plane takes
+	// exactly one of workspace_id or workspace_name, and refuses a create
+	// without one). How the agent runs is aetherfy.yaml's, set by a deploy.
+	WorkspaceID string `json:"workspace_id"`
 }
 
 // AgentUpdateRequest is the request body for updating an agent

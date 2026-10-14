@@ -132,60 +132,43 @@ func printAgentList(client *api.Client) error {
 // --- CREATE ---
 var agentsCreateCmd = &cobra.Command{
 	Use:   "create <name>",
-	Short: "Create a new agent",
-	Long:  "Create a new agent with the specified name.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAgentsCreate,
+	Short: "Create an agent in a workspace",
+	Long: `Create an agent, with no code yet, in a workspace.
+
+The agent lives in the workspace --workspace names. With one workspace in the
+account, that one is used; with several, you are asked (without a terminal,
+--workspace is required). How the agent runs comes from aetherfy.yaml at its
+first deploy. Link a folder to it with 'afy init --agent <name>', then
+'afy deploy' from that folder.
+
+'afy init' creates an agent and links the folder in one step.`,
+	Example: `  # Create an agent in the account's only workspace
+  afy create invoice-parser
+
+  # In a named workspace, with a description
+  afy create invoice-parser --workspace acme -d "Parses inbound invoices"`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsCreate,
 }
 
 var (
 	agentDescription string
-	agentType        string
-	agentRuntime     string
-	spawnEnabled     bool
-	spawnWorkers     []string
+	agentWorkspace   string
 )
 
 func init() {
 	agentsCreateCmd.Flags().StringVarP(&agentDescription, "description", "d", "", "Agent description")
-	agentsCreateCmd.Flags().StringVarP(&agentType, "type", "t", "SERVICE", "Agent type: SERVICE or JOB")
-	agentsCreateCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "python3.11", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile")
-	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent (requires --spawn-workers)")
-	agentsCreateCmd.Flags().StringSliceVar(&spawnWorkers, "spawn-workers", nil, `Agents this agent may spawn, comma-separated, or "*" for any of your agents`)
+	agentsCreateCmd.Flags().StringVar(&agentWorkspace, "workspace", "", "Workspace the agent lives in (asked when the account has several)")
 }
 
-// normalizeAgentType validates a user-supplied agent type against the
-// SERVICE|JOB enum and returns the lowercase value the backend expects.
-//
-// Single source for BOTH creation surfaces — the `-t` flag on `agents create`
-// and the `type:` a consented `afy deploy --create` reads from aetherfy.yaml —
-// so the deploy path cannot accept a type the create command would reject.
-func normalizeAgentType(raw string) (string, error) {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "SERVICE":
-		return "service", nil
-	case "JOB":
-		return "job", nil
-	}
-	return "", fmt.Errorf("invalid agent type: must be SERVICE or JOB")
-}
-
-// createAgentRecord issues the POST /agents that creates an agent. Both
-// `afy create` and the consented create inside `afy deploy` go through
-// here rather than building their own request body, so the two can't drift.
-// agentType must already be normalized (lowercase, backend form).
-//
-// The spawn rule (enabled requires workers; "*" stands alone) is the control
-// plane's to state: it answers 422 AGENT_SPAWN_WORKERS_REQUIRED with the
-// sentence naming the fix, which the caller prints. No local copy to drift.
-func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool, spawnWorkers []string) (*api.Agent, error) {
+// createAgentRecord issues the POST /agents that creates an agent, in the
+// workspace given by id. `afy create` and `afy init` both go through here, so
+// the two cannot send different bodies.
+func createAgentRecord(client *api.Client, name, description, workspaceID string) (*api.Agent, error) {
 	return client.CreateAgent(&api.AgentCreateRequest{
-		Name:           name,
-		Description:    description,
-		AgentType:      agentType,
-		Runtime:        runtime,
-		SpawnEnabled:   spawnEnabled,
-		AllowedWorkers: spawnWorkers,
+		Name:        name,
+		Description: description,
+		WorkspaceID: workspaceID,
 	})
 }
 
@@ -195,38 +178,30 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
-
-	// Validate agent type
-	normalizedType, typeErr := normalizeAgentType(agentType)
-	if typeErr != nil {
-		output.PrintError("Invalid agent type. Must be SERVICE or JOB")
-		return typeErr
-	}
-
-	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", name))
-	sp.Start()
-
 	client := api.NewClient()
-	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled, spawnWorkers)
-	sp.Stop()
-
+	ws, err := pickWorkspace(client, agentWorkspace, cmd.Flags().Changed("workspace"), isInteractive(), os.Stdin, os.Stdout)
 	if err != nil {
-		output.PrintError("Failed to create agent: %v", err)
-		return err
+		return printRefusal("Failed to find the workspace", err)
 	}
 
-	output.PrintSuccess("Agent '%s' created successfully!", agent.Name)
+	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s' in workspace '%s'...", name, ws.Name))
+	sp.Start()
+	agent, err := createAgentRecord(client, name, agentDescription, ws.ID)
+	sp.Stop()
+	if err != nil {
+		return printRefusal("Failed to create agent", err)
+	}
+
+	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
 	output.Println("")
 	output.KeyValue("ID", agent.ID)
 	output.KeyValue("Name", agent.Name)
-	output.KeyValue("Type", agent.AgentType)
-	output.KeyValue("Status", agent.Status)
+	output.KeyValue("Workspace", ws.Name)
 
 	output.Println("")
 	output.Println("Next steps:")
-	output.Println("  1. Add your code to a directory with aetherfy.yaml")
-	output.Println("  2. Run 'afy deploy' to deploy your agent")
-
+	output.Println("  1. In your code's folder, link it: afy init --agent " + agent.Name)
+	output.Println("  2. Deploy: afy deploy")
 	return nil
 }
 
