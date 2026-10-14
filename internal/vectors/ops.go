@@ -256,4 +256,3 @@ func (c *Client) DeletePoints(collection string, ids []json.RawMessage, filter j
 	}
 	return c.do(http.MethodPost, c.collectionPath(collection, "/points/delete"), body, c.timeout, nil)
 }
-

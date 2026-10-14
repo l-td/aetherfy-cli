@@ -193,7 +193,7 @@ func ParseNodeVersion(s string) string {
 				return "node22"
 			case major == 20:
 				return "node20"
-			// 21 is an odd/non-LTS release — not supported, caller falls back to default
+				// 21 is an odd/non-LTS release — not supported, caller falls back to default
 			}
 		}
 	}
@@ -204,7 +204,6 @@ func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
 }
-
 
 func hasMastraDep(packageJSONPath string) bool {
 	data, err := os.ReadFile(packageJSONPath)
