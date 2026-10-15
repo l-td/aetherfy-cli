@@ -13,13 +13,11 @@ type DeployOptions struct {
 		Code    string `json:"code"`
 		Allowed bool   `json:"allowed"`
 	} `json:"regions"`
-	MaxRegions *int    `json:"max_regions"`
 	HomeRegion *string `json:"home_region"`
 	MemoryMB   []struct {
 		MemoryMB int  `json:"memory_mb"`
 		Allowed  bool `json:"allowed"`
 	} `json:"memory_mb"`
-	MaxMemoryMB *int `json:"max_memory_mb"`
 }
 
 // AllowedRegions are the region codes allowed, in the platform's order: for a

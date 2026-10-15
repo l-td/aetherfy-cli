@@ -99,8 +99,8 @@ func isUnknownFields(err error) bool {
 }
 
 // handleDeployResult post-processes the first deploy attempt for the D2 Part 6
-// overage cost gate and the freeze/pause 403s. A deploy never creates an agent. The caller does the first Deploy(confirm=false) with its
-// spinner and stops it BEFORE calling this (so a prompt isn't drawn over the
+// overage cost gate and the freeze/pause 403s. The caller does the first
+// Deploy(confirm=false) with its spinner and stops it BEFORE calling this (so a prompt isn't drawn over the
 // spinner). On OVERAGE_CONFIRM_REQUIRED it shows "this adds ~$X/mo — continue?"
 // and, on confirm (or --yes), re-sends with confirm_overage=true (its own brief
 // spinner). Non-special errors pass through for the caller to print generically.
@@ -177,7 +177,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClient()
-	agent, err := resolveLinkedAgent(client, absPath, deployTarget)
+	agent, err := resolveLinkedAgent(client, absPath, deployTarget, true)
 	if err != nil {
 		output.PrintError("%v", err)
 		os.Exit(1)
@@ -206,15 +206,19 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 // resolveLinkedAgent is the agent target names in dir's link file, read back
 // from the control plane by its id. Every refusal names the command that
 // fixes it; none creates anything.
-func resolveLinkedAgent(client *api.Client, dir, target string) (*api.Agent, error) {
+func resolveLinkedAgent(client *api.Client, dir, target string, forDeploy bool) (*api.Agent, error) {
 	fix := "afy init --agent <name>"
 	if target != link.DefaultTarget {
 		fix += " --target " + target
 	}
 	f, err := link.Read(dir)
 	if errors.Is(err, link.ErrNotLinked) {
-		return nil, fmt.Errorf("this folder is not linked to an agent (no %s). Link it to an existing agent "+
-			"with '%s', or create one with 'afy init'. A deploy never creates an agent", link.RelPath(), fix)
+		msg := fmt.Sprintf("this folder is not linked to an agent (no %s). Link it to an existing agent "+
+			"with '%s', or create one with 'afy init'.", link.RelPath(), fix)
+		if forDeploy {
+			msg += " A deploy never creates an agent."
+		}
+		return nil, errors.New(msg)
 	}
 	if err != nil {
 		return nil, err

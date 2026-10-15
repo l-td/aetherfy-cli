@@ -149,6 +149,14 @@ func TestDiffRefusesAnUnlinkedFolderAndAPlatformField(t *testing.T) {
 	if code == 0 || !strings.Contains(stderr, "not linked to an agent") {
 		t.Errorf("an unlinked folder must be refused; exit %d: %s", code, stderr)
 	}
+	// Once, and without a sentence about deploys: this is a diff. (The built
+	// binary printed it twice, with "A deploy never creates an agent" on it.)
+	if n := strings.Count(stderr, "not linked to an agent"); n != 1 {
+		t.Errorf("the refusal must be shown once, got %d:\n%s", n, stderr)
+	}
+	if strings.Contains(stderr, "never creates an agent") {
+		t.Errorf("a diff does not deploy: %s", stderr)
+	}
 
 	named := agentFolder(t, "runtime: python3.11\nname: invoice-parser\n")
 	linkFolder(t, named, map[string]string{"default": prodID})

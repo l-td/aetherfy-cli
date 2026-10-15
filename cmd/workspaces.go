@@ -63,7 +63,7 @@ func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to create workspace: %v", err)
-		return err
+		return shown(err)
 	}
 
 	output.PrintSuccess("Workspace '%s' created!", workspace.Name)
@@ -115,7 +115,7 @@ func runWorkspacesList(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to list workspaces: %v", err)
-		return err
+		return shown(err)
 	}
 
 	if len(workspaces) == 0 {
@@ -182,7 +182,7 @@ func runWorkspacesInfo(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to get workspace: %v", err)
-		return err
+		return shown(err)
 	}
 
 	if config.Get().OutputFormat == "json" {
@@ -322,7 +322,7 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("name") {
 		if workspaceUpdateName == "" {
 			output.PrintError("--name needs the workspace's new name")
-			return fmt.Errorf("empty name")
+			return shown(fmt.Errorf("empty name"))
 		}
 		req.Name = &workspaceUpdateName
 	}
@@ -332,7 +332,7 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	}
 	if req.Name == nil && req.Description == nil {
 		output.PrintError("Specify --name <new> and/or --description <text>")
-		return fmt.Errorf("no update specified")
+		return shown(fmt.Errorf("no update specified"))
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Updating workspace '%s'...", name))
@@ -522,7 +522,7 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to change workspace regions: %v", err)
-		return err
+		return shown(err)
 	}
 
 	var op *api.Operation
@@ -533,7 +533,7 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 		sp.Stop()
 		if err != nil {
 			output.PrintError("%v", err)
-			return err
+			return shown(err)
 		}
 	}
 

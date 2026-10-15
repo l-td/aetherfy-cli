@@ -282,12 +282,12 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 	if err := os.WriteFile(configPath, []byte(gen.content), 0o644); err != nil {
 		output.PrintError("The agent was created, but aetherfy.yaml could not be written (%v). "+
 			"Link the folder with 'afy init --agent %s'.", err, agent.Name)
-		return err
+		return shown(err)
 	}
 	if err := link.Write(absDir, initTarget, agent.ID); err != nil {
 		output.PrintError("The agent was created, but %s could not be written (%v). "+
 			"Link the folder with 'afy init --agent %s'.", link.RelPath(), err, agent.Name)
-		return err
+		return shown(err)
 	}
 	output.PrintSuccess("aetherfy.yaml and %s written.", link.RelPath())
 	output.Println("")
@@ -303,7 +303,7 @@ func confirmOverwrite(p *prompter, configPath string) (bool, error) {
 	if fileExists(configPath) && !initForce {
 		if !isInteractive() {
 			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
-			return false, fmt.Errorf("aetherfy.yaml already exists")
+			return false, shown(fmt.Errorf("aetherfy.yaml already exists"))
 		}
 		yes, err := p.confirm("aetherfy.yaml already exists. Overwrite")
 		if err != nil {

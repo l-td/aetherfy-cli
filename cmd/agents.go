@@ -47,7 +47,7 @@ func printAgentList(client *api.Client) error {
 
 	if err != nil {
 		output.PrintError("Failed to list agents: %v", err)
-		return err
+		return shown(err)
 	}
 
 	// Check output format first
@@ -250,7 +250,7 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to delete agent: %v", err)
-		return err
+		return shown(err)
 	}
 
 	output.PrintSuccess("Agent '%s' deleted successfully.", idOrName)
@@ -338,7 +338,7 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 
 	if err != nil {
 		output.PrintError("Failed to pause agent: %v", err)
-		return err
+		return shown(err)
 	}
 
 	// Two facts, because two things are true on return. The pause IS applied —
@@ -377,7 +377,7 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 
 	if err != nil {
 		output.PrintError("Failed to start agent: %v", err)
-		return err
+		return shown(err)
 	}
 
 	if result != nil && result.Resume.UnderWay() {
@@ -401,7 +401,7 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 			// be a second bound to drift from the platform's own.
 			output.PrintError("The control plane did not say how long the start can take, so --wait has "+
 				"nothing to wait by. Follow it with 'afy status %s'.", idOrName)
-			return fmt.Errorf("no wait_bound_seconds in the accepted start")
+			return shown(fmt.Errorf("no wait_bound_seconds in the accepted start"))
 		}
 		return waitForAcceptedStart(client, idOrName, *result.WaitBoundSeconds)
 	}
@@ -527,7 +527,7 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 		if err != nil {
 			sp.Stop()
 			output.PrintError("Could not read agent '%s' while waiting for it to start: %v", name, err)
-			return err
+			return shown(err)
 		}
 		if agent.Status == "running" {
 			sp.Stop()
@@ -545,7 +545,7 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 			}
 			output.PrintError("Agent '%s' was not started: %s. It is %s; run 'afy start %s' to start it now.",
 				name, why, agent.Status, name)
-			return fmt.Errorf("agent '%s' was not started: %s", name, why)
+			return shown(fmt.Errorf("agent '%s' was not started: %s", name, why))
 		}
 		if waited >= deadline {
 			sp.Stop()
@@ -626,7 +626,7 @@ func runAgentsArchive(cmd *cobra.Command, args []string) error {
 		// AGENT_ALREADY_ARCHIVED (and the other archive 409s) carry a clear
 		// server message — pass it straight through.
 		output.PrintError("Failed to archive agent: %v", err)
-		return err
+		return shown(err)
 	}
 
 	output.PrintSuccess("Agent '%s' archived. Its config is preserved; run 'afy restore %s' to redeploy it.", idOrName, idOrName)
@@ -657,7 +657,7 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 			output.Println("")
 			output.PrintInfo("Delete or archive another agent to free a slot before restoring, or upgrade your plan.")
 		}
-		return err
+		return shown(err)
 	}
 
 	// 'afy status', NOT 'afy list': the restore is checked again when it runs,
@@ -706,7 +706,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		sp.Stop()
 		output.PrintError("Failed to list deployments: %v", err)
-		return err
+		return shown(err)
 	}
 
 	var pending *api.Deployment
@@ -732,7 +732,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 	if err != nil {
 		output.PrintError("Failed to cancel deployment: %v", err)
-		return err
+		return shown(err)
 	}
 
 	// Two response shapes from the route:
@@ -813,7 +813,7 @@ func showAgentStatus(client *api.Client, name string) error {
 
 	if err != nil {
 		output.PrintError("Failed to get agent: %v", err)
-		return err
+		return shown(err)
 	}
 
 	// Check output format. The GitHub link travels inside the agent, under
@@ -1450,15 +1450,15 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 
 	if !nameChanged && !wsChanged && !descChanged {
 		output.PrintError("Specify at least one of --name <new>, --workspace <name> or --description <text>")
-		return fmt.Errorf("no update specified")
+		return shown(fmt.Errorf("no update specified"))
 	}
 	if nameChanged && agentUpdateName == "" {
 		output.PrintError("--name needs the agent's new name")
-		return fmt.Errorf("empty name")
+		return shown(fmt.Errorf("empty name"))
 	}
 	if wsChanged && agentUpdateWorkspace == "" {
 		output.PrintError("--workspace needs the name of the workspace to move the agent to")
-		return fmt.Errorf("empty workspace name")
+		return shown(fmt.Errorf("empty workspace name"))
 	}
 
 	client := api.NewClient()
@@ -1590,18 +1590,18 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		output.PrintError("Could not read %s: %v", localPath, err)
-		return err
+		return shown(err)
 	}
 	var local map[string]interface{}
 	if err := yaml.Unmarshal(data, &local); err != nil {
 		output.PrintError("Invalid aetherfy.yaml: %v", err)
-		return err
+		return shown(err)
 	}
 	// A key `afy deploy` would refuse is not a change to preview: shown as
 	// "+ schedul: ..." it would read as a field the deploy is about to set.
 	if err := archive.CheckUnknownFields(data); err != nil {
 		output.PrintError("%v", err)
-		return err
+		return shown(err)
 	}
 	for _, f := range archive.PlatformFields {
 		if _, declared := local[f]; declared {
@@ -1609,15 +1609,15 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 			// is worth showing until the key is gone.
 			output.PrintError("aetherfy.yaml declares '%s:', which a deploy refuses: the agent's %s is set on the "+
 				"platform ('afy update <agent> --%s'), not in the file. Remove it.", f, f, f)
-			return fmt.Errorf("aetherfy.yaml declares %s", f)
+			return shown(fmt.Errorf("aetherfy.yaml declares %s", f))
 		}
 	}
 
 	client := api.NewClient()
-	agent, err := resolveLinkedAgent(client, absPath, diffTarget)
+	agent, err := resolveLinkedAgent(client, absPath, diffTarget, false)
 	if err != nil {
 		output.PrintError("%v", err)
-		return err
+		return shown(err)
 	}
 	serverYAML, err := client.GetAgentYAML(agent.ID)
 	if err != nil {
@@ -1632,7 +1632,7 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	var server map[string]interface{}
 	if err := yaml.Unmarshal(serverYAML, &server); err != nil {
 		output.PrintError("Control plane returned invalid YAML: %v", err)
-		return err
+		return shown(err)
 	}
 
 	diffs := yamldiff.Diff(local, server)

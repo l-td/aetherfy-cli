@@ -14,7 +14,7 @@ const (
 	livingTwo = `[
 		{"id":"a-1","name":"invoice-parser","agent_type":"service","status":"running","created_at":"2026-10-01T10:00:00Z"},
 		{"id":"a-2","name":"nightly-report","agent_type":"job","status":"stopped","created_at":"2026-10-02T11:30:00Z"}]`
-	grantedOne = `[{"id":"a-9","name":"support-bot","granted_at":"2026-10-13T09:30:00Z"}]`
+	grantedOne = `[{"id":"a-9","name":"support-bot","granted_at":"2026-10-13T09:30:00.123456+00:00"}]`
 )
 
 func agentsCP(t *testing.T, living, granted string) *fakeCP {
@@ -96,7 +96,7 @@ func TestWorkspacesAgentsJSONShape(t *testing.T) {
 		t.Errorf("living = %v", got.Living)
 	}
 	if len(got.Granted) != 1 || got.Granted[0]["id"] != "a-9" || got.Granted[0]["name"] != "support-bot" ||
-		got.Granted[0]["granted_at"] != "2026-10-13T09:30:00Z" {
+		got.Granted[0]["granted_at"] != "2026-10-13T09:30:00.123456Z" {
 		t.Errorf("granted = %v, want {id, name, granted_at}", got.Granted)
 	}
 }

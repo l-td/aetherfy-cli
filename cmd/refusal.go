@@ -34,14 +34,20 @@ func printRefusal(what string, err error) error {
 	var apiErr *api.APIError
 	if errors.As(err, &apiErr) && apiErr.Message != "" {
 		output.PrintError("%s", apiErr.Message)
-		return &printedError{err}
+		return shown(err)
 	}
 	output.PrintError("%s: %v", what, err)
-	return &printedError{err}
+	return shown(err)
 }
 
 // printedError is an error its command has already shown to the user.
 type printedError struct{ error }
+
+// shown marks err as already printed by its command: Execute does not print
+// it a second time. A command that prints its own error with output.PrintError
+// and then returns it returns shown(err); TestNoCommandPrintsAnErrorItAlsoReturns
+// holds every command to that.
+func shown(err error) error { return &printedError{err} }
 
 func (e *printedError) Unwrap() error { return e.error }
 
