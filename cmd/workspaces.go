@@ -364,17 +364,30 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 
 var workspacesAgentsCmd = &cobra.Command{
 	Use:   "agents <workspace>",
-	Short: "List agents in a workspace",
-	Long: `List all agents in a workspace.
+	Short: "List the agents that live in a workspace and the ones granted access to it",
+	Long: `List a workspace's agents, in two sections.
 
-Shows agent names, types, status, and URLs for multi-agent coordination.`,
-	Example: `  # List agents in a workspace
+"Lives here" is the agents that live in the workspace: names, types, status
+and when they were created. "Granted access" is the agents of your OTHER
+workspaces that were granted access to this one, and when. A grant gives an
+agent access to this workspace's collections; it does not move it ('afy
+update <agent> --workspace <name>' moves one; 'afy access <agent>' manages
+its grants).
+
+With --output json: {"living": [...], "granted": [...]}.`,
+	Example: `  # Both sections
   afy workspaces agents my-workspace
 
-  # List agents in JSON format
+  # As JSON
   afy workspaces agents my-workspace --output json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspacesAgents,
+}
+
+// workspaceAgentsJSON is `afy workspaces agents --output json`.
+type workspaceAgentsJSON struct {
+	Living  []api.Agent        `json:"living"`
+	Granted []api.GrantedAgent `json:"granted"`
 }
 
 func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
@@ -388,56 +401,73 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 	sp.Start()
 
 	client := api.NewClient()
-	agents, err := client.ListWorkspaceAgents(workspaceName)
+	living, err := client.ListWorkspaceAgents(workspaceName)
+	var granted []api.GrantedAgent
+	if err == nil {
+		granted, err = client.ListWorkspaceGrantedAgents(workspaceName)
+	}
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to list workspace agents: %v", err)
-		return nil
+		// WORKSPACE_NOT_FOUND and the rest: the server's sentence, as written,
+		// and a failing exit code.
+		return printRefusal("Failed to list workspace agents", err)
 	}
 
-	if len(agents) == 0 {
-		output.PrintInfo("No agents found in workspace '%s'", workspaceName)
-		output.Println("")
-		// `deploy` has no --workspace flag either. An agent joins a workspace
-		// through its own config or `agents update`, then deploys normally.
-		output.Println("Add an agent to this workspace with:")
-		output.Println("  afy update <agent> --workspace " + workspaceName)
-		output.Println("or set 'workspace: " + workspaceName + "' in its aetherfy.yaml, then deploy.")
-		return nil
+	// Always arrays, never null: a script reads the same shape for an empty
+	// workspace as for a full one.
+	if living == nil {
+		living = []api.Agent{}
+	}
+	if granted == nil {
+		granted = []api.GrantedAgent{}
 	}
 
-	// Check output format
 	if config.Get().OutputFormat == "json" {
-		return output.JSON(agents)
+		return output.JSON(workspaceAgentsJSON{Living: living, Granted: granted})
 	}
 
-	// Table output
-	table := output.Table([]string{"Name", "Type", "Status", "Created"})
-	for _, a := range agents {
-		agentType := string(a.AgentType)
-		if agentType == "" {
-			agentType = "SERVICE" // Default
+	if len(living) == 0 {
+		output.Printf("Lives here: no agents (move one in with: afy update <agent> --workspace %s)\n", workspaceName)
+	} else {
+		output.Printf("Lives here (%d)\n", len(living))
+		table := output.Table([]string{"Name", "Type", "Status", "Created"})
+		for _, a := range living {
+			agentType := string(a.AgentType)
+			if agentType == "" {
+				agentType = "SERVICE" // Default
+			}
+			table.Append([]string{
+				a.Name,
+				agentType,
+				string(a.Status),
+				a.CreatedAt.Format("2006-01-02 15:04"),
+			})
 		}
-
-		status := string(a.Status)
-
-		table.Append([]string{
-			a.Name,
-			agentType,
-			status,
-			a.CreatedAt.Format("2006-01-02 15:04"),
-		})
+		table.Render()
 	}
-	table.Render()
 
 	output.Println("")
-	output.Dim.Printf("Total: %d agent(s)\n", len(agents))
-	output.Println("")
-	output.Dim.Println("Agents in the same workspace can:")
-	output.Dim.Println("  • Share secrets (workspace-scoped)")
-	output.Dim.Println("  • Share vector collections")
-	output.Dim.Println("  • Communicate via HTTP (AETHERFY_AGENT_<NAME>_URL)")
+	if len(granted) == 0 {
+		output.Println("Granted access: no agents from other workspaces have access to this one")
+	} else {
+		output.Printf("Granted access (%d)\n", len(granted))
+		table := output.Table([]string{"Name", "Granted"})
+		for _, g := range granted {
+			at := g.GrantedAt
+			table.Append([]string{g.Name, formatUTCTime(&at)})
+		}
+		table.Render()
+		output.Dim.Println("A grant gives an agent access to this workspace's collections; it does not move it.")
+	}
+
+	if len(living) > 0 {
+		output.Println("")
+		output.Dim.Println("Agents living in the same workspace can:")
+		output.Dim.Println("  • Share secrets (workspace-scoped)")
+		output.Dim.Println("  • Share vector collections")
+		output.Dim.Println("  • Communicate via HTTP (AETHERFY_AGENT_<NAME>_URL)")
+	}
 
 	return nil
 }
