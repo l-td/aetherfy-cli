@@ -169,6 +169,7 @@ afy runs my-job
 
 Flags: `--name`, `--agent`, `--target`, `--workspace`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--schedule`, `--force`, `--yes`.
 The regions and memory sizes offered are the ones your plan allows, read from the server.
+When `afy init` asks you to choose, type the option's number, its full text, or its first word (for example `service`); an empty line takes the default.
 
 ```bash
 # Create a scheduled job agent non-interactively
