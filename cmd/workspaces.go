@@ -27,20 +27,111 @@ var workspacesCreateCmd = &cobra.Command{
 	Long: `Create a new workspace for multi-agent coordination.
 
 Workspace names must be 3-63 characters, lowercase alphanumeric and hyphens,
-and cannot start or end with a hyphen.`,
-	Example: `  # Create a workspace
-  afy workspaces create invoice-pipeline
+and cannot start or end with a hyphen.
 
-  # Create with a description
-  afy workspaces create invoice-pipeline --description "Invoice processing agents"`,
+A workspace owns its regions: --regions names 1 up to your plan's limit of the
+regions your plan allows, and agents and collections in the workspace can only
+use those. Without --regions, a terminal is asked to pick; anything else
+(a script, --json) is refused with the list of allowed regions, because there
+is no account region to fall back on. Add regions later with
+'afy workspaces regions'.`,
+	Example: `  # Create a workspace in one region
+  afy workspaces create invoice-pipeline --regions us-east-1
+
+  # Several regions (repeat the flag, or comma-separate), up to your plan's limit
+  afy workspaces create invoice-pipeline --regions us-east-1,eu-central-1
+
+  # With a description
+  afy workspaces create invoice-pipeline --regions us-east-1 --description "Invoice processing agents"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspacesCreate,
 }
 
-var workspaceDescription string
+var (
+	workspaceDescription   string
+	workspaceCreateRegions []string
+)
 
 func init() {
 	workspacesCreateCmd.Flags().StringVarP(&workspaceDescription, "description", "d", "", "Workspace description")
+	workspacesCreateCmd.Flags().StringSliceVar(&workspaceCreateRegions, "regions", nil, "Regions the workspace owns, comma-separated or repeated, from the regions your plan allows (asked on a terminal when omitted)")
+}
+
+// chooseWorkspaceRegions is the regions a new workspace is created with: the
+// ones typed (--regions), or, on a terminal, picked. Validated against the
+// plan (GET /deploy-options) BEFORE anything is sent. Nothing falls back to an
+// account region: omitted without a terminal is refused naming the allowed ones.
+func chooseWorkspaceRegions(cmd *cobra.Command, client *api.Client, p *prompter) ([]string, error) {
+	opts, err := client.GetDeployOptions("")
+	if err != nil {
+		return nil, printRefusal("Failed to read the regions your plan allows", err)
+	}
+	allowed := opts.AllowedRegions()
+	if len(allowed) == 0 {
+		return nil, refuse("your plan allows no region for a workspace; check your plan on the dashboard")
+	}
+	max := opts.MaxRegions
+	if max < 1 {
+		max = 1
+	}
+
+	if cmd.Flags().Changed("regions") {
+		var regions []string
+		seen := map[string]bool{}
+		for _, r := range workspaceCreateRegions {
+			r = strings.TrimSpace(r)
+			if r == "" {
+				return nil, refuse("--regions got an empty region (allowed: %s)", strings.Join(allowed, ", "))
+			}
+			if seen[r] {
+				continue
+			}
+			seen[r] = true
+			regions = append(regions, r)
+		}
+		if len(regions) == 0 {
+			return nil, refuse("--regions needs at least one region (allowed: %s)", strings.Join(allowed, ", "))
+		}
+		for _, r := range regions {
+			if contains(allowed, r) {
+				continue
+			}
+			known := false
+			for _, o := range opts.Regions {
+				if o.Code == r {
+					known = true
+				}
+			}
+			if known {
+				return nil, refuse("region %s is not open on your plan (allowed: %s). Nothing was created.", r, strings.Join(allowed, ", "))
+			}
+			return nil, refuse("%s is not a region (allowed on your plan: %s). Nothing was created.", r, strings.Join(allowed, ", "))
+		}
+		if len(regions) > max {
+			return nil, refuse("%d regions given, but your plan allows %d per workspace (allowed: %s). Nothing was created.", len(regions), max, strings.Join(allowed, ", "))
+		}
+		return regions, nil
+	}
+
+	if !isInteractive() || output.IsJSON() {
+		return nil, refuse("a workspace owns its regions: pass --regions with up to %d of: %s. Nothing was created.", max, strings.Join(allowed, ", "))
+	}
+	if max == 1 || len(allowed) == 1 {
+		idx, err := p.choose("Region", allowed, 0)
+		if err != nil {
+			return nil, err
+		}
+		return []string{allowed[idx]}, nil
+	}
+	picked, err := p.chooseMany("Regions", allowed, max)
+	if err != nil {
+		return nil, err
+	}
+	regions := make([]string, len(picked))
+	for i, idx := range picked {
+		regions[i] = allowed[idx]
+	}
+	return regions, nil
 }
 
 func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
@@ -50,13 +141,19 @@ func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
 
 	name := args[0]
 
+	client := api.NewClient()
+	regions, err := chooseWorkspaceRegions(cmd, client, newPrompter())
+	if err != nil {
+		return err
+	}
+
 	sp := output.NewSpinner(fmt.Sprintf("Creating workspace '%s'...", name))
 	sp.Start()
 
-	client := api.NewClient()
 	workspace, err := client.CreateWorkspace(&api.WorkspaceCreateRequest{
 		Name:        name,
 		Description: workspaceDescription,
+		Regions:     regions,
 	})
 	sp.Stop()
 

@@ -13,7 +13,9 @@ type DeployOptions struct {
 		Code    string `json:"code"`
 		Allowed bool   `json:"allowed"`
 	} `json:"regions"`
-	HomeRegion *string `json:"home_region"`
+	// MaxRegions is how many regions the plan lets a workspace own (and an
+	// agent deploy to). There is no account region: a workspace owns its own.
+	MaxRegions int `json:"max_regions"`
 	MemoryMB   []struct {
 		MemoryMB int  `json:"memory_mb"`
 		Allowed  bool `json:"allowed"`
@@ -22,7 +24,7 @@ type DeployOptions struct {
 
 // AllowedRegions are the region codes allowed, in the platform's order: for a
 // workspace asked about (GetDeployOptions(id)), the deploy's own verdict for an
-// agent in it -- plan, home region, workspace scope, back-fill included.
+// agent in it -- plan, workspace scope, back-fill included.
 func (o *DeployOptions) AllowedRegions() []string {
 	var out []string
 	for _, r := range o.Regions {

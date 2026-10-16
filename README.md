@@ -250,7 +250,8 @@ Workspaces group related agents so they can share secrets and vector collections
 
 | Command | Description |
 |---------|-------------|
-| `afy workspaces create <name>` | Create a workspace (3–63 chars, lowercase/hyphens) |
+| `afy workspaces create <name> --regions r1[,r2]` | Create a workspace (3–63 chars, lowercase/hyphens). A workspace owns its regions: 1 up to your plan's limit, from the regions your plan allows, repeated or comma-separated, validated before anything is sent. Omitted: a terminal is asked to pick; a script or `--json` is refused (exit 2) with the allowed regions listed. There is no account region to fall back on |
+| `afy workspaces regions <name> --regions r1[,r2]` | Set the regions a workspace owns (the full new set); removing a region still in use is refused |
 | `afy workspaces list` | List all workspaces with agent counts |
 | `afy workspaces info <name>` | Show workspace details |
 | `afy workspaces agents <name>` | List the agents that live in a workspace and, separately, the agents of other workspaces granted access to it (`--json`: `{"living": [...], "granted": [...]}`) |

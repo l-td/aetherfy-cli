@@ -82,7 +82,7 @@ func TestInteractiveInitAnswersEveryQuestionFromOneInput(t *testing.T) {
 }
 
 // Empty answers take each question's default: the folder's name, the first
-// workspace, the detected runtime, service, no schedule, the home region, the
+// workspace, the detected runtime, service, no schedule, the first allowed region, the
 // smallest size, auto-sleep.
 func TestInteractiveInitDefaults(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "billing-bot")
@@ -107,8 +107,8 @@ func TestInteractiveInitDefaults(t *testing.T) {
 	if doc["type"] != "service" || doc["memory_mb"] != 512 || doc["keep_alive"] != false || doc["schedule"] != nil {
 		t.Errorf("defaults: %v", doc)
 	}
-	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "ap-southeast-1" {
-		t.Errorf("regions = %v, want the home region", doc["regions"])
+	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "eu-central-1" {
+		t.Errorf("regions = %v, want the first allowed region", doc["regions"])
 	}
 }
 

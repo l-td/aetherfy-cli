@@ -134,7 +134,7 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"spawn", "parent", "child"}, ok: []route{{"POST", "/agents/parent/spawn", 200, `{"spawn_id":"s-1","deployment_id":"d-1","status":"queued"}`}}, refuse: []string{"POST /agents/parent/spawn"}},
 		{class: "mutate", args: []string{"secrets", "set", "bot", "K=v"}, ok: []route{{"POST", "/agents/bot/secrets", 200, `{}`}}, refuse: []string{"POST /agents/bot/secrets"}, resultOnRefusal: true},
 		{class: "mutate", args: []string{"secrets", "delete", "bot", "K"}, ok: []route{{"DELETE", "/agents/bot/secrets/K", 200, `{}`}}, stdin: "y\n", refuse: []string{"DELETE /agents/bot/secrets/K"}},
-		{class: "mutate", args: []string{"workspaces", "create", "acme"}, ok: []route{{"POST", "/workspaces", 201, wsRow}}, refuse: []string{"POST /workspaces"}},
+		{class: "mutate", args: []string{"workspaces", "create", "acme", "--regions", "eu-central-1"}, ok: []route{{"GET", "/deploy-options", 200, deployOptions}, {"POST", "/workspaces", 201, wsRow}}, refuse: []string{"POST /workspaces"}},
 		{class: "mutate", args: []string{"workspaces", "update", "acme", "--description", "x"}, ok: []route{{"PATCH", "/workspaces/acme", 200, wsRow}}, refuse: []string{"PATCH /workspaces/acme"}},
 		{class: "mutate", args: []string{"workspaces", "delete", "acme", "--force"}, ok: []route{{"DELETE", "/workspaces/acme", 200, `{"secrets_deleted":0}`}}, refuse: []string{"DELETE /workspaces/acme"}},
 		{class: "mutate", args: []string{"github", "unlink", "bot"}, ok: []route{{"DELETE", "/agents/bot/github", 200, `{}`}}, refuse: []string{"DELETE /agents/bot/github"}},

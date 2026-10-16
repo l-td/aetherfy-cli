@@ -19,7 +19,7 @@ import (
 // as models.agent.RuntimeEnum lists them, and the plan's regions and sizes.
 const deployOptions = `{"runtimes":["python3.11","python3.12","python3.13","node20","node22","node20-ts","node22-ts","bun","dockerfile"],
 	"regions":[{"code":"us-east-1","allowed":false},{"code":"eu-central-1","allowed":true},{"code":"ap-southeast-1","allowed":true}],
-	"max_regions":1,"home_region":"ap-southeast-1",
+	"max_regions":1,
 	"memory_mb":[{"memory_mb":256,"allowed":false},{"memory_mb":512,"allowed":true},{"memory_mb":1024,"allowed":true}],
 	"max_memory_mb":1024}`
 
@@ -74,9 +74,9 @@ func TestInitCreatesTheAgentThenWritesTheYamlAndTheLink(t *testing.T) {
 			t.Errorf("aetherfy.yaml must not declare %s:\n%s", k, body)
 		}
 	}
-	// From /deploy-options: the home region, and the smallest size allowed.
-	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "ap-southeast-1" {
-		t.Errorf("regions = %v, want [ap-southeast-1] (the home region)", doc["regions"])
+	// From /deploy-options: the first region the plan allows (there is no home region), and the smallest size.
+	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "eu-central-1" {
+		t.Errorf("regions = %v, want [eu-central-1] (the first region the plan allows)", doc["regions"])
 	}
 	if doc["memory_mb"] != 512 {
 		t.Errorf("memory_mb = %v, want 512 (the smallest size the plan allows)", doc["memory_mb"])

@@ -455,9 +455,6 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 			"regions (afy workspaces regions %s --regions ...) or your plan", ws.Name, ws.Name)
 	}
 	defaultRegion := allowedRegions[0]
-	if opts.HomeRegion != nil && contains(allowedRegions, *opts.HomeRegion) {
-		defaultRegion = *opts.HomeRegion
-	}
 	region := initRegion
 	switch {
 	case region != "":
