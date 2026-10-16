@@ -582,3 +582,38 @@ func TestNoCommandWritesToStdoutOutsideTheOutputPackage(t *testing.T) {
 		}
 	}
 }
+
+func TestEveryEmptyListIsAnEmptyJSONDocument(t *testing.T) {
+	// A list command with nothing to list still writes its JSON on stdout: []
+	// (an object with an empty list for `github repos`), never only a sentence
+	// on stderr. Each case answers the command's read with an empty list.
+	cases := []struct {
+		args  []string
+		route route
+		want  string
+	}{
+		{[]string{"list"}, route{"GET", "/agents", 200, `[]`}, "[]"},
+		{[]string{"workspaces", "list"}, route{"GET", "/workspaces", 200, `[]`}, "[]"},
+		{[]string{"deployments", "bot"}, route{"GET", "/agents/bot/deployments", 200, `[]`}, "[]"},
+		{[]string{"rollback", "bot"}, route{"GET", "/agents/bot/deployments", 200, `[]`}, "[]"},
+		{[]string{"secrets", "list", "bot"}, route{"GET", "/agents/bot/secrets", 200, `[]`}, "[]"},
+		{[]string{"runs", "bot"}, route{"GET", "/agents/bot/runs", 200, `[]`}, "[]"},
+		{[]string{"logs", "bot"}, route{"GET", "/agents/bot/logs", 200, `[]`}, "[]"},
+		{[]string{"github", "repos"}, route{"GET", "/auth/github/repositories", 200, `{"repositories":[]}`}, `{"repositories":[]}`},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(strings.Join(tc.args, "_"), func(t *testing.T) {
+			cp := newCasesCP(t, []route{tc.route})
+			stdout, stderr, code := runAfyProcess(t, cp, nil, append(tc.args, "--json")...)
+			if code != 0 {
+				t.Fatalf("exit %d\n%s%s", code, stdout, stderr)
+			}
+			doc := oneJSONDocument(t, strings.Join(tc.args, " "), stdout)
+			raw, _ := json.Marshal(doc)
+			if string(raw) != tc.want {
+				t.Errorf("stdout = %s, want %s", raw, tc.want)
+			}
+		})
+	}
+}

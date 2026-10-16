@@ -212,16 +212,18 @@ func runWorkspacesList(cmd *cobra.Command, args []string) error {
 		return printRefusal("Failed to list workspaces", err)
 	}
 
+	// --json first: an empty list is [], not a sentence on stderr and nothing
+	// on stdout.
+	if output.IsJSON() {
+		return output.JSON(workspaces)
+	}
+
 	if len(workspaces) == 0 {
 		output.PrintInfo("No workspaces found.")
 		output.Println("")
 		output.Println("Create one with:")
-		output.Println("  afy workspaces create <name>")
+		output.Println("  afy workspaces create <name> --regions <region>")
 		return nil
-	}
-
-	if output.IsJSON() {
-		return output.JSON(workspaces)
 	}
 
 	table := output.Table([]string{"Name", "Agents", "Description", "Created"})
