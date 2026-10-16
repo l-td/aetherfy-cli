@@ -206,7 +206,10 @@ func initLinkExisting(cmd *cobra.Command, client *api.Client, p *prompter, dir, 
 		output.PrintInfo("Kept your aetherfy.yaml (--force replaces it with the agent's current configuration).")
 	}
 	printLinkNextSteps(target)
-	return nil
+	return output.Result(map[string]interface{}{
+		"agent": agent, "target": target, "linked": true,
+		"wrote_aetherfy_yaml": wroteYAML, "generated_aetherfy_yaml": generated,
+	})
 }
 
 func printLinkNextSteps(target string) {
@@ -234,6 +237,9 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
 	if proceed, err := confirmOverwrite(p, configPath); err != nil || !proceed {
+		if err == nil {
+			return output.Result(map[string]interface{}{"created": false, "aborted": true})
+		}
 		return err
 	}
 
@@ -293,7 +299,10 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 	output.Println("")
 	printConfigSummary(agent.Name, ws.Name, gen.runtime, gen.agentType, gen.region, gen.memoryMB, gen.keepAlive, gen.schedule)
 	printLinkNextSteps(initTarget)
-	return nil
+	return output.Result(map[string]interface{}{
+		"agent": agent, "workspace": ws, "target": initTarget, "created": true,
+		"files": []string{"aetherfy.yaml", link.RelPath()},
+	})
 }
 
 // confirmOverwrite applies init's rule for an existing aetherfy.yaml: --force

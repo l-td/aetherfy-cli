@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -62,8 +61,7 @@ func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to create workspace: %v", err)
-		return shown(err)
+		return printRefusal("Failed to create workspace", err)
 	}
 
 	output.PrintSuccess("Workspace '%s' created!", workspace.Name)
@@ -84,7 +82,7 @@ func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
 	output.Println("  • Add shared secrets:")
 	output.Println("    afy secrets set --workspace " + workspace.Name + " MY_SECRET=value")
 
-	return nil
+	return output.Result(workspace)
 }
 
 // --- LIST ---
@@ -97,7 +95,7 @@ var workspacesListCmd = &cobra.Command{
   afy workspaces list
 
   # List in JSON format
-  afy workspaces list --output json`,
+  afy workspaces list --json`,
 	RunE: runWorkspacesList,
 }
 
@@ -114,8 +112,7 @@ func runWorkspacesList(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to list workspaces: %v", err)
-		return shown(err)
+		return printRefusal("Failed to list workspaces", err)
 	}
 
 	if len(workspaces) == 0 {
@@ -126,7 +123,7 @@ func runWorkspacesList(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(workspaces)
 	}
 
@@ -161,7 +158,7 @@ var workspacesInfoCmd = &cobra.Command{
   afy workspaces info my-workspace
 
   # Show in JSON format
-  afy workspaces info my-workspace --output json`,
+  afy workspaces info my-workspace --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspacesInfo,
 }
@@ -181,11 +178,10 @@ func runWorkspacesInfo(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to get workspace: %v", err)
-		return shown(err)
+		return printRefusal("Failed to get workspace", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(workspace)
 	}
 
@@ -244,12 +240,12 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 	if !workspaceForceDelete {
 		output.Warning.Printf("This will permanently delete workspace '%s' and all its secrets.\n", name)
 		output.Warning.Println("Vector collections will NOT be deleted.")
-		fmt.Print("Type the workspace name to confirm: ")
+		fmt.Fprint(output.Out(), "Type the workspace name to confirm: ")
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
 		if confirm != name {
 			output.PrintInfo("Deletion cancelled.")
-			return nil
+			return output.Result(map[string]interface{}{"workspace": name, "deleted": false})
 		}
 	}
 
@@ -270,7 +266,7 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 		output.Dim.Printf("  %d secret(s) deleted.\n", result.SecretsDeleted)
 	}
 
-	return nil
+	return output.Result(map[string]interface{}{"workspace": name, "deleted": true, "secrets_deleted": result.SecretsDeleted})
 }
 
 // --- UPDATE ---
@@ -357,7 +353,7 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	} else {
 		output.KeyValue("Description", "(none)")
 	}
-	return nil
+	return output.Result(workspace)
 }
 
 // --- AGENTS ---
@@ -374,17 +370,17 @@ agent access to this workspace's collections; it does not move it ('afy
 update <agent> --workspace <name>' moves one; 'afy access <agent>' manages
 its grants).
 
-With --output json: {"living": [...], "granted": [...]}.`,
+With --json: {"living": [...], "granted": [...]}.`,
 	Example: `  # Both sections
   afy workspaces agents my-workspace
 
   # As JSON
-  afy workspaces agents my-workspace --output json`,
+  afy workspaces agents my-workspace --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspacesAgents,
 }
 
-// workspaceAgentsJSON is `afy workspaces agents --output json`.
+// workspaceAgentsJSON is `afy workspaces agents --json`.
 type workspaceAgentsJSON struct {
 	Living  []api.Agent        `json:"living"`
 	Granted []api.GrantedAgent `json:"granted"`
@@ -423,7 +419,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 		granted = []api.GrantedAgent{}
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(workspaceAgentsJSON{Living: living, Granted: granted})
 	}
 
@@ -521,8 +517,7 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to change workspace regions: %v", err)
-		return shown(err)
+		return printRefusal("Failed to change workspace regions", err)
 	}
 
 	var op *api.Operation
@@ -532,12 +527,11 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 		op, err = pollOperation(client, change.OperationID)
 		sp.Stop()
 		if err != nil {
-			output.PrintError("%v", err)
-			return shown(err)
+			return printRefusal("", err)
 		}
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(struct {
 			Workspace string                      `json:"workspace"`
 			Change    *api.WorkspaceRegionsChange `json:"change"`

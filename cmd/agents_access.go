@@ -321,5 +321,4 @@ func init() {
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().BoolVarP(&agentsAccessYes, "yes", "y", false, "Grant access without asking")
-	agentsAccessCmd.Flags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 }

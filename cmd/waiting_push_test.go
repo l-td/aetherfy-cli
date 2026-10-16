@@ -40,7 +40,7 @@ func TestStatusSaysNothingWhenNoPushWaits(t *testing.T) {
 func TestStatusJSONCarriesTheWaitingPush(t *testing.T) {
 	out, _ := runStatus(t, "json", waitingLink)
 	if !strings.Contains(out, `"waiting_push"`) || !strings.Contains(out, "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432") {
-		t.Fatalf("afy status -o json dropped waiting_push:\n%s", out)
+		t.Fatalf("afy status --json dropped waiting_push:\n%s", out)
 	}
 }
 

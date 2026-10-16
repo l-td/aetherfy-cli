@@ -12,7 +12,6 @@ import (
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/archive"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/yamldiff"
@@ -46,12 +45,11 @@ func printAgentList(client *api.Client) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to list agents: %v", err)
-		return shown(err)
+		return printRefusal("Failed to list agents", err)
 	}
 
 	// Check output format first
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(agents)
 	}
 
@@ -204,7 +202,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	output.Println("Next steps:")
 	output.Println("  1. In your code's folder, link it: afy init --agent " + agent.Name)
 	output.Println("  2. Deploy: afy deploy")
-	return nil
+	return output.Result(agent)
 }
 
 // --- DELETE ---
@@ -232,12 +230,12 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 	// Confirm deletion
 	if !forceDelete {
 		output.Warning.Printf("This will permanently delete agent '%s' and all its deployments.\n", idOrName)
-		fmt.Print("Type the agent name to confirm: ")
+		fmt.Fprint(output.Out(), "Type the agent name to confirm: ")
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
 		if confirm != idOrName {
 			output.PrintInfo("Deletion cancelled.")
-			return nil
+			return output.Result(map[string]interface{}{"agent": idOrName, "deleted": false})
 		}
 	}
 
@@ -249,12 +247,11 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to delete agent: %v", err)
-		return shown(err)
+		return printRefusal("Failed to delete agent", err)
 	}
 
 	output.PrintSuccess("Agent '%s' deleted successfully.", idOrName)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "deleted": true})
 }
 
 // --- STOP / START (user-invoked pause) ---
@@ -337,8 +334,7 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to pause agent: %v", err)
-		return shown(err)
+		return printRefusal("Failed to pause agent", err)
 	}
 
 	// Two facts, because two things are true on return. The pause IS applied —
@@ -349,7 +345,7 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 	// reports paused immediately.
 	output.PrintSuccess("Agent '%s' paused; its machines are stopping. Resume with 'afy start %s'.", idOrName, idOrName)
 	output.PrintInfo("Stopped agents keep billing at the base rate; archive to stop billing.")
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "paused"})
 }
 
 func runAgentsStart(cmd *cobra.Command, args []string) error {
@@ -376,8 +372,7 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to start agent: %v", err)
-		return shown(err)
+		return printRefusal("Failed to start agent", err)
 	}
 
 	if result != nil && result.Resume.UnderWay() {
@@ -394,7 +389,10 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		}
 		if !wait {
 			output.PrintInfo("Nothing more to do. Follow it with 'afy status %s', or use --wait.", idOrName)
-			return nil
+			return output.Result(map[string]interface{}{
+				"agent": idOrName, "status": "start_accepted",
+				"resume": result.Resume, "wait_bound_seconds": result.WaitBoundSeconds,
+			})
 		}
 		if result.WaitBoundSeconds == nil {
 			// The server states how long its start can take; a guess here would
@@ -411,7 +409,7 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		readiness = result.Readiness
 	}
 	printStartOutcome(idOrName, readiness)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "started", "readiness": readiness})
 }
 
 // resumeCauses: the words for an accepted start that is not waiting on a stop,
@@ -535,7 +533,7 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 			// ONCE, AT THE END: whether the start recreated a machine is
 			// known only once it is carried out, and the agent read keeps it.
 			printColdStart(agent.MachinesRecreated)
-			return nil
+			return output.Result(map[string]interface{}{"agent": name, "status": "running"})
 		}
 		if !agent.Resume.UnderWay() {
 			sp.Stop()
@@ -625,12 +623,11 @@ func runAgentsArchive(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// AGENT_ALREADY_ARCHIVED (and the other archive 409s) carry a clear
 		// server message — pass it straight through.
-		output.PrintError("Failed to archive agent: %v", err)
-		return shown(err)
+		return printRefusal("Failed to archive agent", err)
 	}
 
 	output.PrintSuccess("Agent '%s' archived. Its config is preserved; run 'afy restore %s' to redeploy it.", idOrName, idOrName)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "archived"})
 }
 
 func runAgentsRestore(cmd *cobra.Command, args []string) error {
@@ -648,12 +645,12 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to restore agent: %v", err)
+		_ = printRefusal("Failed to restore agent", err)
 		// Quota is re-checked on restore. When the plan is full the server
 		// returns PLAN_LIMIT_EXCEEDED — add an actionable hint on top of the
 		// server message. AGENT_NOT_ARCHIVED and other 409s pass through
 		// unchanged (their server message is already self-explanatory).
-		if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "PLAN_LIMIT_EXCEEDED" {
+		if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "PLAN_LIMIT_EXCEEDED" && !output.IsJSON() {
 			output.Println("")
 			output.PrintInfo("Delete or archive another agent to free a slot before restoring, or upgrade your plan.")
 		}
@@ -665,7 +662,7 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 	// record. The list shows the status alone, which reads the same for a
 	// restore still under way and one that was refused.
 	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Run 'afy status %s' to follow it: if the restore is refused, it says why.", idOrName, idOrName)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "restoring"})
 }
 
 // --- CANCEL (abandon an in-flight deployment) ---
@@ -705,8 +702,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	deployments, err := client.ListDeployments(idOrName)
 	if err != nil {
 		sp.Stop()
-		output.PrintError("Failed to list deployments: %v", err)
-		return shown(err)
+		return printRefusal("Failed to list deployments", err)
 	}
 
 	var pending *api.Deployment
@@ -723,7 +719,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	if pending == nil {
 		sp.Stop()
 		output.PrintInfo("No pending deployment to cancel for '%s'.", idOrName)
-		return nil
+		return output.Result(map[string]interface{}{"agent": idOrName, "cancelled": false})
 	}
 
 	sp.UpdateMessage(fmt.Sprintf("Cancelling deployment v%d (state: %s)...", pending.Version, pending.Status))
@@ -731,8 +727,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	result, err := client.CancelDeployment(idOrName, pending.Version)
 	sp.Stop()
 	if err != nil {
-		output.PrintError("Failed to cancel deployment: %v", err)
-		return shown(err)
+		return printRefusal("Failed to cancel deployment", err)
 	}
 
 	// Two response shapes from the route:
@@ -753,7 +748,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 			result.Version, result.Status, idOrName,
 		)
 	}
-	return nil
+	return output.Result(result)
 }
 
 // --- STATUS ---
@@ -812,13 +807,12 @@ func showAgentStatus(client *api.Client, name string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to get agent: %v", err)
-		return shown(err)
+		return printRefusal("Failed to get agent", err)
 	}
 
 	// Check output format. The GitHub link travels inside the agent, under
 	// "github", so the agent is the whole payload.
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(agent)
 	}
 
@@ -1110,8 +1104,7 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 
 	payload, err := parseRunPayload()
 	if err != nil {
-		output.PrintError("%v", err)
-		return nil
+		return refuse("%v", err)
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Starting run of '%s'...", name))
@@ -1120,12 +1113,13 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 	resp, err := client.RunAgent(name, payload)
 	sp.Stop()
 	if err != nil {
-		printAgentActionError("Failed to run agent", err)
-		return err
+		return printAgentActionError("Failed to run agent", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
-		return output.JSON(resp)
+	// --json: the run that was started is the result; with --wait the run is
+	// still followed (on stderr) and the exit code carries how it ended.
+	if err := output.Result(resp); err != nil {
+		return err
 	}
 
 	output.PrintSuccess("Run started.")
@@ -1217,11 +1211,10 @@ func printAgentRuns(client *api.Client, name string) error {
 	runs, err := client.ListAgentRuns(name, api.RunsQuery{Limit: runsLimit})
 	sp.Stop()
 	if err != nil {
-		printAgentActionError("Failed to list runs", err)
-		return nil
+		return printAgentActionError("Failed to list runs", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(runs)
 	}
 	if len(runs) == 0 {
@@ -1233,7 +1226,7 @@ func printAgentRuns(client *api.Client, name string) error {
 	for i := range runs {
 		r := runs[i]
 		table.Append([]string{
-			// UTC, MARKED, the instant `-o json` prints. The table used to print
+			// UTC, MARKED, the instant `--json` prints. The table used to print
 			// local time with no zone next to a JSON that says UTC, so the same
 			// run read two hours apart (benchmark runs 3 and 4).
 			formatUTCTime(&r.CreatedAt),
@@ -1310,11 +1303,10 @@ func runScheduleToggle(name string, pause bool) error {
 	sp.Stop()
 
 	if err != nil {
-		printAgentActionError("Failed to update schedule", err)
-		return err
+		return printAgentActionError("Failed to update schedule", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(resp)
 	}
 
@@ -1481,6 +1473,7 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		printAgentMove(move)
 		moved, target = move, move.AgentID
 	}
+	var updated *api.Agent
 
 	if nameChanged || descChanged {
 		if moved != nil {
@@ -1498,12 +1491,13 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 			var apiErr *api.APIError
 			if moved != nil && errors.As(err, &apiErr) && apiErr.Message != "" {
 				// Exactly what happened: the move stands, the rest does not.
-				output.PrintError("Agent '%s' moved to workspace '%s'; %s refused: %s",
-					moved.Agent, moved.Workspace.Name, updatedWhat(nameChanged, descChanged), apiErr.Message)
+				output.PrintAPIError(apiErr.StatusCode, apiErr.Code, fmt.Sprintf("Agent '%s' moved to workspace '%s'; %s refused: %s",
+					moved.Agent, moved.Workspace.Name, updatedWhat(nameChanged, descChanged), apiErr.Message))
 				return &printedError{err}
 			}
 			return printRefusal("Failed to update agent", err)
 		}
+		updated = agent
 		output.PrintSuccess("Agent '%s' updated.", agent.Name)
 		output.KeyValue("Name", agent.Name)
 		if agent.Description != "" {
@@ -1513,7 +1507,7 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 			printRenameNote(agent)
 		}
 	}
-	return nil
+	return output.Result(map[string]interface{}{"move": moved, "agent": updated})
 }
 
 func updatedWhat(name, description bool) string {
@@ -1616,8 +1610,7 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	client := api.NewClient()
 	agent, err := resolveLinkedAgent(client, absPath, diffTarget, false)
 	if err != nil {
-		output.PrintError("%v", err)
-		return shown(err)
+		return printRefusal("", err)
 	}
 	serverYAML, err := client.GetAgentYAML(agent.ID)
 	if err != nil {
@@ -1637,12 +1630,28 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 
 	diffs := yamldiff.Diff(local, server)
 	printAgentDiff(agent.Name, diffs)
+	if err := output.Result(diffJSON(agent.Name, diffs)); err != nil {
+		return err
+	}
 
 	// CI-friendly: non-zero exit when a deploy would change something.
 	if yamldiff.HasChanges(diffs) {
 		os.Exit(1)
 	}
 	return nil
+}
+
+// diffJSON is `afy diff --json`: every field the deploy would touch or leave,
+// and whether any would change (the exit code says the same).
+func diffJSON(agent string, diffs []yamldiff.FieldDiff) map[string]interface{} {
+	kinds := map[yamldiff.Kind]string{yamldiff.NoOp: "unchanged", yamldiff.Change: "change", yamldiff.Add: "add", yamldiff.Clear: "clear"}
+	fields := make([]map[string]interface{}, 0, len(diffs))
+	for _, d := range diffs {
+		fields = append(fields, map[string]interface{}{
+			"key": d.Key, "kind": kinds[d.Kind], "current": d.Current, "declared": d.Declared, "defaulted": d.Defaulted,
+		})
+	}
+	return map[string]interface{}{"agent": agent, "changes": yamldiff.HasChanges(diffs), "fields": fields}
 }
 
 // printAgentDiff renders the diff with the project's color scheme.
@@ -1771,11 +1780,11 @@ func formatDeploymentState(state string) string {
 // through to the plain server message (already actionable). Never special-cases
 // HTTP 502 — a bare 502 is edge infra, handled generically like the rest of the
 // CLI.
-func printAgentActionError(prefix string, err error) {
-	output.PrintError("%s: %v", prefix, err)
+func printAgentActionError(prefix string, err error) error {
+	shownErr := printRefusal(prefix, err)
 	apiErr, ok := err.(*api.APIError)
-	if !ok {
-		return
+	if !ok || output.IsJSON() {
+		return shownErr
 	}
 	switch apiErr.Code {
 	case "AGENT_NOT_DEPLOYED":
@@ -1783,6 +1792,7 @@ func printAgentActionError(prefix string, err error) {
 	case "AGENT_SCHEDULE_NOT_SET":
 		output.PrintInfo("Add `schedule:` to aetherfy.yaml and push (afy deploy).")
 	}
+	return shownErr
 }
 
 // formatRunState colorizes a run's deployment state for the runs table:

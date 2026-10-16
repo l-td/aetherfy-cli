@@ -37,7 +37,11 @@ func runWhoami(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	output.Dim.Println("Credentials stored in: " + config.CredentialsPath())
 
-	return nil
+	return output.Result(map[string]interface{}{
+		"api_key": config.MaskAPIKey(creds.APIKey), "key_type": keyType(creds.APIKey),
+		"api_url": cfg.APIURL, "email": creds.Email, "tier": creds.Tier,
+		"credentials_path": config.CredentialsPath(),
+	})
 }
 
 func keyType(key string) string {

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -73,38 +72,32 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	}
 
 	if sources > 1 {
-		output.PrintError("Specify only one of --payload, --payload-file, or --stdin")
-		return nil
+		return refuse("Specify only one of --payload, --payload-file, or --stdin")
 	}
 
 	if spawnPayload != "" {
 		// Parse JSON payload from flag
 		if err := json.Unmarshal([]byte(spawnPayload), &payload); err != nil {
-			output.PrintError("Invalid JSON payload: %v", err)
-			return nil
+			return refuse("Invalid JSON payload: %v", err)
 		}
 	} else if spawnPayloadFile != "" {
 		// Read payload from file
 		data, err := os.ReadFile(spawnPayloadFile)
 		if err != nil {
-			output.PrintError("Failed to read payload file: %v", err)
-			return nil
+			return printRefusal("Failed to read payload file", err)
 		}
 		if err := json.Unmarshal(data, &payload); err != nil {
-			output.PrintError("Invalid JSON in payload file: %v", err)
-			return nil
+			return refuse("Invalid JSON in payload file: %v", err)
 		}
 	} else if spawnStdin {
 		// Read payload from stdin
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			output.PrintError("Failed to read from stdin: %v", err)
-			return nil
+			return printRefusal("Failed to read from stdin", err)
 		}
 		if len(strings.TrimSpace(string(data))) > 0 {
 			if err := json.Unmarshal(data, &payload); err != nil {
-				output.PrintError("Invalid JSON from stdin: %v", err)
-				return nil
+				return refuse("Invalid JSON from stdin: %v", err)
 			}
 		}
 	}
@@ -123,12 +116,11 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to spawn agent: %v", err)
-		return nil
+		return printRefusal("Failed to spawn agent", err)
 	}
 
 	// Check output format
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(resp)
 	}
 

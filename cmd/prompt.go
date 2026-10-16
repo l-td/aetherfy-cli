@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"bufio"
 	"errors"
 	"fmt"
@@ -29,7 +30,7 @@ type prompter struct {
 // newPrompter is the run's prompter over the process's stdin and stdout. A
 // var so a test can script the whole flow through the real command.
 var newPrompter = func() *prompter {
-	return &prompter{in: bufio.NewReader(os.Stdin), out: os.Stdout}
+	return &prompter{in: bufio.NewReader(os.Stdin), out: output.Out()}
 }
 
 // stdinIsTerminal says whether questions can be asked at all. A var so a test

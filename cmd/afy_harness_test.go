@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -130,7 +131,7 @@ func runAfy(t *testing.T, cp *fakeCP, args ...string) (stdout, stderr string, er
 		t.Setenv("AETHERFY_API_URL", cp.srv.URL+"/api/v1")
 	}
 	resetAllFlags()
-	t.Cleanup(func() { resetAllFlags(); rootCmd.SetArgs(nil) })
+	t.Cleanup(func() { resetAllFlags(); rootCmd.SetArgs(nil); output.SetJSON(false) })
 	rootCmd.SetArgs(args)
 	stderr = captureStderr(t, func() {
 		stdout = captureStdout(t, func() { err = Execute() })
@@ -166,7 +167,11 @@ const afyProcessBound = 60 * time.Second
 // which in-process would end the whole test run.
 func TestMain(m *testing.M) {
 	if args, ok := os.LookupEnv(afyProcessArgs); ok {
-		rootCmd.SetArgs(strings.Split(args, "\x1f"))
+		argv := strings.Split(args, "\x1f")
+		// As a real process sees them: Execute reads os.Args for a --json
+		// typed after a flag cobra refused.
+		os.Args = append([]string{"afy"}, argv...)
+		rootCmd.SetArgs(argv)
 		if err := Execute(); err != nil {
 			os.Exit(ExitCode(err))
 		}
@@ -185,6 +190,13 @@ func TestMain(m *testing.M) {
 // timeout. It is killed at afyProcessBound and the case fails saying so.
 func runAfyProcess(t *testing.T, cp *fakeCP, env []string, args ...string) (stdout, stderr string, code int) {
 	t.Helper()
+	return runAfyProcessWith(t, cp, env, "", args...)
+}
+
+// runAfyProcessWith is runAfyProcess with stdin to feed the command (a
+// confirmation it asks for), "" for none.
+func runAfyProcessWith(t *testing.T, cp *fakeCP, env []string, stdin string, args ...string) (stdout, stderr string, code int) {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), afyProcessBound)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0])
@@ -200,6 +212,9 @@ func runAfyProcess(t *testing.T, cp *fakeCP, env []string, args ...string) (stdo
 	cmd.Env = append(cmd.Env, env...)
 	var out, errOut bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errOut
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	err := cmd.Run()
 	if ctx.Err() != nil {
 		t.Fatalf("afy %s did not finish within %s (killed); it got further than this case expects.\nstdout:\n%s\nstderr:\n%s",
@@ -238,4 +253,13 @@ func TestExecutePrintsAnUnprintedErrorOnce(t *testing.T) {
 	if n := strings.Count(stderr, "Error: unknown flag: --bogus"); n != 1 {
 		t.Errorf("want the error once, got %d:\n%s", n, stderr)
 	}
+}
+
+// jsonRun puts a test that calls a command's function directly (not through
+// Execute, which sets the mode from --json) into JSON mode, or out of it, for
+// the test's length.
+func jsonRun(t *testing.T, on bool) {
+	t.Helper()
+	output.SetJSON(on)
+	t.Cleanup(func() { output.SetJSON(false) })
 }

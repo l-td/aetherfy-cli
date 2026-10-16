@@ -12,7 +12,7 @@ import (
 var (
 	cfgFile      string
 	apiURL       string
-	outputFormat string
+	jsonOut      bool
 	verbose      bool
 	noColor      bool
 )
@@ -62,6 +62,10 @@ For more information, visit: https://docs.aetherfy.com`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// The one JSON switch, set before anything can print (and before the
+		// version/help early return below: `afy version --json` is JSON).
+		output.SetJSON(jsonOut)
+
 		// Skip config loading for certain commands
 		if cmd.Name() == "version" || cmd.Name() == "help" {
 			return nil
@@ -84,10 +88,6 @@ For more information, visit: https://docs.aetherfy.com`,
 			config.SetNoColor(true)
 			output.DisableColors()
 		}
-		if outputFormat != "" {
-			config.SetOutputFormat(outputFormat)
-			output.SetFormat(outputFormat)
-		}
 
 		// Load credentials
 		_, err = config.LoadCredentials()
@@ -107,7 +107,7 @@ For more information, visit: https://docs.aetherfy.com`,
 func Execute() error {
 	err := rootCmd.Execute()
 	if err != nil && !alreadyPrinted(err) {
-		rootCmd.PrintErrln("Error:", err.Error())
+		printUnprinted(err)
 	}
 	return err
 }
@@ -119,7 +119,7 @@ func init() {
 	// is %APPDATA%\aetherfy, and $AETHERFY_CONFIG_DIR overrides both.
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is "+config.ConfigPath()+")")
 	rootCmd.PersistentFlags().StringVar(&apiURL, "api-url", "", "API base URL (overrides config)")
-	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "", "output format: text, json, table")
+	rootCmd.PersistentFlags().BoolVar(&jsonOut, "json", false, "print the result as JSON on stdout (hints and progress go to stderr; errors are JSON on stderr)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "disable colored output")
 

@@ -34,7 +34,7 @@ type Agent struct {
 	URL      string `json:"url,omitempty"`
 	// Resume: a start asked for while the agent's previous stop was still
 	// finishing (server AgentResponse.resume) -- pending, queued, or dropped
-	// with a reason. nil when there is none. No omitempty: `-o json` readers
+	// with a reason. nil when there is none. No omitempty: `--json` readers
 	// see an explicit null.
 	Resume *ResumeState `json:"resume"`
 	// MachinesRecreated: how many of the agent's machines its latest start
@@ -54,7 +54,7 @@ type Agent struct {
 	// stored status. IsDegraded = a partial multi-region deploy still
 	// converging; DegradedReason is a human summary. Surfaced on
 	// `afy list` / `afy status`. No omitempty on IsDegraded:
-	// health must serialize explicitly so `-o json` health-check scripts can
+	// health must serialize explicitly so `--json` health-check scripts can
 	// read it. (No is_serving — agent.Status answers "is it up"; the server
 	// keeps is_serving on the deployment, where it's well-defined.)
 	IsDegraded     bool   `json:"is_degraded"`
@@ -88,7 +88,7 @@ type Agent struct {
 	// A POINTER, AND OMITEMPTY ON THE POINTER ONLY. A control plane that predates
 	// the nested object leaves it nil, and nil must stay distinguishable from a
 	// link that says `linked: false`: decoded as a value it would be all zeros,
-	// and `-o json` would claim an unlinked, disconnected agent the server said
+	// and `--json` would claim an unlinked, disconnected agent the server said
 	// nothing about. Nothing INSIDE the object may take omitempty.
 	GitHub *GitHubLinkStatus `json:"github,omitempty"`
 	// Cron scheduling (CP-4). Carried on the agent list + detail responses.
@@ -160,7 +160,7 @@ type Deployment struct {
 	AgentID string `json:"agent_id"`
 	Version int    `json:"version"`
 	// On a run, the release it executed; Version is the run's own place in the
-	// sequence. Nil on a release. No omitempty: `-o json` says null rather than
+	// sequence. Nil on a release. No omitempty: `--json` says null rather than
 	// dropping the key, as AgentRun.ReleaseVersion does.
 	ReleaseVersion *int     `json:"release_version"`
 	Status         string   `json:"state"`
@@ -189,7 +189,7 @@ type Deployment struct {
 	// Partial-deploy contract (server DeploymentResponse; REVIEW_FAQ §63). A
 	// degraded deployment stays state=ACTIVE and converges in the background;
 	// RegionsReady/RegionsTotal is the N/M progress. No omitempty on IsDegraded:
-	// it must serialize explicitly for `-o json` scripting. (is_serving exists
+	// it must serialize explicitly for `--json` scripting. (is_serving exists
 	// on the API but isn't modeled here — the State field already conveys
 	// active; we only surface the degraded delta.)
 	IsDegraded              bool   `json:"is_degraded"`
@@ -201,7 +201,7 @@ type Deployment struct {
 	// internal S3 URI the API never returns, and the archive is deleted when a
 	// build fails and reaped past the 10 most recent successful deployments — so
 	// this cannot be inferred from State. No omitempty: `false` must serialize
-	// explicitly for `-o json` scripting, same reason as IsDegraded.
+	// explicitly for `--json` scripting, same reason as IsDegraded.
 	CanRedeploy bool `json:"can_redeploy"`
 	// Whether `afy rollback` can target this version (server
 	// Deployment.can_rollback): its image or its stored code archive still
@@ -294,7 +294,7 @@ type AgentRun struct {
 	State         string    `json:"state"`
 	CreatedAt     time.Time `json:"created_at"`
 	ErrorMessage  string    `json:"error_message,omitempty"`
-	// The release the run executed. No omitempty: `afy runs -o json` says
+	// The release the run executed. No omitempty: `afy runs --json` says
 	// null for a run the server recorded none for, rather than dropping the key.
 	ReleaseVersion   *int       `json:"release_version"`
 	MachineStartedAt *time.Time `json:"machine_started_at,omitempty"`
@@ -488,7 +488,7 @@ type GitHubLinkResponse struct {
 //
 // NOTHING IS OMITEMPTY. `linked: false` and `account_connected: false` are the
 // values a reader most needs to see, and omitempty is exactly the tag that
-// would drop them from `afy status -o json`. The nullable fields mirror the
+// would drop them from `afy status --json`. The nullable fields mirror the
 // server's own nullability so a null stays a null rather than becoming "".
 type GitHubLinkStatus struct {
 	Linked    bool    `json:"linked"`
@@ -507,7 +507,7 @@ type GitHubLinkStatus struct {
 	AccountLogin *string `json:"account_login"`
 	// The GitHub App installation behind AccountLogin. Nothing here renders it
 	// -- it is a numeric internal id -- but it is decoded because
-	// `afy status -o json` re-encodes this struct, and a field decoded nowhere
+	// `afy status --json` re-encodes this struct, and a field decoded nowhere
 	// is a field that output silently drops.
 	InstallationID *int64 `json:"installation_id"`
 	// When the tracked branch was last seen deleted, or null. A TIMESTAMP

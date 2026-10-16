@@ -297,8 +297,7 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 }
 
 func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
-	// --json is the contract a coding agent reads, and the other three decide
-	// where a request goes and which workspace a name means. A command
+	// The three decide where a request goes and which workspace a name means. A command
 	// without one of them silently ignores it: cobra refuses an unknown flag,
 	// but a caller that gets that refusal from one command and not another
 	// cannot script against the set.
@@ -311,7 +310,12 @@ func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
 		t.Fatalf("only %d vector commands found; the walk is not reaching them", len(leaves))
 	}
 	for _, c := range leaves {
-		for _, flag := range []string{"json", "workspace", "vectors-url", "api-region"} {
+		// --json is the ROOT's one switch (TestJSONFlagReplacesOutputAndHasNoAlias):
+		// every vector command has it, and none declares its own.
+		if c.Flag("json") == nil {
+			t.Errorf("`%s` has no --json", c.CommandPath())
+		}
+		for _, flag := range []string{"workspace", "vectors-url", "api-region"} {
 			if c.Flag(flag) == nil {
 				t.Errorf("`%s` has no --%s", c.CommandPath(), flag)
 			}

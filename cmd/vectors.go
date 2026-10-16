@@ -22,6 +22,7 @@ import (
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 	"github.com/spf13/cobra"
 )
@@ -38,14 +39,12 @@ const (
 // the way cobra does), so a loop or a helper would hide them from the docs
 // guard.
 var (
-	vecJSON       bool
 	vecVectorsURL string
 	vecAPIRegion  string
 	vecWorkspace  string
 )
 
 const (
-	vecJSONHelp       = "Print one JSON object with stable field names (same as --output json)"
 	vecVectorsURLHelp = "Vectors API endpoint (overrides " + vectors.EnvVectorsURL + " and --api-region)"
 	vecAPIRegionHelp  = "API region to connect to, resolved by region discovery, which lists the regions it serves (or " + vectors.EnvAPIRegion + ")"
 	vecWorkspaceHelp  = "Workspace the collection belongs to (the account's only one when it has one; asked, or required without a terminal, when it has several)"
@@ -164,7 +163,7 @@ func (r *vecRun) controlPlane() *api.Client {
 // newVecRun builds the context from the command's flags and the environment.
 func newVecRun(cmd *cobra.Command) *vecRun {
 	r := &vecRun{
-		json:   vecJSON || config.Get().OutputFormat == "json",
+		json:   output.IsJSON(),
 		stdout: os.Stdout,
 		stderr: os.Stderr,
 	}
@@ -307,17 +306,14 @@ func exitWith(code int) error {
 }
 
 func init() {
-	collectionsCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	collectionsCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	collectionsCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
 	collectionsCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
-	indexCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	indexCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	indexCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
 	indexCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
-	pointsCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	pointsCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	pointsCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
 	pointsCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)

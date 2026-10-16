@@ -18,8 +18,12 @@ func NewSpinner(message string) *Spinner {
 	return &Spinner{s: s}
 }
 
-// Start begins the spinner animation
+// Start begins the spinner animation. In JSON mode there is none: stdout is
+// the result and stderr is for words, not an animation.
 func (sp *Spinner) Start() {
+	if jsonMode {
+		return
+	}
 	sp.s.Start()
 }
 
@@ -37,7 +41,7 @@ func (sp *Spinner) Success(message string) {
 // Fail stops spinner with error message
 func (sp *Spinner) Fail(message string) {
 	sp.s.Stop()
-	PrintError(message)
+	PrintError("%s", message)
 }
 
 // UpdateMessage changes the spinner message

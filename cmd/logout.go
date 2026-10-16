@@ -16,14 +16,13 @@ var logoutCmd = &cobra.Command{
 func runLogout(cmd *cobra.Command, args []string) error {
 	if !config.IsLoggedIn() {
 		output.PrintInfo("Not currently logged in.")
-		return nil
+		return output.Result(map[string]interface{}{"logged_out": false})
 	}
 
 	if err := config.DeleteCredentials(); err != nil {
-		output.PrintError("Failed to remove credentials: %v", err)
-		return nil
+		return printRefusal("Failed to remove credentials", err)
 	}
 
 	output.PrintSuccess("Logged out successfully.")
-	return nil
+	return output.Result(map[string]interface{}{"logged_out": true})
 }

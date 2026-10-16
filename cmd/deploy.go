@@ -125,11 +125,12 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 		}
 		if !deployYes {
 			if !isInteractive() {
-				output.PrintError("This deployment %s. Re-run with --yes to proceed.", impact)
+				output.PrintAPIError(apiErr.StatusCode, apiErr.Code, fmt.Sprintf("This deployment %s. Re-run with --yes to proceed.", impact))
 				os.Exit(1)
 			}
 			if !promptYesNo(fmt.Sprintf("This deployment %s — continue?", impact)) {
 				output.PrintInfo("Deployment cancelled.")
+				_ = output.Result(map[string]interface{}{"agent_id": agentID, "cancelled": true})
 				os.Exit(0)
 			}
 		}
@@ -143,7 +144,7 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 	case "SOFT_CAP_EXCEEDED", "DUNNING_FROZEN":
 		// Freeze/pause: show the control-plane's actionable message cleanly,
 		// without the "[403] … (CODE)" wrapper.
-		output.PrintError("%s", apiErr.Message)
+		output.PrintAPIError(apiErr.StatusCode, apiErr.Code, apiErr.Message)
 		os.Exit(1)
 	}
 
@@ -289,7 +290,7 @@ func deployDir(client *api.Client, agent *api.Agent, dir string) error {
 	if deployDetach {
 		output.PrintSuccess("Deployment queued.")
 		output.Println("Run 'afy logs " + agent.Name + "' to follow progress.")
-		return nil
+		return output.Result(map[string]interface{}{"agent_id": agent.ID, "deployment": resp})
 	}
 	if err := watchDeployment(client, agent.ID, resp.DeploymentID, deploymentPollInterval, deploymentWatchTimeout); err != nil {
 		os.Exit(1)
@@ -315,10 +316,10 @@ func deployDir(client *api.Client, agent *api.Agent, dir string) error {
 //
 // Fail-soft and silent. A deploy that worked must not print a warning because a
 // follow-up read did not; its result is already on screen above.
-func printAgentURL(client *api.Client, agentID string) {
+func printAgentURL(client *api.Client, agentID string) string {
 	agent, err := client.GetAgent(agentID)
 	if err != nil || agent == nil || agent.URL == "" {
-		return
+		return ""
 	}
 	output.Println("")
 	// NOT output.KeyValue: its 15-wide label column exists to align a BLOCK of
@@ -330,6 +331,7 @@ func printAgentURL(client *api.Client, agentID string) {
 	output.Bold.Printf("%-6s", "URL:")
 	output.Printf(" %s\n", agent.URL)
 	output.Dim.Printf("  curl %s\n", agent.URL)
+	return agent.URL
 }
 
 // printBuildFailureDetail prints the build output a failed deployment failed on.
@@ -534,8 +536,8 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 				} else {
 					output.PrintSuccess("Deployment completed!")
 				}
-				printAgentURL(client, agentID)
-				return nil
+				url := printAgentURL(client, agentID)
+				return output.Result(map[string]interface{}{"agent_id": agentID, "deployment": deployment, "url": url})
 			case "superseded", "rolled_back":
 				// TERMINAL, NOT IN PROGRESS. A newer release of this agent went
 				// live first -- a second push while this one was still being
@@ -547,6 +549,14 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 				output.Println(fmt.Sprintf("Check which version is live with 'afy deployments %s'.", agentID))
 				return errDeploymentReplaced
 			case "failed", "error":
+				if output.IsJSON() {
+					msg := "Deployment failed"
+					if deployment.ErrorMessage != "" {
+						msg += ": " + deployment.ErrorMessage
+					}
+					output.PrintError("%s", msg)
+					return errDeploymentFailed
+				}
 				output.PrintError("Deployment failed")
 				if deployment.ErrorMessage != "" {
 					fmt.Fprintf(os.Stderr, "Reason: %s\n", deployment.ErrorMessage)
@@ -565,7 +575,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 					output.Println("")
 					output.Println("Recent logs:")
 					for _, log := range logs {
-						fmt.Printf("  %s\n", log.Message)
+						fmt.Fprintf(output.Out(), "  %s\n", log.Message)
 					}
 				}
 				output.Println("")

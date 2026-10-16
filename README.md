@@ -253,7 +253,7 @@ Workspaces group related agents so they can share secrets and vector collections
 | `afy workspaces create <name>` | Create a workspace (3–63 chars, lowercase/hyphens) |
 | `afy workspaces list` | List all workspaces with agent counts |
 | `afy workspaces info <name>` | Show workspace details |
-| `afy workspaces agents <name>` | List the agents that live in a workspace and, separately, the agents of other workspaces granted access to it (`--output json`: `{"living": [...], "granted": [...]}`) |
+| `afy workspaces agents <name>` | List the agents that live in a workspace and, separately, the agents of other workspaces granted access to it (`--json`: `{"living": [...], "granted": [...]}`) |
 | `afy workspaces update <name> --name <new>` | Rename a workspace (its agents keep running; code naming the old name stops finding it) |
 | `afy workspaces update <name> --description <text>` | Change a workspace's description |
 | `afy workspaces delete <name>` | Delete an empty workspace and its secrets (your last workspace cannot be deleted) |
@@ -261,7 +261,7 @@ Workspaces group related agents so they can share secrets and vector collections
 ### Vectors
 
 Read and manage the vector database with the same API key. Loading points is
-the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`, `--workspace` (the account's only
+the SDKs' job; deleting them is here, for cleanup. Every command takes `--workspace` (the account's only
 workspace when it has one; asked when it has several, and required without a
 terminal or with `--json`), `--vectors-url` and `--api-region`. Every collection
 lives in a workspace, and a name is unique within it.
@@ -447,17 +447,42 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 |------|-------------|
 | `--config` | Config file path |
 | `--api-url` | API base URL |
-| `--output, -o` | Output format: `text`, `json`, `table` |
+| `--json` | Print the result as JSON (see [JSON output](#json-output)) |
 | `--verbose, -v` | Verbose output |
 | `--no-color` | Disable colors |
+
+### JSON output
+
+One switch, on every command: `--json`. (`-o json` and `--output json` are gone,
+with no alias.) With `--json`:
+
+- **stdout carries only JSON** — the command's result, on success. Hints,
+  progress, warnings and prompts go to **stderr**, so `afy list --json | jq`
+  never has to filter anything. A command that waits (`afy deploy`, `afy
+  redeploy`, `afy rollback`) prints one document, the deployment as it
+  settled; `afy logs --follow` prints one compact JSON object per line.
+- **An error is one JSON object on stderr**, in the shape the vector commands
+  already used, and stdout stays empty:
+
+  ```json
+  {"error": {"status": 409, "code": "AGENT_PAUSED_CANNOT_MOVE", "message": "Agent 'bot' is paused; resume it before moving it."}}
+  ```
+
+  `status` and `code` are the server's when it sent them (act on `code`, not on
+  the sentence); a refusal raised by the CLI itself has only a `message`.
+  Without `--json`, errors are the text `Error: ...`.
+- **Exit codes are the same with and without `--json`** (table below).
+- A command that reports per-item results (`afy secrets set A=1 B=2`) writes
+  them as its one document and exits `1` when any item was refused.
+- `afy completion` prints a shell script, so it refuses `--json` (exit 2).
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Error — usage errors and failed operations |
-| `2` | A vector command (`collections`, `index`, `points`) refused its input before sending anything, including a command line it could not parse |
+| `1` | A refused or failed operation, and usage errors cobra raises (an unknown flag, a missing argument) |
+| `2` | Input refused before anything was sent: bad arguments to a vector command (`collections`, `index`, `points`), `secrets`, `spawn`, `run` or `login`, and the like |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
 
 ## Project Structure

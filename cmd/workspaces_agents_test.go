@@ -81,7 +81,7 @@ func TestWorkspacesAgentsEmptySectionsSaySoInOneLine(t *testing.T) {
 }
 
 func TestWorkspacesAgentsJSONShape(t *testing.T) {
-	stdout, stderr, err := runAfy(t, agentsCP(t, livingTwo, grantedOne), "workspaces", "agents", "acme", "--output", "json")
+	stdout, stderr, err := runAfy(t, agentsCP(t, livingTwo, grantedOne), "workspaces", "agents", "acme", "--json")
 	if err != nil {
 		t.Fatalf("json: %v\n%s", err, stderr)
 	}
@@ -107,7 +107,7 @@ func TestWorkspacesAgentsJSONEmptyListsAreArrays(t *testing.T) {
 	// `[]` and `null` are both an empty list to a client; only the second
 	// decodes to a nil slice, which would print as null without the guard.
 	for _, body := range []string{`[]`, `null`} {
-		stdout, _, err := runAfy(t, agentsCP(t, body, body), "workspaces", "agents", "acme", "-o", "json")
+		stdout, _, err := runAfy(t, agentsCP(t, body, body), "workspaces", "agents", "acme", "--json")
 		if err != nil {
 			t.Fatal(err)
 		}

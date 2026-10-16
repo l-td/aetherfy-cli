@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -17,12 +16,12 @@ var deploymentsCmd = &cobra.Command{
 
 Shows version, state, the release a run executed, creation time, and error
 message for failed deployments.
-Use --output json for machine-readable output.`,
+Use --json for machine-readable output.`,
 	Example: `  # List deployments for an agent
   afy deployments my-agent
 
   # JSON output
-  afy deployments my-agent --output json`,
+  afy deployments my-agent --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDeployments,
 }
@@ -44,11 +43,10 @@ func printDeployments(client *api.Client, agentID string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to list deployments: %v", err)
-		return nil
+		return printRefusal("Failed to list deployments", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(deployments)
 	}
 
