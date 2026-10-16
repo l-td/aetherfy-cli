@@ -51,6 +51,11 @@ type APIError struct {
 	// polls (github connect) must honour it or it spends the rest of its
 	// budget being refused. nil for every other error.
 	RetryAfterSeconds *int `json:"-"`
+	// RegionsInUse carries the `regions_in_use` extra of a narrow refused with
+	// 422 WORKSPACE_NARROW_BLOCKED_BY_RESOURCES: the regions a resource of the
+	// workspace still uses. nil for every other error, and for a server that
+	// does not send it.
+	RegionsInUse []string `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -117,6 +122,13 @@ func parseAPIError(resp *resty.Response) error {
 				if secs, ok := v["retry_after_seconds"].(float64); ok {
 					n := int(secs)
 					apiErr.RetryAfterSeconds = &n
+				}
+				if list, ok := v["regions_in_use"].([]interface{}); ok {
+					for _, r := range list {
+						if code, ok := r.(string); ok && code != "" {
+							apiErr.RegionsInUse = append(apiErr.RegionsInUse, code)
+						}
+					}
 				}
 			default:
 				// Unexpected shape — serialize whatever we got so it isn't

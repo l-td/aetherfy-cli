@@ -33,7 +33,7 @@ A workspace owns its regions: --regions names 1 up to your plan's limit of the
 regions your plan allows, and agents and collections in the workspace can only
 use those. Without --regions, a terminal is asked to pick; anything else
 (a script, --json) is refused with the list of allowed regions, because there
-is no account region to fall back on. Add regions later with
+is nothing to fall back on. Change them later with
 'afy workspaces regions'.`,
 	Example: `  # Create a workspace in one region
   afy workspaces create invoice-pipeline --regions us-east-1
@@ -59,8 +59,8 @@ func init() {
 
 // chooseWorkspaceRegions is the regions a new workspace is created with: the
 // ones typed (--regions), or, on a terminal, picked. Validated against the
-// plan (GET /deploy-options) BEFORE anything is sent. Nothing falls back to an
-// account region: omitted without a terminal is refused naming the allowed ones.
+// plan (GET /deploy-options) BEFORE anything is sent. Nothing is assumed:
+// omitted without a terminal is refused naming the allowed ones.
 func chooseWorkspaceRegions(cmd *cobra.Command, client *api.Client, p *prompter) ([]string, error) {
 	opts, err := client.GetDeployOptions("")
 	if err != nil {
@@ -614,6 +614,11 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
+		if sentence, ok := narrowBlockedSentence(err); ok {
+			status, code, _, _ := serverRefusal(err)
+			output.PrintAPIError(status, code, sentence)
+			return shown(err)
+		}
 		return printRefusal("Failed to change workspace regions", err)
 	}
 

@@ -14,7 +14,7 @@ type DeployOptions struct {
 		Allowed bool   `json:"allowed"`
 	} `json:"regions"`
 	// MaxRegions is how many regions the plan lets a workspace own (and an
-	// agent deploy to). There is no account region: a workspace owns its own.
+	// agent deploy to).
 	MaxRegions int `json:"max_regions"`
 	MemoryMB   []struct {
 		MemoryMB int  `json:"memory_mb"`

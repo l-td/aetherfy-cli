@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/output"
@@ -45,6 +46,21 @@ func printRefusal(what string, err error) error {
 	}
 	output.PrintAPIError(status, code, msg)
 	return shown(err)
+}
+
+// narrowBlockedSentence is the refusal of a workspace regions change that
+// would remove a region a resource still uses (422
+// WORKSPACE_NARROW_BLOCKED_BY_RESOURCES), with the regions named when the
+// server says which. ok is false for any other error.
+func narrowBlockedSentence(err error) (sentence string, ok bool) {
+	var apiErr *api.APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "WORKSPACE_NARROW_BLOCKED_BY_RESOURCES" || apiErr.Message == "" {
+		return "", false
+	}
+	if len(apiErr.RegionsInUse) == 0 {
+		return apiErr.Message, true
+	}
+	return fmt.Sprintf("%s Regions still in use: %s.", strings.TrimSpace(apiErr.Message), strings.Join(apiErr.RegionsInUse, ", ")), true
 }
 
 // serverRefusal reads the status, code and message off an error an API

@@ -196,3 +196,57 @@ func TestInitReadsNoHomeRegion(t *testing.T) {
 		t.Errorf("the region is not the first allowed (eu-central-1):\n%s", readFile(t, dir+"/aetherfy.yaml"))
 	}
 }
+
+// --- narrowing a workspace: 422 WORKSPACE_NARROW_BLOCKED_BY_RESOURCES ---
+
+const narrowBlocked = `{"detail":{"code":"WORKSPACE_NARROW_BLOCKED_BY_RESOURCES","message":"2 resource(s) still use a region being removed.","regions_in_use":["eu-central-1","ap-southeast-1"]}}`
+
+func TestWorkspacesRegionsNarrowRefusalNamesTheRegionsInUse(t *testing.T) {
+	cp := newFakeCP(t)
+	cp.on("PATCH", "/workspaces/research/regions", 422, narrowBlocked)
+
+	// Text: the server's sentence, then the regions it names.
+	_, stderr, err := runAfy(t, cp, "workspaces", "regions", "research", "--regions", "us-east-1")
+	if err == nil {
+		t.Fatal("a blocked narrow succeeded")
+	}
+	if ExitCode(err) != exitRequestFailed {
+		t.Errorf("exit %d, want %d", ExitCode(err), exitRequestFailed)
+	}
+	for _, want := range []string{"2 resource(s) still use a region being removed.", "Regions still in use: eu-central-1, ap-southeast-1."} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the refusal lacks %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Count(stderr, "still use a region") != 1 {
+		t.Errorf("the sentence must print once:\n%s", stderr)
+	}
+
+	// --json: the code and status stay the server's, the sentence carries the regions.
+	stdout, stderr, code := runAfyProcess(t, cp, nil, "workspaces", "regions", "research", "--regions", "us-east-1", "--json")
+	if code != 1 || strings.TrimSpace(stdout) != "" {
+		t.Fatalf("exit %d, stdout %q", code, stdout)
+	}
+	e := jsonErrorOnStderr(t, "regions", stderr)
+	if e["code"] != "WORKSPACE_NARROW_BLOCKED_BY_RESOURCES" || e["status"] != 422.0 {
+		t.Errorf("error = %v, want the server's code and 422", e)
+	}
+	if msg, _ := e["message"].(string); !strings.Contains(msg, "eu-central-1, ap-southeast-1") {
+		t.Errorf("the message does not name the regions: %v", e)
+	}
+}
+
+func TestWorkspacesRegionsNarrowRefusalWithoutRegionsInUseIsTheServersSentence(t *testing.T) {
+	// A control plane that does not send regions_in_use (yet): the sentence is
+	// printed as written, with nothing appended and nothing invented.
+	cp := newFakeCP(t)
+	cp.on("PATCH", "/workspaces/research/regions", 422,
+		`{"detail":{"code":"WORKSPACE_NARROW_BLOCKED_BY_RESOURCES","message":"1 resource(s) still use a region being removed."}}`)
+	_, stderr, err := runAfy(t, cp, "workspaces", "regions", "research", "--regions", "us-east-1")
+	if err == nil {
+		t.Fatal("a blocked narrow succeeded")
+	}
+	if strings.Contains(stderr, "still in use") || !strings.Contains(stderr, "1 resource(s) still use a region being removed.") {
+		t.Errorf("want the server's sentence alone:\n%s", stderr)
+	}
+}

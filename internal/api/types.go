@@ -352,7 +352,7 @@ type WorkspaceCreateRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	// Regions are the regions the workspace owns, 1..plan.max_regions, chosen
-	// at create. There is no account region to fall back on.
+	// at create.
 	Regions []string `json:"regions"`
 }
 
