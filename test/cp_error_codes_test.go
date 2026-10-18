@@ -82,6 +82,7 @@ var notControlPlaneCodes = map[string]string{
 	"AETHERFY_WORKSPACE_ID": "env var: the workspace id the control plane injects into agents (for the SDKs); the CLI reads it NOT, pinned by a test",
 	"PLATFORM_FIELDS":       "the control plane's constant of the keys that left aetherfy.yaml, read by test/cpyaml",
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
+	"CLI_USAGE_ERROR":       "the CLI's own code (cmd.usageErrorCode) for input it refused before sending anything; no server sends it",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",

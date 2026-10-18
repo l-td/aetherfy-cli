@@ -298,7 +298,7 @@ func TestJSONErrorsKeepTheExitCodes(t *testing.T) {
 	}{
 		{"not logged in", []string{"AETHERFY_API_KEY="}, []string{"list", "--json"}, exitNotLoggedIn},
 		{"bad arguments", nil, []string{"secrets", "set", "bot", "--json"}, exitInputRefused},
-		{"a flag that does not exist", nil, []string{"list", "--nope", "--json"}, 1},
+		{"a flag that does not exist", nil, []string{"list", "--nope", "--json"}, exitInputRefused},
 	}
 	for _, tc := range cases {
 		tc := tc

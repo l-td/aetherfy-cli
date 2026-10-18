@@ -50,6 +50,11 @@ const (
 	vecWorkspaceHelp  = "Workspace the collection belongs to (the account's only one when it has one; asked, or required without a terminal, when it has several)"
 )
 
+// usageErrorCode is the code --json gives an error the CLI raised itself for
+// input it refused before sending anything (exit 2): no server wrote it, so it
+// is not one of the control plane's codes.
+const usageErrorCode = "CLI_USAGE_ERROR"
+
 // inputError is input refused before any request was sent: exit 2.
 type inputError struct{ msg string }
 
@@ -280,6 +285,9 @@ func (r *vecRun) fail(err error) int {
 			out.Error.Status, out.Error.Code, out.Error.Message = apiErr.Status, apiErr.Code, apiErr.Message
 		} else if isCP {
 			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
+		}
+		if out.Error.Code == "" && code == exitInputRefused {
+			out.Error.Code = usageErrorCode
 		}
 		var upsert *upsertFailure
 		if errors.As(err, &upsert) {

@@ -470,7 +470,11 @@ with no alias.) With `--json`:
   ```
 
   `status` and `code` are the server's when it sent them (act on `code`, not on
-  the sentence); a refusal raised by the CLI itself has only a `message`.
+  the sentence); input the CLI itself refuses before sending anything (exit 2:
+  an unknown flag or command, a missing or extra argument, a required flag not
+  set, `afy update bot` with nothing to change) carries the CLI's own code,
+  `CLI_USAGE_ERROR`, and no `status`; any other error the CLI raises has only a
+  `message`.
   Without `--json`, errors are the text `Error: ...`.
 - **Exit codes are the same with and without `--json`** (table below).
 - A command that reports per-item results (`afy secrets set A=1 B=2`) writes
@@ -482,8 +486,8 @@ with no alias.) With `--json`:
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | A refused or failed operation, and usage errors cobra raises (an unknown flag, a missing argument) |
-| `2` | Input refused before anything was sent: bad arguments to a vector command (`collections`, `index`, `points`), `secrets`, `spawn`, `run` or `login`, and the like |
+| `1` | A refused or failed operation (the server said no, a request failed, a deployment failed) |
+| `2` | Input refused before anything was sent: a usage error (an unknown flag or command, a flag without its value, too few or too many arguments, a required flag not set), and bad input to any command (`collections`, `index`, `points`, `secrets`, `spawn`, `run`, `login`, `update`, ...) |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
 
 ## Project Structure

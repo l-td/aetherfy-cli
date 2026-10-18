@@ -1441,16 +1441,13 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	descChanged := cmd.Flags().Changed("description")
 
 	if !nameChanged && !wsChanged && !descChanged {
-		output.PrintError("Specify at least one of --name <new>, --workspace <name> or --description <text>")
-		return shown(fmt.Errorf("no update specified"))
+		return refuse("Specify at least one of --name <new>, --workspace <name> or --description <text>")
 	}
 	if nameChanged && agentUpdateName == "" {
-		output.PrintError("--name needs the agent's new name")
-		return shown(fmt.Errorf("empty name"))
+		return refuse("--name needs the agent's new name")
 	}
 	if wsChanged && agentUpdateWorkspace == "" {
-		output.PrintError("--workspace needs the name of the workspace to move the agent to")
-		return shown(fmt.Errorf("empty workspace name"))
+		return refuse("--workspace needs the name of the workspace to move the agent to")
 	}
 
 	client := api.NewClient()

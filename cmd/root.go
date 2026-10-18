@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"os"
+	"sync"
 
 	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
@@ -10,11 +12,11 @@ import (
 )
 
 var (
-	cfgFile      string
-	apiURL       string
-	jsonOut      bool
-	verbose      bool
-	noColor      bool
+	cfgFile string
+	apiURL  string
+	jsonOut bool
+	verbose bool
+	noColor bool
 )
 
 // Help groups. PRESENTATION ONLY — nothing branches on a GroupID; the flatten
@@ -62,6 +64,18 @@ For more information, visit: https://docs.aetherfy.com`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		// cobra validates required flags and flag groups AFTER this hook; do it
+		// first, so a missing required flag is a usage error like the rest.
+		if err := cmd.ValidateRequiredFlags(); err != nil {
+			return err
+		}
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return err
+		}
+		// cobra has parsed the line and validated it: from here a failure is
+		// not a usage error (see Execute).
+		preRunReached = true
+
 		// The one JSON switch, set before anything can print (and before the
 		// version/help early return below: `afy version --json` is JSON).
 		output.SetJSON(jsonOut)
@@ -105,12 +119,44 @@ For more information, visit: https://docs.aetherfy.com`,
 // appropriately, and prints the error a command returns unless the command
 // already printed it (see SilenceErrors above).
 func Execute() error {
+	groupsRejectUnknown.Do(func() { rejectUnknownSubcommands(rootCmd) })
+	preRunReached = false
 	err := rootCmd.Execute()
+	// An error before PersistentPreRunE ran is cobra refusing the command line
+	// itself: an unknown flag or command, a flag missing its value, too few or
+	// too many arguments, a required flag not set. Like every other refusal
+	// before anything is sent, it is exit 2. Told apart by WHERE it happened,
+	// not by the wording of cobra's message.
+	var in *inputError
+	if err != nil && !preRunReached && !alreadyPrinted(err) && !errors.As(err, &in) {
+		err = &inputError{msg: err.Error()}
+	}
 	if err != nil && !alreadyPrinted(err) {
 		printUnprinted(err)
 	}
 	return err
 }
+
+var groupsRejectUnknown sync.Once
+
+// rejectUnknownSubcommands makes a group (a command that only holds
+// subcommands: secrets, workspaces, github, collections ...) refuse a word
+// that is none of its subcommands. cobra answers it with the group's help and
+// exit 0, because a group with no Run never validates its arguments; as a
+// command that shows its help and takes no arguments it fails like an unknown
+// command at the root does.
+func rejectUnknownSubcommands(c *cobra.Command) {
+	for _, sub := range c.Commands() {
+		rejectUnknownSubcommands(sub)
+	}
+	if c != rootCmd && c.HasSubCommands() && !c.Runnable() {
+		c.Args = cobra.NoArgs
+		c.RunE = func(cmd *cobra.Command, args []string) error { return cmd.Help() }
+	}
+}
+
+// preRunReached is set once cobra has handed the command to PersistentPreRunE.
+var preRunReached bool
 
 func init() {
 	// Global flags

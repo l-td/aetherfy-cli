@@ -416,8 +416,7 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	req := &api.WorkspaceUpdateRequest{}
 	if cmd.Flags().Changed("name") {
 		if workspaceUpdateName == "" {
-			output.PrintError("--name needs the workspace's new name")
-			return shown(fmt.Errorf("empty name"))
+			return refuse("--name needs the workspace's new name")
 		}
 		req.Name = &workspaceUpdateName
 	}
@@ -426,8 +425,7 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 		req.Description = &workspaceUpdateDescription
 	}
 	if req.Name == nil && req.Description == nil {
-		output.PrintError("Specify --name <new> and/or --description <text>")
-		return shown(fmt.Errorf("no update specified"))
+		return refuse("Specify --name <new> and/or --description <text>")
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Updating workspace '%s'...", name))
