@@ -147,6 +147,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_SAFETY_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AGENT_SCHEDULE_NOT_SET": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -359,10 +363,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "HOME_REGION_NOT_APPLICABLE": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "INVALID_API_KEY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -483,10 +483,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "STARTER_REGION_CONSISTENCY": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "STORAGE_LIMIT_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -552,6 +548,10 @@
       "tier": "top-level"
     },
     "WORKSPACE_REGIONS_EMPTY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_REGIONS_REQUIRED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     }
