@@ -207,7 +207,7 @@ func TestEvalRunExitCodeMatrix(t *testing.T) {
 	}{
 		{"completed, no threshold", completed(0.5), nil, 0},
 		{"completed, over --fail-under", completed(0.9), func(r *evalRunFlags) { r.failUnder = 0.9 }, 0},
-		{"completed, under --fail-under", completed(0.7), func(r *evalRunFlags) { r.failUnder = 0.8 }, exitThresholdBreached},
+		{"completed, under --fail-under", completed(0.7), func(r *evalRunFlags) { r.failUnder = 0.8 }, exitCheckFailed},
 		{"errored", evalBody("e1", "errored", 2, 7, map[string]interface{}{"status_reason": reason, "summary": summary(1)}), func(r *evalRunFlags) { r.failUnder = 0.1 }, exitRequestFailed},
 		{"cancelled", evalBody("e1", "cancelled", 2, 7, map[string]interface{}{"summary": summary(1)}), nil, exitRequestFailed},
 	}
@@ -238,7 +238,7 @@ func TestEvalRunMaxDropAgainstABaselineRelease(t *testing.T) {
 	for _, tc := range []struct {
 		delta float64
 		want  int
-	}{{-0.05, 0}, {-0.2, exitThresholdBreached}, {0.1, 0}} {
+	}{{-0.05, 0}, {-0.2, exitCheckFailed}, {0.1, 0}} {
 		t.Run(fmt.Sprint(tc.delta), func(t *testing.T) {
 			f, srv := newEvalsCP(t)
 			startable(f, completed(0.8))
@@ -343,7 +343,7 @@ func TestEvalRunJSONPutsOnlyOneObjectOnStdout(t *testing.T) {
 	startable(f, evalBody("e1", "running", 2, 7, map[string]interface{}{"progress": progress(1, 1)}), completed(0.7))
 	h := harness(srv, true, "")
 	err := evalRun(h.io, "bot", runFlags(func(r *evalRunFlags) { r.failUnder = 0.8 }))
-	if exitOf(err) != exitThresholdBreached {
+	if exitOf(err) != exitCheckFailed {
 		t.Fatalf("exit %d", exitOf(err))
 	}
 	dec := json.NewDecoder(h.stdout)
@@ -478,12 +478,15 @@ func TestEvalCompareAndCancel(t *testing.T) {
 	}
 }
 
-func TestExitThresholdBreachedIsFour(t *testing.T) {
-	if exitThresholdBreached != 4 {
-		t.Fatalf("exitThresholdBreached = %d; CI pipelines gate on 4", exitThresholdBreached)
+func TestExitCheckFailedIsFiveAndFourIsStillPending(t *testing.T) {
+	if exitCheckFailed != 5 {
+		t.Fatalf("exitCheckFailed = %d; CI pipelines gate on 5", exitCheckFailed)
 	}
 	wrapped := &reported{&thresholdBreached{msg: "x"}}
-	if ExitCode(wrapped) != 4 || ExitCode(&reported{refuse("x")}) != 2 || ExitCode(&reported{fmt.Errorf("x")}) != 1 {
+	if exitStillPending != 4 || exitCheckFailed == exitStillPending {
+		t.Fatalf("exit 4 is `afy start --wait` still pending (got %d) and must stay distinct from %d", exitStillPending, exitCheckFailed)
+	}
+	if ExitCode(wrapped) != exitCheckFailed || ExitCode(&reported{refuse("x")}) != 2 || ExitCode(&reported{fmt.Errorf("x")}) != 1 {
 		t.Errorf("ExitCode does not see through reported")
 	}
 }

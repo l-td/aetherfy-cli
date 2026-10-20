@@ -349,7 +349,7 @@ Run a dataset of test cases against an agent's current release and grade every r
 | `afy eval compare <agent> <base-eval-id> <head-eval-id>` | Compare two evals of the same dataset version, case by case |
 | `afy eval cancel <agent> <eval-id>` | Stop an eval: pending cases are skipped, runs in flight finish |
 
-`afy eval run` exits 4 when a threshold is breached, so a CI step can gate on it:
+`afy eval run` exits 5 when a threshold is breached, so a CI step can gate on it:
 
 ```bash
 afy eval run my-agent --dataset qa --fail-under 0.9
@@ -511,7 +511,8 @@ with no alias.) With `--json`:
 | `1` | A refused or failed operation (the server said no, a request failed, a deployment failed) |
 | `2` | Input refused before anything was sent: a usage error (an unknown flag or command, a flag without its value, too few or too many arguments, a required flag not set), and bad input to any command (`collections`, `index`, `points`, `secrets`, `spawn`, `run`, `login`, `update`, ...) |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
-| `4` | `afy eval run`: the eval completed but missed `--fail-under` or `--max-drop`. `afy start --wait`: the server's bound was reached with the start still pending |
+| `4` | `afy start --wait`: the server's bound was reached with the start still pending |
+| `5` | A check ran and failed: `afy eval run` completed but missed `--fail-under` or `--max-drop` |
 
 ## Project Structure
 

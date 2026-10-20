@@ -9,7 +9,7 @@ package cmd
 // code a pipeline can gate on:
 //
 //	0  the eval completed and every threshold held
-//	4  --fail-under or --max-drop was breached (exitThresholdBreached)
+//	5  --fail-under or --max-drop was breached (exitCheckFailed)
 //	1  the eval ended errored or cancelled, or a request failed
 //	2  the input was refused before any request (a bad flag or file)
 //	3  not logged in
@@ -36,7 +36,7 @@ import (
 var evalPollInterval = 5 * time.Second
 
 // thresholdBreached is an eval that completed but missed --fail-under or
-// --max-drop: exit 4, through ExitCode.
+// --max-drop: exit 5, through ExitCode.
 type thresholdBreached struct{ msg string }
 
 func (e *thresholdBreached) Error() string { return e.msg }
@@ -178,7 +178,7 @@ every result. Each case is an ordinary run of the agent, billed as a run.
   afy datasets push my-agent qa --cases cases.jsonl --graders graders.yaml
   afy eval run my-agent --dataset qa --fail-under 0.9
 
-Exit codes of 'afy eval run': 0 completed and every threshold held, 4 a
+Exit codes of 'afy eval run': 0 completed and every threshold held, 5 a
 threshold was breached, 1 the eval errored or was cancelled (or a request
 failed), 2 the input was refused, 3 not logged in.`,
 }
@@ -304,8 +304,8 @@ func init() {
 	evalRunCmd.Flags().IntVar(&evalRunRelease, "release", 0, "Refuse unless this is the agent's current release")
 	evalRunCmd.Flags().IntVar(&evalRunConcurrency, "concurrency", 0, "Case runs in flight at once (default 2, at most 10)")
 	evalRunCmd.Flags().BoolVar(&evalRunDetach, "detach", false, "Print the eval id and exit without waiting")
-	evalRunCmd.Flags().Float64Var(&evalRunFailUnder, "fail-under", thresholdUnset, "Exit 4 when the pass rate is below this (0 to 1)")
-	evalRunCmd.Flags().Float64Var(&evalRunMaxDrop, "max-drop", thresholdUnset, "Exit 4 when the pass rate fell by more than this against the baseline (0 to 1)")
+	evalRunCmd.Flags().Float64Var(&evalRunFailUnder, "fail-under", thresholdUnset, "Exit 5 when the pass rate is below this (0 to 1)")
+	evalRunCmd.Flags().Float64Var(&evalRunMaxDrop, "max-drop", thresholdUnset, "Exit 5 when the pass rate fell by more than this against the baseline (0 to 1)")
 	evalRunCmd.Flags().StringVar(&evalRunBaseline, "baseline", "", "Baseline eval id for --max-drop")
 	evalRunCmd.Flags().IntVar(&evalRunBaselineRelease, "baseline-release", 0, "Baseline for --max-drop: the newest completed eval of this release on the same dataset version")
 
