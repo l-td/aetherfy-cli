@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 140
+      "count": 141
     },
     {
       "path": "api/routes/regions.py",
@@ -264,6 +264,10 @@
       "tier": "violation"
     },
     "CONNECTION_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_NAME_AMBIGUOUS": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
