@@ -68,7 +68,13 @@ what becomes possible and asks first. --yes skips the question; it is required
 when stdin is not a terminal and with --json. A change that narrows asks
 nothing. A change takes effect within ` + accessChangeWindow + `.
 
-Whether the agent's own key may write its own secrets is 'afy access secrets'.`,
+--secrets on|off turns on or off whether the agent's own API key may create,
+update and delete the secrets of that agent and of its own workspace -- never
+those of a workspace it was granted. Off by default. A secret it writes is
+stored at once and read once per deployment: a service sees it after its next
+deployment, a task on its next run. Turning it on asks first (like a grant);
+turning it off asks nothing and takes effect on the agent's next request. It is
+a command of its own: do not combine it with --add, --remove or --own-level.`,
 	Example: `  # What can the agent reach, and at which level?
   afy access support-bot
 
@@ -83,10 +89,22 @@ Whether the agent's own key may write its own secrets is 'afy access secrets'.`,
   afy access support-bot --own-level default
 
   # From a script: grant one workspace, revoke another
-  afy access support-bot --add research --remove archive --yes --json`,
+  afy access support-bot --add research --remove archive --yes --json
+
+  # Let it write its own secrets, then take it back
+  afy access support-bot --secrets on
+  afy access support-bot --secrets off`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interactive := term.IsTerminal(int(os.Stdin.Fd()))
+		if cmd.Flags().Changed("secrets") {
+			if len(agentsAccessAdd) > 0 || len(agentsAccessRemove) > 0 || cmd.Flags().Changed("level") || cmd.Flags().Changed("own-level") {
+				return refuse("--secrets is a command of its own: do not combine it with --add, --remove, --level or --own-level. Nothing was sent.")
+			}
+			return runVec(cmd, func(r *vecRun) int {
+				return agentsAccessSecrets(r, args[0], agentsAccessSecretsState, agentsAccessYes, os.Stdin, interactive)
+			})
+		}
 		change := accessChange{
 			add:         agentsAccessAdd,
 			remove:      agentsAccessRemove,
@@ -103,11 +121,12 @@ Whether the agent's own key may write its own secrets is 'afy access secrets'.`,
 }
 
 var (
-	agentsAccessAdd      []string
-	agentsAccessRemove   []string
-	agentsAccessLevel    string
-	agentsAccessOwnLevel string
-	agentsAccessYes      bool
+	agentsAccessAdd          []string
+	agentsAccessRemove       []string
+	agentsAccessLevel        string
+	agentsAccessOwnLevel     string
+	agentsAccessSecretsState string
+	agentsAccessYes          bool
 )
 
 // accessChange is what one `afy access` asks for.
@@ -564,36 +583,6 @@ func accessJSON(a *api.AgentAccess, added, removed []string, leveled []levelChan
 
 // --- SECRETS ---
 
-var agentsAccessSecretsCmd = &cobra.Command{
-	Use:   "secrets <agent> on|off",
-	Short: "Let an agent's own key write its own secrets, or not",
-	Long: `Turn on or off whether an agent's own API key may create, update and delete the
-secrets of that agent and of its own workspace -- never those of a workspace it
-was granted. Off by default.
-
-A secret the agent writes is stored at once and read once per deployment: a
-service sees it after its next deployment, a task on its next run.
-
-Turning it on asks first; --yes skips the question, and is required when stdin
-is not a terminal and with --json. Turning it off asks nothing and takes effect
-on the agent's next request. (An agent named "secrets" is addressed by its id
-in 'afy access'.)`,
-	Example: `  # Let the agent rotate its own keys
-  afy access secrets support-bot on
-
-  # And take it back
-  afy access secrets support-bot off`,
-	Args: refuseArgs(cobra.ExactArgs(2)),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		interactive := term.IsTerminal(int(os.Stdin.Fd()))
-		return runVec(cmd, func(r *vecRun) int {
-			return agentsAccessSecrets(r, args[0], args[1], agentsAccessSecretsYes, os.Stdin, interactive)
-		})
-	},
-}
-
-var agentsAccessSecretsYes bool
-
 func agentsAccessSecrets(r *vecRun, agent, state string, yes bool, stdin io.Reader, interactive bool) int {
 	var on bool
 	switch state {
@@ -602,7 +591,7 @@ func agentsAccessSecrets(r *vecRun, agent, state string, yes bool, stdin io.Read
 	case "off":
 		on = false
 	default:
-		return r.fail(refuse("the second argument is on or off; got '%s'. Nothing was sent.", state))
+		return r.fail(refuse("--secrets is on or off; got '%s'. Nothing was sent.", state))
 	}
 	if on && !yes && r.json {
 		return r.fail(refuse("not changing agent '%s': --json cannot answer the confirmation. "+
@@ -660,7 +649,6 @@ func init() {
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().StringVar(&agentsAccessLevel, "level", "", "The level of the --add workspaces: read, read_write or full (a new grant is read)")
 	agentsAccessCmd.Flags().StringVar(&agentsAccessOwnLevel, "own-level", "", "Its level in its own workspace: read, read_write, full, or default")
+	agentsAccessCmd.Flags().StringVar(&agentsAccessSecretsState, "secrets", "", "Let the agent's own key write its own secrets: on or off")
 	agentsAccessCmd.Flags().BoolVarP(&agentsAccessYes, "yes", "y", false, "Change access without asking")
-	agentsAccessSecretsCmd.Flags().BoolVarP(&agentsAccessSecretsYes, "yes", "y", false, "Turn it on without asking")
-	agentsAccessCmd.AddCommand(agentsAccessSecretsCmd)
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// afy access levels and afy access secrets (grants round 1; the design is
+// afy access levels and afy access --secrets (grants round 1; the design is
 // aetherfy-control-plane docs/AGENT_ACCESS_LEVELS.md), against a fake control
 // plane: what each flag sends, which changes ask first (the ones that let the
 // agent's code do more), and which refuse before anything is sent.
@@ -276,5 +276,21 @@ func TestSecretsJSONShape(t *testing.T) {
 	}
 	if len(got) != 3 || got["agent"] != "bot" || got["secrets_access"] != true || got["changed"] != true {
 		t.Errorf("json = %v", got)
+	}
+}
+
+func TestSecretsFlagIsACommandOfItsOwn(t *testing.T) {
+	for _, extra := range [][]string{
+		{"--add", "gamma"}, {"--remove", "beta"}, {"--level", "full"}, {"--own-level", "read"},
+	} {
+		cp := newFakeCP(t)
+		args := append([]string{"access", "bot", "--secrets", "on"}, extra...)
+		_, stderr, err := runAfy(t, cp, args...)
+		if err == nil || !strings.Contains(stderr, "--secrets is a command of its own") {
+			t.Errorf("%v: want the refusal, got %v\n%s", extra, err, stderr)
+		}
+		if len(cp.all()) != 0 {
+			t.Errorf("%v: nothing may be sent: %+v", extra, cp.all())
+		}
 	}
 }
