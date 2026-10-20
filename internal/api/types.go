@@ -565,6 +565,10 @@ type ConnectionProvider struct {
 	DefaultScopes []string `json:"default_scopes"`
 	AllowedScopes []string `json:"allowed_scopes"`
 	Refreshable   bool     `json:"refreshable"`
+	// SupportsOwnApp: the connection may use the customer's own OAuth app,
+	// which also unlocks OwnAppScopes.
+	SupportsOwnApp bool     `json:"supports_own_app"`
+	OwnAppScopes   []string `json:"own_app_scopes"`
 }
 
 // ConnectionAgentRef names the agent an agent-scoped connection belongs to.
@@ -593,6 +597,9 @@ type Connection struct {
 	ConnectedAt     time.Time           `json:"connected_at"`
 	LastRefreshedAt *time.Time          `json:"last_refreshed_at"`
 	LastUsedAt      *time.Time          `json:"last_used_at"`
+	// AppClientID is the client id of the customer's own OAuth app, nil on the
+	// shared app. The secret is never returned.
+	AppClientID *string `json:"app_client_id"`
 	// UsedBy: the agents whose key can use it (own, home, or grant). Nil when
 	// the server did not say.
 	UsedBy []ConnectionAgentUse `json:"used_by"`
@@ -607,9 +614,17 @@ type ConnectionAgentUse struct {
 // ConnectionCreateRequest starts a connection. Name defaults server-side to
 // the provider key; Scopes are added to the provider's defaults.
 type ConnectionCreateRequest struct {
-	Provider string   `json:"provider"`
-	Name     string   `json:"name,omitempty"`
-	Scopes   []string `json:"scopes,omitempty"`
+	Provider string            `json:"provider"`
+	Name     string            `json:"name,omitempty"`
+	Scopes   []string          `json:"scopes,omitempty"`
+	OwnApp   *ConnectionOwnApp `json:"own_app,omitempty"`
+}
+
+// ConnectionOwnApp is the customer's own OAuth app. The secret is sent once,
+// stored encrypted server-side, and never returned.
+type ConnectionOwnApp struct {
+	ClientID     string `json:"client_id"`
+	ClientSecret string `json:"client_secret"`
 }
 
 // ConnectionConnectURL is the provider's consent URL and the instant it stops
