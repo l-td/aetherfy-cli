@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 141
+      "count": 142
     },
     {
       "path": "api/routes/regions.py",
@@ -280,6 +280,10 @@
       "tier": "top-level"
     },
     "CONNECTION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "CONNECTION_OWN_APP_NOT_SUPPORTED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -290,3 +290,52 @@ func TestConnectWithJSONWritesOnlyTheConnectionToStdout(t *testing.T) {
 		t.Errorf("a token reached stdout: %v", got)
 	}
 }
+
+func TestOwnAppIsSentAndTheSecretComesOnlyFromStdin(t *testing.T) {
+	s := &connServer{
+		listings:  []interface{}{list(), list(conn("google", "agent", "2026-09-28T12:00:00Z"))},
+		expiresAt: time.Now().Add(5 * time.Second),
+	}
+	srv := httptest.NewServer(s.handler(t))
+	defer srv.Close()
+	stubConnectionsBrowser(t)
+
+	connAppClientID, connAppSecretStdin = "1234.apps.googleusercontent.com", true
+	t.Cleanup(func() { connAppClientID, connAppSecretStdin = "", false })
+	ownApp, err := ownAppFromFlags(strings.NewReader("GOCSPX-secret\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code := runConnectionConnect(api.NewClientWithURL(srv.URL, "afy_test_key"),
+		api.ConnectionTarget{Agent: "reporter"},
+		api.ConnectionCreateRequest{Provider: "google", OwnApp: ownApp}, false, time.Millisecond)
+	if code != connectOK {
+		t.Fatalf("exit code: want %d, got %d", connectOK, code)
+	}
+	got, _ := s.begins[0]["own_app"].(map[string]interface{})
+	if got["client_id"] != "1234.apps.googleusercontent.com" || got["client_secret"] != "GOCSPX-secret" {
+		t.Fatalf("own_app not sent as given: %v", s.begins[0])
+	}
+}
+
+func TestOwnAppFlagsComeTogetherAndAnEmptySecretIsRefused(t *testing.T) {
+	t.Cleanup(func() { connAppClientID, connAppSecretStdin = "", false })
+	for name, c := range map[string]struct {
+		id    string
+		stdin bool
+		in    string
+	}{
+		"id alone":    {"x.apps.googleusercontent.com", false, ""},
+		"stdin alone": {"", true, "secret\n"},
+		"empty":       {"x.apps.googleusercontent.com", true, "\n"},
+	} {
+		connAppClientID, connAppSecretStdin = c.id, c.stdin
+		if app, err := ownAppFromFlags(strings.NewReader(c.in)); err == nil || app != nil {
+			t.Errorf("%s: want a refusal, got %v %v", name, app, err)
+		}
+	}
+	connAppClientID, connAppSecretStdin = "", false
+	if app, err := ownAppFromFlags(strings.NewReader("")); err != nil || app != nil {
+		t.Errorf("no own-app flags must mean no own_app, got %v %v", app, err)
+	}
+}

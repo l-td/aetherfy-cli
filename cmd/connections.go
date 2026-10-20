@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,7 +16,7 @@ import (
 )
 
 // ---------------------------------------------------------------------------
-// afy connections — OAuth grants (Google, Slack, Notion) Aetherfy holds for an
+// afy connections — OAuth grants (Google, Slack, Notion, Microsoft 365, HubSpot, Atlassian) Aetherfy holds for an
 // agent or a workspace. The platform runs the OAuth sign-in and keeps the
 // tokens; agent code fetches a fresh access token by name at runtime. The CLI
 // only starts a connection (the user grants it in a browser), lists and
@@ -24,9 +26,9 @@ import (
 var connectionsCmd = &cobra.Command{
 	Use:     "connections",
 	Aliases: []string{"connection"},
-	Short:   "Manage OAuth connections (Google, Slack, Notion)",
-	Long: `Give an agent, or every agent in a workspace, access to Google, Slack or
-Notion. Aetherfy runs the sign-in in your browser and keeps the grant; your
+	Short:   "Manage OAuth connections (Google, Slack, Notion, Microsoft 365, HubSpot, Atlassian)",
+	Long: `Give an agent, or every agent in a workspace, access to Google, Slack,
+Notion, Microsoft 365, HubSpot or Atlassian. Aetherfy runs the sign-in in your browser and keeps the grant; your
 agent code asks for a fresh access token by the connection's name at runtime.
 
 Subcommands:
@@ -49,6 +51,10 @@ var (
 	connName      string
 	connScopes    []string
 	connNoBrowser bool
+	// The customer's own OAuth app: the id on the command line, the secret only
+	// ever from stdin, so it stays out of the process list and shell history.
+	connAppClientID    string
+	connAppSecretStdin bool
 )
 
 // connectionTarget turns the --agent/--workspace pair into a target. Cobra
@@ -200,7 +206,7 @@ code gets a token for.`,
 
 var connectionsConnectCmd = &cobra.Command{
 	Use:   "connect <provider>",
-	Short: "Connect Google, Slack or Notion to an agent or workspace",
+	Short: "Connect a provider to an agent or workspace",
 	Long: `Start a connection and grant access in your browser.
 
 The CLI prints the provider's consent URL and opens it. Approve every
@@ -209,7 +215,10 @@ dashboard. The command waits until the connection is recorded, or until the
 link expires (ten minutes).
 
 Connecting again under a name that already exists replaces that grant, which
-is how a connection marked needs_reauth is fixed.`,
+is how a connection marked needs_reauth is fixed.
+
+To use your own OAuth app (Google only), give its client id with
+--app-client-id and pipe its client secret in with --app-client-secret-stdin.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
@@ -220,11 +229,37 @@ is how a connection marked needs_reauth is fixed.`,
 			return err
 		}
 		req := api.ConnectionCreateRequest{Provider: args[0], Name: connName, Scopes: connScopes}
+		ownApp, err := ownAppFromFlags(os.Stdin)
+		if err != nil {
+			return err
+		}
+		req.OwnApp = ownApp
 		if code := runConnectionConnect(api.NewClient(), target, req, connNoBrowser, connectionsConnectPollInterval); code != 0 {
 			os.Exit(code)
 		}
 		return nil
 	},
+}
+
+// ownAppFromFlags builds the own_app body from --app-client-id and
+// --app-client-secret-stdin, which only make sense together. The secret is read
+// from stdin (one line) and never echoed.
+func ownAppFromFlags(stdin io.Reader) (*api.ConnectionOwnApp, error) {
+	if connAppClientID == "" && !connAppSecretStdin {
+		return nil, nil
+	}
+	if connAppClientID == "" || !connAppSecretStdin {
+		return nil, refuse("--app-client-id and --app-client-secret-stdin go together. Nothing was sent.")
+	}
+	secret, err := bufio.NewReader(stdin).ReadString('\n')
+	if err != nil && err != io.EOF {
+		return nil, printRefusal("Failed to read the client secret from stdin", err)
+	}
+	secret = strings.TrimSpace(secret)
+	if secret == "" {
+		return nil, refuse("--app-client-secret-stdin read an empty client secret. Nothing was sent.")
+	}
+	return &api.ConnectionOwnApp{ClientID: connAppClientID, ClientSecret: secret}, nil
 }
 
 // How often connect asks whether the grant has landed. The wait itself is
@@ -429,6 +464,8 @@ func init() {
 	connectionsDisconnectCmd.MarkFlagsMutuallyExclusive("agent", "workspace")
 	connectionsConnectCmd.Flags().StringVar(&connName, "name", "", "Connection name agent code asks for (default: the provider)")
 	connectionsConnectCmd.Flags().StringArrayVar(&connScopes, "scope", nil, "Extra scope to request on top of the provider's defaults (repeatable)")
+	connectionsConnectCmd.Flags().StringVar(&connAppClientID, "app-client-id", "", "Client id of your own OAuth app (Google only; needs --app-client-secret-stdin)")
+	connectionsConnectCmd.Flags().BoolVar(&connAppSecretStdin, "app-client-secret-stdin", false, "Read your own OAuth app's client secret from stdin")
 	connectionsConnectCmd.Flags().BoolVar(&connNoBrowser, "no-browser", false, "Print the URL without opening a browser")
 
 	connectionsCmd.AddCommand(connectionsProvidersCmd)
