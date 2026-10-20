@@ -97,6 +97,8 @@ var notControlPlaneCodes = map[string]string{
 	"AETHERFY_VECTORS_URL":        "env var: the vectors endpoint, as the SDKs read it",
 	"AETHERFY_VECTORS_API_REGION": "env var: the vectors API region, as the SDKs read it",
 	"AETHERFY_WORKSPACE":          "env var: no longer injected nor read; a test pins that the CLI ignores it",
+	// `afy gateway models`' endpoint override, read by internal/gateway.
+	"AETHERFY_GATEWAY_URL": "env var: the AI Gateway endpoint for its public catalogue",
 
 	// VECTORDB error codes, in the internal/vectors fixtures. The vector
 	// commands talk to vectordb, not the control plane, and vectordb has no

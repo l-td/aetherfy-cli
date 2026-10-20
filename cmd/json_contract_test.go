@@ -93,6 +93,13 @@ const (
 	agentRow     = `{"id":"a1","name":"bot","status":"running","agent_type":"service","created_at":"2026-09-01T10:00:00Z","updated_at":"2026-09-01T10:00:00Z"}`
 	deploymentRw = `{"id":"d-1","agent_id":"a1","version":3,"state":"active","created_at":"2026-09-01T10:00:00Z"}`
 	wsRow        = `{"id":"w-2","name":"acme","regions":["us-east-1"]}`
+
+	gatewayAccountRow = `{"monthly_budget_usd":50.0,"month_to_date_usd":1.5,"month_start":"2026-10-01T00:00:00Z"}`
+	gatewayAgentRow   = `{"agent_id":"a1","name":"bot","monthly_budget_usd":10.0,"allowed_models":null,"month_to_date_usd":0.25}`
+	gatewayAgentsRow  = `{"month_start":"2026-10-01T00:00:00Z","agents":[` + gatewayAgentRow + `]}`
+	gatewayUsageEmpty = `{"since":"2026-09-20T00:00:00Z","until":"2026-10-20T00:00:00Z","group_by":"model","agent_id":null,"rows":[],` +
+		`"totals":{"key":null,"agent_name":null,"requests":0,"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":0,` +
+		`"cache_write_input_tokens":0,"reasoning_output_tokens":0,"cost_usd":0,"unpriced_requests":0,"aborted_requests":0,"error_requests":0}}`
 )
 
 func jsonCases() []jsonCase {
@@ -145,6 +152,17 @@ func jsonCases() []jsonCase {
 		{class: "deploy", args: []string{"redeploy", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/redeploy", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/redeploy"}},
 		{class: "deploy", args: []string{"rollback", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/rollback", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/rollback"}},
 		{class: "deploy", args: []string{"rollback", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[` + deploymentRw + `]`}}, refuse: []string{"GET /agents/bot/deployments"}},
+
+		// --- the AI Gateway (appended: the control test above picks cases by index) ---
+		{class: "show", args: []string{"gateway", "status"}, ok: []route{
+			{"GET", "/gateway/settings", 200, gatewayAccountRow}, {"GET", "/gateway/agents", 200, gatewayAgentsRow}},
+			refuse: []string{"GET /gateway/settings", "GET /gateway/agents"}},
+		{class: "show", args: []string{"gateway", "status", "bot"}, ok: []route{
+			{"GET", "/gateway/settings", 200, gatewayAccountRow}, {"GET", "/gateway/agents", 200, gatewayAgentsRow}},
+			refuse: []string{"GET /gateway/agents"}},
+		{class: "show", args: []string{"gateway", "usage"}, ok: []route{{"GET", "/gateway/usage", 200, gatewayUsageEmpty}}, refuse: []string{"GET /gateway/usage"}},
+		{class: "mutate", args: []string{"gateway", "set", "--budget", "50"}, ok: []route{{"PUT", "/gateway/settings", 200, gatewayAccountRow}}, refuse: []string{"PUT /gateway/settings"}},
+		{class: "mutate", args: []string{"gateway", "set", "bot", "--budget", "10"}, ok: []route{{"PUT", "/gateway/agents/bot", 200, gatewayAgentRow}}, refuse: []string{"PUT /gateway/agents/bot"}},
 	}
 }
 
@@ -490,6 +508,7 @@ func TestEveryLeafCommandHasAJSONContract(t *testing.T) {
 	}
 	for _, p := range []string{
 		"deploy", "init", "upgrade", "redeploy", "login", "diff", "access", "github connect", "github link",
+		"gateway models", // TestJSONContractGatewayModels: it reads the gateway, not the control plane
 	} {
 		covered[p] = true
 	}
