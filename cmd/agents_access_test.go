@@ -15,6 +15,8 @@ const (
 	accessWsPath      = accessPath + "/workspaces"
 	botInAlphaGranted = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta"],` +
 		`"allowed_workspaces":["alpha","beta"],"changed":null}`
+	botBetaConnectionsOn = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta"],` +
+		`"allowed_workspaces":["alpha","beta"],"connections_workspaces":["beta"],"changed":true}`
 	botAfterGamma = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta","gamma"],` +
 		`"allowed_workspaces":["alpha","beta","gamma"],"changed":true}`
 )
@@ -25,9 +27,10 @@ func accessCP(t *testing.T) *vecServer {
 		return func(vecRequest) (int, string) { return 200, body }
 	}
 	return cpFake(t, map[string]func(vecRequest) (int, string){
-		"GET " + accessPath:                ok(botInAlphaGranted),
-		"POST " + accessWsPath:             ok(botAfterGamma),
-		"DELETE " + accessWsPath + "/beta": ok(botInAlphaGranted),
+		"GET " + accessPath:                         ok(botInAlphaGranted),
+		"POST " + accessWsPath:                      ok(botAfterGamma),
+		"DELETE " + accessWsPath + "/beta":          ok(botInAlphaGranted),
+		"PUT " + accessWsPath + "/beta/connections": ok(botBetaConnectionsOn),
 	})
 }
 
@@ -51,7 +54,7 @@ func TestAccessListsOwnThenGranted(t *testing.T) {
 	if code := agentsAccess(r, "bot", nil, nil, false, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	for _, want := range []string{"Agent 'bot' can use:", "alpha  (its own workspace)", "beta  (granted)"} {
+	for _, want := range []string{"Agent 'bot' can use:", "alpha  (its own workspace)", "beta  (granted; connections off)"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q:\n%s", want, out.String())
 		}
@@ -213,5 +216,68 @@ func TestAccessTheSameScopeAddedAndRemovedIsRefused(t *testing.T) {
 func TestAccessFlagValuesSplitOnCommasAndDropDuplicates(t *testing.T) {
 	if got := strings.Join(scopes([]string{"a,b", "b", "c"}), "|"); got != "a|b|c" {
 		t.Errorf("scopes = %q", got)
+	}
+}
+
+func TestConnectionsSwitchOnAsksAndSendsTheSwitch(t *testing.T) {
+	r, cp, out, errOut := runAccess(t, false)
+	code := agentsAccessConnections(r, "bot", nil, nil, []string{"beta"}, nil, false, strings.NewReader("y\n"), true)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "Proceed?") {
+		t.Error("turning connections ON did not ask")
+	}
+	puts := requestsTo(cp, "PUT", accessWsPath+"/beta/connections")
+	if len(puts) != 1 || puts[0].Body["enabled"] != true {
+		t.Fatalf("PUT sent: %+v", puts)
+	}
+	if !strings.Contains(out.String(), "will be able to ask for tokens for every connection in workspace 'beta'") {
+		t.Errorf("the consequence was not said:\n%s", out.String())
+	}
+}
+
+func TestConnectionsSwitchOnNeedsYesWithoutATerminalAndSendsNothing(t *testing.T) {
+	r, cp, _, _ := runAccess(t, false)
+	if code := agentsAccessConnections(r, "bot", nil, nil, []string{"beta"}, nil, false, strings.NewReader("y\n"), false); code != exitInputRefused {
+		t.Fatalf("exit %d, want %d", code, exitInputRefused)
+	}
+	if n := len(requestsTo(cp, "PUT", accessWsPath+"/beta/connections")); n != 0 {
+		t.Errorf("sent %d switch requests", n)
+	}
+}
+
+func TestConnectionsSwitchOffAsksNothing(t *testing.T) {
+	cp := cpFake(t, map[string]func(vecRequest) (int, string){
+		"GET " + accessPath:                         func(vecRequest) (int, string) { return 200, botBetaConnectionsOn },
+		"PUT " + accessWsPath + "/beta/connections": func(vecRequest) (int, string) { return 200, botInAlphaGranted },
+	})
+	r, _, errOut := runWithCP(noVectors(t), cp, false)
+	if code := agentsAccessConnections(r, "bot", nil, nil, nil, []string{"beta"}, false, strings.NewReader(""), false); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	puts := requestsTo(cp, "PUT", accessWsPath+"/beta/connections")
+	if len(puts) != 1 || puts[0].Body["enabled"] != false {
+		t.Fatalf("PUT sent: %+v", puts)
+	}
+}
+
+func TestConnectionsSwitchRefusals(t *testing.T) {
+	for name, c := range map[string]struct {
+		add, on, off []string
+	}{
+		"with --add":                 {add: []string{"gamma"}, on: []string{"beta"}},
+		"on a workspace not granted": {on: []string{"gamma"}},
+		"on the own workspace":       {on: []string{"alpha"}},
+		"on and off together":        {on: []string{"beta"}, off: []string{"beta"}},
+		"an empty name":              {on: []string{""}},
+	} {
+		r, cp, _, _ := runAccess(t, false)
+		if code := agentsAccessConnections(r, "bot", c.add, nil, c.on, c.off, true, strings.NewReader(""), true); code != exitInputRefused {
+			t.Errorf("%s: exit %d, want %d", name, code, exitInputRefused)
+		}
+		if n := len(requestsTo(cp, "PUT", accessWsPath+"/beta/connections")); n != 0 {
+			t.Errorf("%s: sent %d switch requests", name, n)
+		}
 	}
 }
