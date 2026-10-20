@@ -488,6 +488,8 @@ func TestEveryLeafCommandHasAJSONContract(t *testing.T) {
 	}
 	for _, p := range []string{
 		"deploy", "init", "upgrade", "redeploy", "login", "diff", "access", "github connect", "github link",
+		// Its --json shape is pinned by TestSecretsJSONShape (agents_access_levels_test.go).
+		"access secrets",
 	} {
 		covered[p] = true
 	}

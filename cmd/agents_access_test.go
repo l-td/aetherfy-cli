@@ -13,10 +13,14 @@ import (
 const (
 	accessPath        = "/api/v1/agents/bot/access"
 	accessWsPath      = accessPath + "/workspaces"
-	botInAlphaGranted = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta"],` +
-		`"allowed_workspaces":["alpha","beta"],"changed":null}`
-	botAfterGamma = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta","gamma"],` +
-		`"allowed_workspaces":["alpha","beta","gamma"],"changed":true}`
+	botInAlphaGranted = `{"agent":"bot","own_workspace":"alpha","own_workspace_level":"full",` +
+		`"own_workspace_level_setting":null,"workspace_default_level":"full","granted_workspaces":["beta"],` +
+		`"granted_workspace_refs":[{"id":"b","name":"beta","level":"read"}],` +
+		`"allowed_workspaces":["alpha","beta"],"secrets_access":false,"changed":null}`
+	botAfterGamma = `{"agent":"bot","own_workspace":"alpha","own_workspace_level":"full",` +
+		`"own_workspace_level_setting":null,"workspace_default_level":"full","granted_workspaces":["beta","gamma"],` +
+		`"granted_workspace_refs":[{"id":"b","name":"beta","level":"read"},{"id":"g","name":"gamma","level":"read"}],` +
+		`"allowed_workspaces":["alpha","beta","gamma"],"secrets_access":false,"changed":true}`
 )
 
 // accessCP answers the access routes; every call is recorded by the server.
@@ -48,10 +52,11 @@ func runAccess(t *testing.T, asJSON bool) (*vecRun, *vecServer, *strings.Builder
 
 func TestAccessListsOwnThenGranted(t *testing.T) {
 	r, cp, out, errOut := runAccess(t, false)
-	if code := agentsAccess(r, "bot", nil, nil, false, strings.NewReader(""), false); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{add: nil, remove: nil, yes: false}, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	for _, want := range []string{"Agent 'bot' can use:", "alpha  (its own workspace)", "beta  (granted)"} {
+	for _, want := range []string{"Agent 'bot' can use:", "alpha  (its own workspace; full, the workspace's default)",
+		"beta  (granted; read)", "Secrets: off"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q:\n%s", want, out.String())
 		}
@@ -63,10 +68,10 @@ func TestAccessListsOwnThenGranted(t *testing.T) {
 
 func TestAccessAddShowsWhatBecomesReachableAndAsks(t *testing.T) {
 	r, cp, out, errOut := runAccess(t, false)
-	if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("y\n"), true); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader("y\n"), true); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "Adds workspace 'gamma': every collection in workspace 'gamma', including ones added later, becomes readable and writable") {
+	if !strings.Contains(out.String(), "Adds workspace 'gamma' at read: every collection in workspace 'gamma', including ones added later, becomes searchable and readable") {
 		t.Errorf("preview:\n%s", out.String())
 	}
 	if !strings.Contains(errOut.String(), "Proceed? [y/N]") {
@@ -96,7 +101,7 @@ func TestAccessAddChangesNothingUnlessConfirmed(t *testing.T) {
 		{"", exitInputRefused, "no answer"},
 	} {
 		r, cp, _, errOut := runAccess(t, false)
-		if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader(c.answer), true); code != c.code {
+		if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader(c.answer), true); code != c.code {
 			t.Errorf("answer %q: exit %d, want %d", c.answer, code, c.code)
 		}
 		if n := len(requestsTo(cp, "POST", accessWsPath)); n != 0 {
@@ -112,7 +117,7 @@ func TestAccessAddChangesNothingUnlessConfirmed(t *testing.T) {
 // stays one object, and a "no" is an error document, not a result.
 func TestAccessAddUnderJSONAsksOnATerminalAndACancelIsAnErrorDocument(t *testing.T) {
 	r, cp, out, errOut := runAccess(t, true)
-	if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("n\n"), true); code != exitRequestFailed {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader("n\n"), true); code != exitRequestFailed {
 		t.Fatalf("exit %d, want %d", code, exitRequestFailed)
 	}
 	if n := len(requestsTo(cp, "POST", accessWsPath)); n != 0 || out.Len() != 0 {
@@ -123,7 +128,7 @@ func TestAccessAddUnderJSONAsksOnATerminalAndACancelIsAnErrorDocument(t *testing
 	}
 
 	r, cp, _, errOut = runAccess(t, true)
-	if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("y\n"), true); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader("y\n"), true); code != 0 {
 		t.Fatalf("a yes under --json must grant: exit %d, %s", code, errOut.String())
 	}
 	if n := len(requestsTo(cp, "POST", accessWsPath)); n != 1 {
@@ -138,7 +143,7 @@ func TestAccessAddWithNoTerminalNeedsYesAndSendsNothing(t *testing.T) {
 		says                string
 	}{{true, false, sentence}, {false, false, sentence}} {
 		r, cp, _, errOut := runAccess(t, tc.asJSON)
-		if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("y\n"), tc.interactive); code != exitInputRefused {
+		if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader("y\n"), tc.interactive); code != exitInputRefused {
 			t.Errorf("%+v: exit %d, want %d", tc, code, exitInputRefused)
 		}
 		if n := len(cp.got()); n != 0 {
@@ -153,7 +158,7 @@ func TestAccessAddWithNoTerminalNeedsYesAndSendsNothing(t *testing.T) {
 func TestAccessRemoveAsksNothing(t *testing.T) {
 	r, cp, _, errOut := runAccess(t, false)
 	// No terminal and no --yes: a removal narrows access, so it needs neither.
-	if code := agentsAccess(r, "bot", nil, []string{"beta"}, false, strings.NewReader(""), false); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{add: nil, remove: []string{"beta"}, yes: false}, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 	if n := len(requestsTo(cp, "DELETE", accessWsPath+"/beta")); n != 1 {
@@ -166,7 +171,7 @@ func TestAccessRemoveAsksNothing(t *testing.T) {
 
 func TestAccessAlreadyGrantedIsNoChangeAndAsksNothing(t *testing.T) {
 	r, cp, out, _ := runAccess(t, false)
-	if code := agentsAccess(r, "bot", []string{"beta"}, []string{"gamma"}, false, strings.NewReader(""), true); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"beta"}, remove: []string{"gamma"}, yes: false}, strings.NewReader(""), true); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	if !strings.Contains(out.String(), "No change") {
@@ -179,7 +184,7 @@ func TestAccessAlreadyGrantedIsNoChangeAndAsksNothing(t *testing.T) {
 
 func TestAccessOwnWorkspaceIsRefusedBeforeAnythingChanges(t *testing.T) {
 	r, cp, _, errOut := runAccess(t, false)
-	if code := agentsAccess(r, "bot", []string{"alpha"}, nil, true, strings.NewReader(""), true); code != exitInputRefused {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"alpha"}, remove: nil, yes: true}, strings.NewReader(""), true); code != exitInputRefused {
 		t.Fatalf("exit %d, want %d", code, exitInputRefused)
 	}
 	if !strings.Contains(errOut.String(), "agent 'bot''s own") {
@@ -203,7 +208,7 @@ func TestAccessAnEmptyWorkspaceNameIsRefusedBeforeAnyRequest(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			r, cp, _, errOut := runAccess(t, false)
-			if code := agentsAccess(r, "bot", c.add, c.remove, true, strings.NewReader(""), true); code != exitInputRefused {
+			if code := agentsAccess(r, "bot", accessChange{add: c.add, remove: c.remove, yes: true}, strings.NewReader(""), true); code != exitInputRefused {
 				t.Fatalf("exit %d, want %d", code, exitInputRefused)
 			}
 			if len(cp.got()) != 0 {
@@ -218,7 +223,7 @@ func TestAccessAnEmptyWorkspaceNameIsRefusedBeforeAnyRequest(t *testing.T) {
 
 func TestAccessJSONWithYesPrintsTheFinalAccess(t *testing.T) {
 	r, _, out, errOut := runAccess(t, true)
-	if code := agentsAccess(r, "bot", []string{"gamma"}, nil, true, strings.NewReader(""), false); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: true}, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 	var got struct {
@@ -238,7 +243,7 @@ func TestAccessJSONWithYesPrintsTheFinalAccess(t *testing.T) {
 
 func TestAccessTheSameScopeAddedAndRemovedIsRefused(t *testing.T) {
 	r, cp, _, _ := runAccess(t, false)
-	if code := agentsAccess(r, "bot", []string{"beta"}, []string{"beta"}, true, strings.NewReader(""), true); code != exitInputRefused {
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"beta"}, remove: []string{"beta"}, yes: true}, strings.NewReader(""), true); code != exitInputRefused {
 		t.Fatalf("exit %d", code)
 	}
 	if len(cp.got()) != 0 {

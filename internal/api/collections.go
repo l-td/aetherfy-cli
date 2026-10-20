@@ -74,6 +74,26 @@ type CollectionChange struct {
 	Plan              *RegionsChangePreview `json:"plan"`
 }
 
+// CollectionProtection is PATCH /collections/{id}'s answer to a `protected`
+// change: applied at once, NoOp when it already was so.
+type CollectionProtection struct {
+	CollectionID string `json:"collection_id"`
+	Protected    bool   `json:"protected"`
+	NoOp         bool   `json:"no_op"`
+}
+
+// SetCollectionProtected protects collection id (true) or not (false): no
+// agent's key may delete a protected collection nor write its points by
+// filter. Sent on its own (the control plane refuses it beside a move or a
+// regions change, 400 COLLECTION_PROTECTED_COMBINED).
+func (c *Client) SetCollectionProtected(id string, protected bool) (*CollectionProtection, error) {
+	var out CollectionProtection
+	if err := c.Patch(fmt.Sprintf("/collections/%s", id), map[string]bool{"protected": protected}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // WorkspaceRegionsChange is PATCH /workspaces/{name}/regions's answer:
 // Status "no_op" with CurrentRegions, or 202 with the operation.
 type WorkspaceRegionsChange struct {

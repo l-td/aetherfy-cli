@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 131
+      "count": 132
     },
     {
       "path": "api/routes/regions.py",
@@ -240,6 +240,10 @@
       "tier": "top-level"
     },
     "COLLECTION_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_PROTECTED_COMBINED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

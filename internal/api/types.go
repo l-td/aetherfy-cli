@@ -15,7 +15,12 @@ type Agent struct {
 	Runtime       string `json:"runtime,omitempty"`
 	WorkspaceID   string `json:"workspace_id,omitempty"`
 	WorkspaceName string `json:"workspace_name,omitempty"`
-	SpawnEnabled  bool   `json:"spawn_enabled"`
+	// AccessLevel is its level in its own workspace, and AccessLevelSetting
+	// its own setting there (nil: it follows the workspace's default). Only
+	// GET /workspaces/{workspace}/agents answers them.
+	AccessLevel        *string `json:"access_level,omitempty"`
+	AccessLevelSetting *string `json:"access_level_setting,omitempty"`
+	SpawnEnabled       bool    `json:"spawn_enabled"`
 	// TWO FIELDS, TWO QUESTIONS (server AgentResponse).
 	//
 	// Deployed — does this agent hold a live app? True for a scheduled task,
@@ -338,13 +343,16 @@ type LogEntry struct {
 
 // Workspace represents a workspace namespace for multi-agent coordination
 type Workspace struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description,omitempty"`
-	Regions     []string  `json:"regions"`
-	AgentCount  int       `json:"agent_count"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Regions     []string `json:"regions"`
+	AgentCount  int      `json:"agent_count"`
+	// AgentAccessLevel is the level the agents living here hold in it unless
+	// an agent is set otherwise: read, read_write or full.
+	AgentAccessLevel string    `json:"agent_access_level"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // WorkspaceCreateRequest is the request body for creating a workspace
@@ -361,8 +369,9 @@ type WorkspaceCreateRequest struct {
 // unchanged; a pointer to "" clears the description. Every internal reference
 // to a workspace is by id, so a rename moves nothing and redeploys no agent.
 type WorkspaceUpdateRequest struct {
-	Name        *string `json:"name,omitempty"`
-	Description *string `json:"description,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	Description      *string `json:"description,omitempty"`
+	AgentAccessLevel *string `json:"agent_access_level,omitempty"`
 }
 
 // WorkspaceDeleteResponse is the response from deleting a workspace

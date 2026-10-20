@@ -630,6 +630,13 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 			return collectionsRegions(r, "articles", []string{"us-east-1"}, true, false, strings.NewReader(""), false)
 		},
 		"collections move": func(r *vecRun) int { return collectionsMove(r, "articles", "research", true, false) },
+		// protect and unprotect find the collection through the vectors API first, too.
+		"collections protect": func(r *vecRun) int {
+			return collectionsProtect(r, "articles", true, false, strings.NewReader(""), false)
+		},
+		"collections unprotect": func(r *vecRun) int {
+			return collectionsProtect(r, "articles", false, true, strings.NewReader(""), false)
+		},
 		"collections update": func(r *vecRun) int {
 			n := "articles-v1"
 			return collectionsUpdate(r, "articles", &n, nil)

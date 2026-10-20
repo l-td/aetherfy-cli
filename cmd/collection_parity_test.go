@@ -153,7 +153,7 @@ func TestAccessJSONCarriesTheWorkspacePairs(t *testing.T) {
 		"GET " + accessPath: func(vecRequest) (int, string) { return 200, withRefs },
 	})
 	r, out, errOut := runWithCP(noVectors(t), cp, true)
-	if code := agentsAccess(r, "bot", nil, nil, false, strings.NewReader(""), false); code != 0 {
+	if code := agentsAccess(r, "bot", accessChange{}, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 	access := decode(t, out.String())["access"].(map[string]interface{})
