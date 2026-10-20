@@ -37,6 +37,7 @@ package cmd
 // specific instead — see TestErrorMessagesNameRunnableCommands.
 
 import (
+	"fmt"
 	"os"
 	"regexp"
 	"runtime"
@@ -64,11 +65,13 @@ var documentedInvocation = regexp.MustCompile(
 var placeholderArg = regexp.MustCompile(`^<[a-z][a-z-]*>$`)
 
 // checkInvocations resolves every `afy …` line in text and returns how many
-// carried placeholder arguments, failing t for any the named command refuses.
-// where names the source, so a failure says which text is wrong.
-func checkInvocations(t *testing.T, where, text string) int {
-	t.Helper()
-	checked := 0
+// carried placeholder arguments, and a problem for each the named command
+// refuses. where names the source, so a problem says which text is wrong.
+//
+// A placeholder right after a flag that takes a value (`--agent <name>`) is
+// that flag's VALUE, not a positional, and is not counted. After a boolean
+// flag (`--yes <name>`) it is a positional, and is.
+func checkInvocations(where, text string) (checked int, problems []string) {
 
 	for _, m := range documentedInvocation.FindAllStringSubmatch(text, -1) {
 		line := "afy" + m[1]
@@ -84,7 +87,14 @@ func checkInvocations(t *testing.T, where, text string) int {
 		}
 
 		args := 0
-		for _, r := range rest {
+		for i := 0; i < len(rest); i++ {
+			r := rest[i]
+			if strings.HasPrefix(r, "-") {
+				if !strings.Contains(r, "=") && takesValue(target, strings.TrimLeft(r, "-")) {
+					i++ // the next token is this flag's value
+				}
+				continue
+			}
 			if placeholderArg.MatchString(r) {
 				args++
 			}
@@ -103,14 +113,42 @@ func checkInvocations(t *testing.T, where, text string) int {
 		}
 
 		if err := target.Args(target, standIns); err != nil {
-			t.Errorf(
+			problems = append(problems, fmt.Sprintf(
 				"%s says %q, but `%s` does not accept the %d argument(s) that line passes it: %v. "+
 					"Most likely the sentence is about a DIFFERENT command and a rename rewrote "+
 					"the name inside it, leaving a reader who follows this with an error.",
-				where, line, target.CommandPath(), args, err)
+				where, line, target.CommandPath(), args, err))
 		}
 	}
-	return checked
+	return checked, problems
+}
+
+// takesValue reports whether c has a flag of that name (its own or inherited,
+// long or shorthand) that takes a value rather than standing alone.
+func takesValue(c *cobra.Command, name string) bool {
+	f := c.Flags().Lookup(name)
+	if f == nil {
+		f = c.InheritedFlags().Lookup(name)
+	}
+	if f == nil && len(name) == 1 {
+		f = c.Flags().ShorthandLookup(name)
+	}
+	return f != nil && f.NoOptDefVal == ""
+}
+
+// The flag-value rule, both ways, through the same function the guard runs.
+func TestAPlaceholderAfterAValuedFlagIsItsValueNotAPositional(t *testing.T) {
+	if n, p := checkInvocations("fixture", "afy init --agent <name> --target <t>"); n != 0 || len(p) != 0 {
+		t.Errorf("flag values were counted as positionals: checked %d, %v", n, p)
+	}
+	// CONTROL: after a boolean flag a placeholder is positional, and two of
+	// them are more than `afy init [path]` accepts.
+	if _, p := checkInvocations("fixture", "afy init --yes <a> <b>"); len(p) != 1 {
+		t.Errorf("two positionals after a bool flag must be refused, got %v", p)
+	}
+	if _, p := checkInvocations("fixture", "afy update <agent> <new>"); len(p) != 1 {
+		t.Errorf("too many positionals must still be refused, got %v", p)
+	}
 }
 
 func TestDocumentedInvocationsSatisfyTheirCommandArgs(t *testing.T) {
@@ -118,8 +156,16 @@ func TestDocumentedInvocationsSatisfyTheirCommandArgs(t *testing.T) {
 
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {
-		checked += checkInvocations(t, "`"+c.CommandPath()+"` help", c.Long)
-		checked += checkInvocations(t, "`"+c.CommandPath()+"` examples", c.Example)
+		for _, src := range []struct{ where, text string }{
+			{"`" + c.CommandPath() + "` help", c.Long},
+			{"`" + c.CommandPath() + "` examples", c.Example},
+		} {
+			n, problems := checkInvocations(src.where, src.text)
+			checked += n
+			for _, p := range problems {
+				t.Error(p)
+			}
+		}
 		for _, sub := range c.Commands() {
 			walk(sub)
 		}
@@ -193,5 +239,8 @@ func TestErrorMessagesNameRunnableCommands(t *testing.T) {
 	}
 
 	// And the command it names must accept what the line passes it.
-	checkInvocations(t, "NotWritableError", msg)
+	_, problems := checkInvocations("NotWritableError", msg)
+	for _, p := range problems {
+		t.Error(p)
+	}
 }

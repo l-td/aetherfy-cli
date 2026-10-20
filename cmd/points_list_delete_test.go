@@ -109,7 +109,7 @@ func TestPointsListOffsetThatIsAUUIDIsSentAsAString(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) {
 		return 200, `{"result":{"points":[],"next_page_offset":null}}`
 	})
-	r, _, _, _ := s.run("", true)
+	r, _, _, _ := s.run("default", true)
 	if code := pointsList(r, "articles", 5, uuid, "", false); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -120,7 +120,7 @@ func TestPointsListOffsetThatIsAUUIDIsSentAsAString(t *testing.T) {
 
 func TestPointsListWithVectorsAndTheHumanTable(t *testing.T) {
 	s := newVecServer(t, pagedCollection(3))
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := pointsList(r, "articles", 2, "", "", true); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -144,7 +144,7 @@ func TestPointsListWithVectorsAndTheHumanTable(t *testing.T) {
 			`{"id":"5c56c793-69f3-4fbf-87e6-c4bf54c28c26","payload":{"body":"` + long + `"}}],` +
 			`"next_page_offset":"7d2b0c55-0a8b-4bd7-8d5e-6f6bd1a3e0a1"}}`
 	})
-	r, stdout, _, _ = s.run("", false)
+	r, stdout, _, _ = s.run("default", false)
 	if code := pointsList(r, "articles", 2, "", "", false); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -160,7 +160,7 @@ func TestPointsListWithVectorsAndTheHumanTable(t *testing.T) {
 
 	// The last page says nothing about a next one.
 	s = newVecServer(t, pagedCollection(1))
-	r, stdout, _, _ = s.run("", false)
+	r, stdout, _, _ = s.run("default", false)
 	if code := pointsList(r, "articles", 10, "", "", false); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -178,13 +178,13 @@ func TestPointsListLimitIsBoundedByTheAPIsReadLimit(t *testing.T) {
 		t.Errorf("--limit defaults to %s, not ScrollLimitDefault", f.DefValue)
 	}
 	s := newVecServer(t, pagedCollection(0))
-	r, _, _, _ := s.run("", true)
+	r, _, _, _ := s.run("default", true)
 	if code := pointsList(r, "articles", vectors.ScrollLimitMax, "", "", false); code != 0 {
 		t.Errorf("--limit %d (the maximum) exit %d", vectors.ScrollLimitMax, code)
 	}
 	for _, limit := range []int{0, -1, vectors.ScrollLimitMax + 1} {
 		s := newVecServer(t, pagedCollection(0))
-		r, _, stderr, connects := s.run("", true)
+		r, _, stderr, connects := s.run("default", true)
 		if code := pointsList(r, "articles", limit, "", "", false); code != exitInputRefused {
 			t.Errorf("--limit %d: exit %d, want %d", limit, code, exitInputRefused)
 		}
@@ -231,7 +231,7 @@ func paths(reqs []vecRequest) string {
 
 func TestPointsDeleteByIDsCountsTheOnesThatExistAndDeletesThose(t *testing.T) {
 	s := deleteServer(t, []string{"17", `"5c56c793-69f3-4fbf-87e6-c4bf54c28c26"`}, 0)
-	r, stdout, stderr, _ := s.run("", true)
+	r, stdout, stderr, _ := s.run("default", true)
 	code := pointsDelete(r, "articles", []string{"17", "99", "5c56c793-69f3-4fbf-87e6-c4bf54c28c26"}, "", true, strings.NewReader(""), false)
 	if code != 0 {
 		t.Fatalf("exit %d, stderr %s", code, stderr.String())
@@ -298,7 +298,7 @@ func TestPointsDeleteByFilterCountsWithTheSameFilterFirst(t *testing.T) {
 func TestPointsDeleteAsksUnlessYes(t *testing.T) {
 	t.Run("typing the name deletes", func(t *testing.T) {
 		s := deleteServer(t, nil, 3)
-		r, _, stderr, _ := s.run("", false)
+		r, _, stderr, _ := s.run("default", false)
 		if code := pointsDelete(r, "articles", nil, langFilter, false, strings.NewReader("articles\n"), true); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
@@ -313,7 +313,7 @@ func TestPointsDeleteAsksUnlessYes(t *testing.T) {
 	})
 	t.Run("typing another name deletes nothing", func(t *testing.T) {
 		s := deleteServer(t, nil, 3)
-		r, _, _, _ := s.run("", false)
+		r, _, _, _ := s.run("default", false)
 		if code := pointsDelete(r, "articles", nil, langFilter, false, strings.NewReader("article\n"), true); code != exitInputRefused {
 			t.Errorf("exit %d", code)
 		}
@@ -323,7 +323,7 @@ func TestPointsDeleteAsksUnlessYes(t *testing.T) {
 	})
 	t.Run("no terminal and no --yes is refused before any request", func(t *testing.T) {
 		s := deleteServer(t, []string{"1"}, 3)
-		r, stdout, stderr, connects := s.run("", true)
+		r, stdout, stderr, connects := s.run("default", true)
 		if code := pointsDelete(r, "articles", []string{"1"}, "", false, strings.NewReader("articles\n"), false); code != exitInputRefused {
 			t.Errorf("exit %d, want %d", code, exitInputRefused)
 		}
@@ -337,7 +337,7 @@ func TestPointsDeleteAsksUnlessYes(t *testing.T) {
 	})
 	t.Run("nothing matching deletes nothing and asks nothing", func(t *testing.T) {
 		s := deleteServer(t, nil, 0)
-		r, stdout, stderr, _ := s.run("", true)
+		r, stdout, stderr, _ := s.run("default", true)
 		if code := pointsDelete(r, "articles", []string{"99"}, "", false, strings.NewReader(""), true); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
@@ -368,7 +368,7 @@ func TestPointsDeleteRefusesBadSelectorsBeforeAnyRequest(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			s := deleteServer(t, []string{"1"}, 1)
-			r, _, stderr, connects := s.run("", true)
+			r, _, stderr, connects := s.run("default", true)
 			if code := pointsDelete(r, "articles", tc.ids, tc.filter, true, strings.NewReader(""), true); code != exitInputRefused {
 				t.Errorf("exit %d, want %d", code, exitInputRefused)
 			}
@@ -396,7 +396,7 @@ func TestPointsDeleteReportsTheDeletesOwnError(t *testing.T) {
 		}
 		return 404, `{"error":{"code":"NOT_FOUND","message":"Collection 'articles' not found"}}`
 	})
-	r, stdout, stderr, _ := s.run("", false)
+	r, stdout, stderr, _ := s.run("default", false)
 	if code := pointsDelete(r, "articles", nil, langFilter, true, strings.NewReader(""), false); code != exitRequestFailed {
 		t.Errorf("exit %d", code)
 	}

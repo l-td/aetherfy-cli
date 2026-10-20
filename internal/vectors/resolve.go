@@ -12,15 +12,10 @@ import (
 // asked, and where requests go when nothing else names an endpoint.
 const DefaultEndpoint = "https://vectors.aetherfy.com"
 
-// ValidRegions are the API regions --api-region accepts, the SDKs'
-// VALID_REGIONS.
-var ValidRegions = []string{"us-east-1", "eu-central-1", "ap-southeast-1"}
-
 // Environment variables, the SDKs' names.
 const (
 	EnvVectorsURL = "AETHERFY_VECTORS_URL"
 	EnvAPIRegion  = "AETHERFY_VECTORS_API_REGION"
-	EnvWorkspace  = "AETHERFY_WORKSPACE"
 )
 
 // Where an endpoint came from, as the --json output names it.
@@ -32,12 +27,17 @@ const (
 	discoveryRoute = "regions"
 )
 
-// InvalidRegionError is an API region outside ValidRegions, refused before any
-// request.
-type InvalidRegionError struct{ Region string }
+// UnknownRegionError is an API region the discovery endpoint does not list.
+// The list is the server's (GET /api/v1/regions): the CLI keeps none of its
+// own, so a region added or retired there is right here at once.
+type UnknownRegionError struct {
+	Region    string
+	Available []string
+}
 
-func (e *InvalidRegionError) Error() string {
-	return fmt.Sprintf("api_region must be one of %s, got '%s'", strings.Join(ValidRegions, ", "), e.Region)
+func (e *UnknownRegionError) Error() string {
+	return fmt.Sprintf("Region '%s' not configured at the discovery endpoint (available: [%s]).",
+		e.Region, strings.Join(e.Available, ", "))
 }
 
 // Options are what the user gave on the command line.
@@ -46,18 +46,14 @@ type Options struct {
 	Endpoint string
 	// APIRegion is --api-region, the SDKs' api_region= argument.
 	APIRegion string
-	// Workspace is --workspace. WorkspaceSet says it was passed at all, so
-	// `--workspace ""` forces no workspace the way the SDKs' workspace=None
-	// does, even where AETHERFY_WORKSPACE is set.
-	Workspace    string
-	WorkspaceSet bool
 }
 
-// Resolved is where a command's requests go.
+// Resolved is where a command's requests go. The workspace is not resolved
+// here: a person names it (--workspace), or the account's workspaces answer
+// it (cmd pickWorkspace). No environment variable is read for it.
 type Resolved struct {
 	Endpoint       string
 	EndpointSource string
-	Workspace      string
 	// Warning is set when an env URL overrode an API region, which the SDKs
 	// log rather than refuse.
 	Warning string
@@ -78,7 +74,7 @@ func NewResolver(getenv func(string) string, apiKey string) *Resolver {
 	return &Resolver{Getenv: getenv, DiscoveryBase: DefaultEndpoint, APIKey: apiKey, send: httpSend}
 }
 
-// Resolve picks the endpoint and the workspace in the SDKs' order
+// Resolve picks the endpoint in the SDKs' order
 // (AetherfyVectorsClient.__init__):
 //
 //  1. --vectors-url, the explicit endpoint;
@@ -88,19 +84,12 @@ func NewResolver(getenv func(string) string, apiKey string) *Resolver {
 //     GET /api/v1/regions on the default endpoint;
 //  4. the default endpoint.
 //
-// An API region outside ValidRegions is refused before any request, as the
-// SDKs refuse it at construction.
-//
-// The workspace is --workspace when passed, else AETHERFY_WORKSPACE, else none:
-// the Python SDK's workspace="auto". The control plane sets that variable only
-// on an agent that has a workspace.
+// An API region the discovery endpoint does not list is refused
+// (UnknownRegionError), naming the ones it does.
 func (r *Resolver) Resolve(o Options) (*Resolved, error) {
 	region := o.APIRegion
 	if region == "" {
 		region = r.Getenv(EnvAPIRegion)
-	}
-	if region != "" && !contains(ValidRegions, region) {
-		return nil, &InvalidRegionError{Region: region}
 	}
 
 	out := &Resolved{}
@@ -125,12 +114,6 @@ func (r *Resolver) Resolve(o Options) (*Resolved, error) {
 		out.Endpoint, out.EndpointSource = DefaultEndpoint, SourceDefault
 	}
 	out.Endpoint = strings.TrimRight(out.Endpoint, "/")
-
-	if o.WorkspaceSet {
-		out.Workspace = o.Workspace
-	} else {
-		out.Workspace = r.Getenv(EnvWorkspace)
-	}
 	return out, nil
 }
 
@@ -160,17 +143,7 @@ func (r *Resolver) discover(region string) (string, error) {
 			known = append(known, k)
 		}
 		sort.Strings(known)
-		return "", fmt.Errorf("Region '%s' not configured at the discovery endpoint (available: [%s]).",
-			region, strings.Join(known, ", "))
+		return "", &UnknownRegionError{Region: region, Available: known}
 	}
 	return u, nil
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

@@ -27,13 +27,13 @@ func upsertServer(t *testing.T) *vecServer {
 // typed inside {"points": [...]}, and the one-line summary.
 func TestPointsUpsertOnePointInline(t *testing.T) {
 	s := upsertServer(t)
-	r, stdout, stderr, _ := s.run("", false)
+	r, stdout, stderr, _ := s.run("default", false)
 	in := `{"id": 1, "vector": [0.5, -0.25], "payload": {"lang": "en"}}`
 	if code := pointsUpsert(r, "articles", in); code != 0 {
 		t.Fatalf("exit %d, stderr %q", code, stderr.String())
 	}
 	req := only(t, s.got())
-	if req.Method != "PUT" || req.Path != "/api/v1/collections/articles/points" {
+	if req.Method != "PUT" || req.Path != "/api/v1/workspaces/default/collections/articles/points" {
 		t.Errorf("sent %s %s", req.Method, req.Path)
 	}
 	if len(req.Body) != 1 {
@@ -99,7 +99,7 @@ func TestPointsUpsertRefusesBadInputBeforeAnyRequest(t *testing.T) {
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
 			s := upsertServer(t)
-			r, stdout, stderr, connects := s.run("", true)
+			r, stdout, stderr, connects := s.run("default", true)
 			if code := pointsUpsert(r, "articles", tc.in); code != exitInputRefused {
 				t.Errorf("exit %d, want %d", code, exitInputRefused)
 			}
@@ -121,7 +121,7 @@ func TestPointsUpsertLeavesTheServersRulesToTheServer(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) {
 		return 400, `{"error":{"code":"VALIDATION_ERROR","message":"Vector dimension mismatch: expected 3, got 1"}}`
 	})
-	r, stdout, stderr, _ := s.run("", false)
+	r, stdout, stderr, _ := s.run("default", false)
 	in := `{"id": "not-a-uuid", "vector": [1], "payload": {"__aetherfy_agent_id": "x"}}`
 	if code := pointsUpsert(r, "articles", in); code != exitRequestFailed {
 		t.Errorf("exit %d", code)
@@ -145,7 +145,7 @@ func manyPoints(n int) string {
 func TestPointsUpsertSplitsAtTheAPIsPointCap(t *testing.T) {
 	total := 2*vectors.UpsertPointsMax + 1
 	s := upsertServer(t)
-	r, stdout, _, _ := s.run("", true)
+	r, stdout, _, _ := s.run("default", true)
 	if code := pointsUpsert(r, "articles", manyPoints(total)); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -187,7 +187,7 @@ func TestPointsUpsertReportsWhatWasWrittenBeforeAFailure(t *testing.T) {
 	}
 
 	s := failing()
-	r, stdout, stderr, _ := s.run("", true)
+	r, stdout, stderr, _ := s.run("default", true)
 	if code := pointsUpsert(r, "articles", manyPoints(total)); code != exitRequestFailed {
 		t.Errorf("exit %d", code)
 	}
@@ -206,7 +206,7 @@ func TestPointsUpsertReportsWhatWasWrittenBeforeAFailure(t *testing.T) {
 	}
 
 	s = failing()
-	r, _, stderr, _ = s.run("", false)
+	r, _, stderr, _ = s.run("default", false)
 	pointsUpsert(r, "articles", manyPoints(total))
 	want := fmt.Sprintf("Error: Upsert body too large (PAYLOAD_TOO_LARGE); %d of %d point(s) were written before it\n", vectors.UpsertPointsMax, total)
 	if stderr.String() != want {
@@ -220,7 +220,7 @@ func TestPointsUpsertFailingFirstRequestReportsNoWrittenCount(t *testing.T) {
 	s := newVecServer(t, func(vecRequest) (int, string) {
 		return 404, `{"error":{"code":"NOT_FOUND","message":"Collection 'articles' not found"}}`
 	})
-	r, _, stderr, _ := s.run("", true)
+	r, _, stderr, _ := s.run("default", true)
 	pointsUpsert(r, "articles", manyPoints(vectors.UpsertPointsMax+1))
 	e := decode(t, stderr.String())["error"].(map[string]interface{})
 	if _, has := e["written"]; has || len(s.got()) != 1 {
@@ -256,7 +256,7 @@ func TestPointsUpsertReportsTheLostRequestAsUnconfirmed(t *testing.T) {
 	}
 
 	s, n := dropping()
-	r, stdout, stderr, _ := s.run("", true)
+	r, stdout, stderr, _ := s.run("default", true)
 	if code := pointsUpsert(r, "articles", manyPoints(total)); code != exitRequestFailed {
 		t.Errorf("exit %d", code)
 	}
@@ -276,7 +276,7 @@ func TestPointsUpsertReportsTheLostRequestAsUnconfirmed(t *testing.T) {
 	}
 
 	s, _ = dropping()
-	r, _, stderr, _ = s.run("", false)
+	r, _, stderr, _ = s.run("default", false)
 	pointsUpsert(r, "articles", manyPoints(total))
 	want := fmt.Sprintf("; %d of %d point(s) were written before it, and the outcome of the 5 point(s) in the request "+
 		"that failed is unknown: they may or may not have been written. Re-running the same upsert is safe: points are "+

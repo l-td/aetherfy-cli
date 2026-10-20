@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 )
 
 // `afy status` prints an agent's GitHub link, and every claim that section makes
@@ -53,13 +52,15 @@ func runStatus(t *testing.T, format, link string) (string, []string) {
 		asked = append(asked, r.URL.Path)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/deployments") {
+			_, _ = w.Write([]byte(`[]`))
+			return
+		}
 		_, _ = w.Write([]byte(statusAgentJSON(link)))
 	}))
 	t.Cleanup(srv.Close)
 
-	previous := config.Get().OutputFormat
-	config.SetOutputFormat(format)
-	t.Cleanup(func() { config.SetOutputFormat(previous) })
+	jsonRun(t, format == "json")
 
 	var runErr error
 	out := captureStdout(t, func() {
@@ -84,10 +85,11 @@ const linkedJSON = `{"linked":true,"repo":"myorg/agents","branch":"production","
 func TestStatusReadsTheLinkFromTheAgentInOneRequest(t *testing.T) {
 	out, asked := runStatus(t, "text", linkedJSON)
 
-	// ONE request, and it is for the agent. Asking the link route as well is the
-	// second read this command no longer makes.
-	if len(asked) != 1 || asked[0] != "/agents/reporter" {
-		t.Errorf("afy status requested %v, want exactly [/agents/reporter]", asked)
+	// The link comes inside the agent: the link route is never asked. The
+	// second read is the deployment history, for a failed deploy's sentence
+	// (printLastDeployFailure).
+	if len(asked) != 2 || asked[0] != "/agents/reporter" || asked[1] != "/agents/a1/deployments" {
+		t.Errorf("afy status requested %v, want exactly [/agents/reporter /agents/a1/deployments]", asked)
 	}
 	// The four fields, each a separate json tag that could be wrong on its own
 	// and would then simply not appear.
@@ -138,7 +140,7 @@ func TestStatusSaysNothingAboutGitHubForAnUnlinkedAgent(t *testing.T) {
 
 func TestStatusSaysNothingAboutGitHubWhenTheAgentCarriesNoLink(t *testing.T) {
 	// A control plane older than the nested object sends no "github" key. That
-	// reads as nothing to say — and `-o json` must not invent an answer either:
+	// reads as nothing to say — and `--json` must not invent an answer either:
 	// a zero-valued object would claim `linked: false` and `account_connected:
 	// false` about an agent the server said nothing about.
 	out, _ := runStatus(t, "text", "")
@@ -153,7 +155,7 @@ func TestStatusSaysNothingAboutGitHubWhenTheAgentCarriesNoLink(t *testing.T) {
 
 	raw, _ := runStatus(t, "json", "")
 	if !strings.Contains(raw, `"id": "a1"`) {
-		t.Fatalf("`afy status -o json` did not print the agent; got:\n%s", raw)
+		t.Fatalf("`afy status --json` did not print the agent; got:\n%s", raw)
 	}
 	if strings.Contains(raw, `"github"`) {
 		t.Errorf("an agent with no link object still emitted a github key, which reads as an answer:\n%s", raw)
@@ -216,7 +218,7 @@ func TestStatusWarnsWhenTheTrackedBranchWasDeleted(t *testing.T) {
 }
 
 func TestStatusJSONCarriesTheLinkWithTheServersFieldNames(t *testing.T) {
-	// `-o json` is a contract with scripts, and the two fields a script would
+	// `--json` is a contract with scripts, and the two fields a script would
 	// branch on are exactly the two that a well-meaning omitempty deletes when
 	// they are false.
 	raw, asked := runStatus(t, "json", `{"linked":false,"repo":null,"branch":null,"root_dir":null,`+
@@ -224,21 +226,21 @@ func TestStatusJSONCarriesTheLinkWithTheServersFieldNames(t *testing.T) {
 
 	// One request in this lane too.
 	if len(asked) != 1 || asked[0] != "/agents/reporter" {
-		t.Errorf("afy status -o json requested %v, want exactly [/agents/reporter]", asked)
+		t.Errorf("afy status --json requested %v, want exactly [/agents/reporter]", asked)
 	}
 
 	var got map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &got); err != nil {
-		t.Fatalf("`afy status -o json` is not JSON: %v\n%s", err, raw)
+		t.Fatalf("`afy status --json` is not JSON: %v\n%s", err, raw)
 	}
 	// The agent's own keys stay at the top level. Nesting them under an "agent"
-	// key would break every existing consumer of `afy status -o json`.
+	// key would break every existing consumer of `afy status --json`.
 	if got["id"] != "a1" || got["name"] != "reporter" {
 		t.Errorf("the agent's own fields left the top level: %s", raw)
 	}
 	gh, ok := got["github"].(map[string]interface{})
 	if !ok {
-		t.Fatalf("no github object in `afy status -o json`: %s", raw)
+		t.Fatalf("no github object in `afy status --json`: %s", raw)
 	}
 	// Present, and false. Not absent.
 	for _, key := range []string{"linked", "account_connected"} {
@@ -322,7 +324,7 @@ func TestStatusShowsTheGitHubAccountBesideTheRepo(t *testing.T) {
 	}
 }
 
-// `-o json` re-encodes the decoded link, so a field the struct does not decode
+// `--json` re-encodes the decoded link, so a field the struct does not decode
 // is a field that output silently drops. Both new ones must come through, with
 // the installation id still a number.
 func TestStatusJSONCarriesTheAccountAndInstallation(t *testing.T) {
@@ -332,7 +334,7 @@ func TestStatusJSONCarriesTheAccountAndInstallation(t *testing.T) {
 
 	var got map[string]interface{}
 	if err := json.Unmarshal([]byte(raw), &got); err != nil {
-		t.Fatalf("`afy status -o json` is not JSON: %v\n%s", err, raw)
+		t.Fatalf("`afy status --json` is not JSON: %v\n%s", err, raw)
 	}
 	gh, _ := got["github"].(map[string]interface{})
 	if gh["account_login"] != "octo-org" {

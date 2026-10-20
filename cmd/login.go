@@ -51,7 +51,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 	// If no API key provided, prompt for it
 	if apiKey == "" {
-		fmt.Print("Enter your API key: ")
+		fmt.Fprint(output.Out(), "Enter your API key: ")
 		reader := bufio.NewReader(os.Stdin)
 		input, err := reader.ReadString('\n')
 		if err != nil {
@@ -62,8 +62,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 
 	// Validate format
 	if err := config.ValidateAPIKey(apiKey); err != nil {
-		output.PrintError("%v", err)
-		return nil
+		return refuse("%v", err)
 	}
 
 	// Validate with API
@@ -75,14 +74,14 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Authentication failed: %v", err)
-		if apiErr, ok := err.(*api.APIError); ok {
+		shownErr := printRefusal("Authentication failed", err)
+		if apiErr, ok := err.(*api.APIError); ok && !output.IsJSON() {
 			if apiErr.StatusCode == 401 {
 				output.Println("\nMake sure your API key is correct and not expired.")
 				output.Println("Get a new key at: https://app.aetherfy.com/dashboard/settings/api-keys")
 			}
 		}
-		return nil
+		return shownErr
 	}
 
 	// Save credentials
@@ -94,8 +93,7 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := creds.Save(); err != nil {
-		output.PrintError("Failed to save credentials: %v", err)
-		return nil
+		return printRefusal("Failed to save credentials", err)
 	}
 
 	output.PrintSuccess("Logged in successfully!")
@@ -108,6 +106,8 @@ func runLogin(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	output.Println("You can now use afy commands to manage your agents.")
 	output.Println("Try 'afy list' to see your agents.")
-
-	return nil
+	return output.Result(map[string]interface{}{
+		"logged_in": true, "user_id": userInfo.UserID, "email": userInfo.Email,
+		"tier": userInfo.Tier, "key_type": keyType(apiKey),
+	})
 }

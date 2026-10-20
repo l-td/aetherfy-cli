@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mime/multipart"
 	"net/url"
+	"sort"
 )
 
 // Deploy uploads code and triggers a deployment. confirmOverage=true accepts a
@@ -61,12 +62,24 @@ func (c *Client) GetDeployment(deploymentID string) (*Deployment, error) {
 }
 
 // ListDeployments returns all deployments for an agent
+//
+// NEWEST FIRST, BY VERSION, sorted here: every caller reads [0] as the newest
+// (afy status's failed deploy, the deployments table, redeploy's active
+// release, rollback's history), and the order the server happens to answer
+// in is not a contract. Versions are unique per agent; created_at breaks a
+// tie, should one ever occur.
 func (c *Client) ListDeployments(agentID string) ([]Deployment, error) {
 	var deployments []Deployment
 	err := c.Get(fmt.Sprintf("/agents/%s/deployments", agentID), &deployments)
 	if err != nil {
 		return nil, err
 	}
+	sort.SliceStable(deployments, func(i, j int) bool {
+		if deployments[i].Version != deployments[j].Version {
+			return deployments[i].Version > deployments[j].Version
+		}
+		return deployments[i].CreatedAt.After(deployments[j].CreatedAt)
+	})
 	return deployments, nil
 }
 
@@ -135,9 +148,9 @@ func (c *Client) GetDeploymentLogs(agentID string, tail int) ([]LogEntry, error)
 
 // LogQuery bundles the query parameters the server understands.
 type LogQuery struct {
-	Tail    int    // default 50, max 1000 when > 0
-	Since   string // e.g. "1h", "30m", "45s"
-	Search  string // ILIKE match on message
+	Tail         int    // default 50, max 1000 when > 0
+	Since        string // e.g. "1h", "30m", "45s"
+	Search       string // ILIKE match on message
 	Level        string // comma-separated bucket(s): INFO,WARN,ERROR,DEBUG,SYSTEM
 	Stream       string // comma-separated stream(s): stdout,stderr,system
 	AfterID      int64  // forward pagination: return logs with id > AfterID, ASC order

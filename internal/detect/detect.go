@@ -13,7 +13,6 @@ import (
 type ProjectHints struct {
 	Runtime          string      // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "node20-ts", "node22-ts", "bun", "dockerfile"
 	Entrypoint       string      // e.g. "main.py", "index.js", "index.ts" — empty for dockerfile runtime
-	VectorDB         bool        // qdrant_memory folder found
 	Frameworks       []Framework // every row of the framework table the project declares (frameworks.go)
 	HasPyprojectToml bool        // pyproject.toml found (uv or PEP 517 project)
 	HasUvLock        bool        // uv.lock found alongside pyproject.toml (uv project mode)
@@ -27,9 +26,6 @@ func Project(dir string) ProjectHints {
 	// the user owns the entire container; entrypoint is irrelevant.
 	if fileExists(filepath.Join(dir, "Dockerfile")) {
 		hints.Runtime = "dockerfile"
-		if dirExists(filepath.Join(dir, "qdrant_memory")) {
-			hints.VectorDB = true
-		}
 		return hints
 	}
 
@@ -96,9 +92,6 @@ func Project(dir string) ProjectHints {
 		}
 	}
 
-	if dirExists(filepath.Join(dir, "qdrant_memory")) {
-		hints.VectorDB = true
-	}
 	hints.Frameworks = DetectFrameworks(dir)
 
 	return hints
@@ -214,9 +207,4 @@ func ParseNodeVersion(s string) string {
 func fileExists(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && !info.IsDir()
-}
-
-func dirExists(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }

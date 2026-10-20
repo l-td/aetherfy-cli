@@ -2,9 +2,8 @@ package cmd
 
 // afy collections regions / move: the two control-plane changes to one
 // collection. The collection is found by name through the vectors API, in the
-// workspace the request is scoped to (--workspace, AETHERFY_WORKSPACE, or
-// none) like every collections command, which answers its id; the change goes
-// to the control plane by that id.
+// workspace the request is scoped to like every collections command, which
+// answers its id; the change goes to the control plane by that id.
 //
 // TWO STEPS FOR A CHANGE THAT COPIES OR DELETES DATA. A regions change shows
 // the server's preview -- built by the same planner the change runs, so it
@@ -221,24 +220,23 @@ func regionsJSON(r *vecRun, name string, p *api.RegionsChangePreview, change *ap
 
 var collectionsMoveCmd = &cobra.Command{
 	Use:   "move <name>",
-	Short: "Move a collection to another workspace, or out of any",
-	Long: `Move a collection to another workspace, or out of any (--to ""; on
-Windows PowerShell 5.1, which drops an empty argument, write --to= instead; a
---to value starting with "-" is refused, exit 2, as what a dropped "" leaves).
+	Short: "Move a collection to another workspace",
+	Long: `Move a collection to another workspace.
 
 A move changes only which workspace reaches the collection: its regions and
 its data stay where they are, so the target must allow every region it is
-placed in. Its aliases are deleted; recreate the ones you need. The collection
-is found in the workspace --workspace names, like every collections command,
-and --to names where it goes. It copies nothing, so it asks nothing.
+placed in. Its aliases move with it. A workspace that already has a collection
+or an alias of that name is refused before anything starts. The collection is
+found in the workspace --workspace names, like every collections command, and
+--to names where it goes. It copies nothing, so it asks nothing.
 
 --wait follows the move to the end: exit 1 if it fails, 4 if it is still
 running after 30 minutes.`,
-	Example: `  # Move a collection from no workspace into "research"
-  afy collections move articles --to research
+	Example: `  # Move a collection from "default" into "research"
+  afy collections move articles --workspace default --to research
 
-  # Move it back out of any workspace, and wait for it
-  afy collections move articles --workspace research --to "" --wait`,
+  # The same, and wait for it
+  afy collections move articles --workspace default --to research --wait`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		toSet := cmd.Flags().Changed("to")
@@ -255,7 +253,10 @@ var (
 
 func collectionsMove(r *vecRun, name, to string, toSet, wait bool) int {
 	if !toSet {
-		return r.fail(refuse("--to is required: the workspace to move collection '%s' to, or \"\" for none", name))
+		return r.fail(refuse("--to is required: the workspace to move collection '%s' to", name))
+	}
+	if to == "" {
+		return r.fail(refuse("--to got an empty workspace name: every collection lives in a named workspace. Nothing was sent."))
 	}
 	if err := refuseFlagLikeValue("to", to); err != nil {
 		return r.fail(err)
@@ -269,15 +270,11 @@ func collectionsMove(r *vecRun, name, to string, toSet, wait bool) int {
 		return r.fail(err)
 	}
 	cp := r.controlPlane()
-	var target *string
-	if to != "" {
-		ws, err := cp.GetWorkspace(to)
-		if err != nil {
-			return r.fail(err)
-		}
-		target = &ws.ID
+	ws, err := cp.GetWorkspace(to)
+	if err != nil {
+		return r.fail(err)
 	}
-	change, err := cp.MoveCollection(col.ID, target)
+	change, err := cp.MoveCollection(col.ID, ws.ID)
 	if err != nil {
 		return r.fail(err)
 	}
@@ -296,15 +293,12 @@ func collectionsMove(r *vecRun, name, to string, toSet, wait bool) int {
 		out := struct {
 			vecEnvelope
 			Collection  string         `json:"collection"`
-			To          *string        `json:"to"`
+			To          string         `json:"to"`
 			NoOp        bool           `json:"no_op"`
 			Regions     []string       `json:"regions"`
 			OperationID *string        `json:"operation_id"`
 			Operation   *api.Operation `json:"operation"`
-		}{vecEnvelope: r.envelope(), Collection: name, NoOp: change.NoOp, Regions: change.Regions, Operation: op}
-		if to != "" {
-			out.To = &to
-		}
+		}{vecEnvelope: r.envelope(), Collection: name, To: to, NoOp: change.NoOp, Regions: change.Regions, Operation: op}
 		if change.OperationID != "" {
 			id := change.OperationID
 			out.OperationID = &id
@@ -315,11 +309,11 @@ func collectionsMove(r *vecRun, name, to string, toSet, wait bool) int {
 	case change.NoOp:
 		fmt.Fprintf(r.stdout, "No change: collection '%s' is already in %s.\n", name, workspaceLabel(to))
 	case op != nil:
-		fmt.Fprintf(r.stdout, "Collection '%s' moved to %s. Its data and regions are unchanged; its aliases were deleted.\n",
+		fmt.Fprintf(r.stdout, "Collection '%s' moved to %s. Its data and regions are unchanged; its aliases moved with it.\n",
 			name, workspaceLabel(to))
 	default:
 		fmt.Fprintf(r.stdout, "Collection '%s' is moving to %s (operation %s). Its data and regions stay where they are; "+
-			"its aliases are deleted. Pass --wait to follow the move.\n", name, workspaceLabel(to), change.OperationID)
+			"its aliases move with it. Pass --wait to follow the move.\n", name, workspaceLabel(to), change.OperationID)
 	}
 	return 0
 }
@@ -384,7 +378,7 @@ func init() {
 	collectionsRegionsCmd.Flags().BoolVarP(&collectionRegionsYes, "yes", "y", false, "Make the change without asking")
 	collectionsRegionsCmd.Flags().BoolVar(&collectionRegionsWait, "wait", false, "Follow the change to the end (exit 1 if it fails, 4 if still running after 30 minutes)")
 
-	collectionsMoveCmd.Flags().StringVar(&collectionMoveTo, "to", "", "Workspace to move the collection to (\"\" for none, written --to= on Windows PowerShell 5.1), required")
+	collectionsMoveCmd.Flags().StringVar(&collectionMoveTo, "to", "", "Workspace to move the collection to, required")
 	collectionsMoveCmd.Flags().BoolVar(&collectionMoveWait, "wait", false, "Follow the move to the end (exit 1 if it fails, 4 if still running after 30 minutes)")
 
 	collectionsCmd.AddCommand(collectionsRegionsCmd)

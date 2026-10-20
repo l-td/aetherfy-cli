@@ -200,7 +200,6 @@ func TestProject_PythonWithMainPy(t *testing.T) {
 	h := detect.Project(dir)
 	assert.Equal(t, "python3.12", h.Runtime)
 	assert.Equal(t, "main.py", h.Entrypoint)
-	assert.False(t, h.VectorDB)
 	assert.Empty(t, h.Frameworks)
 }
 
@@ -382,15 +381,6 @@ func TestProject_PackageJsonTakesPriorityOverBunfig(t *testing.T) {
 	assert.Equal(t, "index.js", h.Entrypoint)
 }
 
-func TestProject_VectorDB(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "qdrant_memory"), 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "requirements.txt"), []byte("qdrant-client\n"), 0644))
-
-	h := detect.Project(dir)
-	assert.True(t, h.VectorDB)
-}
-
 // ─── Framework detection (internal/detect/frameworks.go) ─────────────────────
 
 func writePackageJSON(t *testing.T, dir string, deps, devDeps map[string]string) {
@@ -540,7 +530,6 @@ func TestProject_Dockerfile(t *testing.T) {
 	h := detect.Project(dir)
 	assert.Equal(t, "dockerfile", h.Runtime)
 	assert.Equal(t, "", h.Entrypoint) // entrypoint is irrelevant for dockerfile runtime
-	assert.False(t, h.VectorDB)
 }
 
 func TestProject_DockerfileTakesPriorityOverPython(t *testing.T) {
@@ -567,22 +556,11 @@ func TestProject_DockerfileTakesPriorityOverNode(t *testing.T) {
 	assert.Equal(t, "", h.Entrypoint)
 }
 
-func TestProject_DockerfileWithVectorDB(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM alpine\n"), 0644))
-	require.NoError(t, os.MkdirAll(filepath.Join(dir, "qdrant_memory"), 0755))
-
-	h := detect.Project(dir)
-	assert.Equal(t, "dockerfile", h.Runtime)
-	assert.True(t, h.VectorDB)
-}
-
 func TestProject_Empty(t *testing.T) {
 	dir := t.TempDir()
 	h := detect.Project(dir)
 	assert.Equal(t, "", h.Runtime)
 	assert.Equal(t, "", h.Entrypoint)
-	assert.False(t, h.VectorDB)
 	assert.Empty(t, h.Frameworks)
 	assert.False(t, h.HasUvLock)
 }

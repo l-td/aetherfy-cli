@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -17,12 +16,12 @@ var deploymentsCmd = &cobra.Command{
 
 Shows version, state, the release a run executed, creation time, and error
 message for failed deployments.
-Use --output json for machine-readable output.`,
+Use --json for machine-readable output.`,
 	Example: `  # List deployments for an agent
   afy deployments my-agent
 
   # JSON output
-  afy deployments my-agent --output json`,
+  afy deployments my-agent --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: runDeployments,
 }
@@ -44,30 +43,27 @@ func printDeployments(client *api.Client, agentID string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to list deployments: %v", err)
-		return nil
+		return printRefusal("Failed to list deployments", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(deployments)
 	}
 
 	if len(deployments) == 0 {
 		output.PrintInfo("No deployments found for agent '%s'", agentID)
 		output.Println("")
-		output.Printf("Deploy with: afy deploy --agent %s\n", agentID)
+		// A deploy goes to the agent a folder links (.aetherfy/agent.json).
+		output.Printf("Deploy from its code: afy init --agent %s (once, to link the folder), then afy deploy\n", agentID)
 		return nil
 	}
 
 	table := output.Table([]string{"Version", "State", "Release", "Created", "Error"})
+	var cut []api.Deployment // rows whose error the table shortened
 	for _, d := range deployments {
-		errMsg := ""
-		if d.ErrorMessage != "" {
-			// Truncate long errors for the table
-			errMsg = d.ErrorMessage
-			if len(errMsg) > 60 {
-				errMsg = errMsg[:57] + "..."
-			}
+		errMsg, shortened := shortenError(d.ErrorMessage)
+		if shortened {
+			cut = append(cut, d)
 		}
 		// A degraded deploy stays state=active and converges in the background
 		// (control-plane REVIEW_FAQ §63); flag it inline with the N/M region
@@ -88,6 +84,18 @@ func printDeployments(client *api.Client, agentID string) error {
 		})
 	}
 	table.Render()
+
+	// THE FULL SENTENCE OF EVERY ERROR THE TABLE CUT. A refusal is written for
+	// the person reading it (a push without aetherfy.yaml names the repo,
+	// commit, branch and path it looked in; a frozen account says what to
+	// reduce), and its end is where the fix is. The table keeps its width;
+	// the sentence is printed whole below it.
+	if len(cut) > 0 {
+		output.Println("")
+		for _, d := range cut {
+			output.Printf("v%d error: %s\n", d.Version, d.ErrorMessage)
+		}
+	}
 
 	output.Println("")
 	output.Dim.Printf("Total: %d deployment(s)\n", len(deployments))
@@ -184,4 +192,20 @@ func formatDeployState(state string) string {
 	default:
 		return state
 	}
+}
+
+// errorColumnWidth is how many characters of an error the deployments table
+// shows; a longer one is cut there, with an ellipsis, and printed in full
+// below the table.
+const errorColumnWidth = 60
+
+// shortenError fits msg to the table's error column, cutting on characters
+// (never inside a multi-byte one, as a byte cut of "—" would), and says
+// whether it cut.
+func shortenError(msg string) (string, bool) {
+	r := []rune(msg)
+	if len(r) <= errorColumnWidth {
+		return msg, false
+	}
+	return string(r[:errorColumnWidth-3]) + "...", true
 }

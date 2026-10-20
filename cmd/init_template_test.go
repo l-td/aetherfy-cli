@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -8,28 +9,14 @@ import (
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/archive"
+	"github.com/l-td/aetherfy-cli/internal/detect"
+	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/starters"
-	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 )
 
-// runInitCmd drives `afy init` through the root command, exactly as a user
-// types it, and resets every init flag afterwards: they are package globals,
-// and a value left behind would leak into the next test.
-func runInitCmd(t *testing.T, args ...string) (string, error) {
-	t.Helper()
-	defer func() {
-		initCmd.Flags().VisitAll(func(f *pflag.Flag) {
-			_ = f.Value.Set(f.DefValue)
-			f.Changed = false
-		})
-		rootCmd.SetArgs(nil)
-	}()
-	rootCmd.SetArgs(append([]string{"init"}, args...))
-	var err error
-	out := captureStdout(t, func() { err = rootCmd.Execute() })
-	return out, err
-}
+// afy init --template: a NEW agent from a starter project. The starter's files
+// are written once the agent exists, then aetherfy.yaml and the link.
 
 func readYAML(t *testing.T, path string) map[string]any {
 	t.Helper()
@@ -49,14 +36,15 @@ func readYAML(t *testing.T, path string) map[string]any {
 
 // Every starter: its files are written, aetherfy.yaml presets the starter's
 // runtime and entrypoint as a service, the file is one the server accepts, and
-// the scan that follows prints the framework advice for what was written.
+// the agent is created under the directory's name and linked.
 func TestInitTemplateWritesTheStarterAndItsYAML(t *testing.T) {
 	for _, s := range starters.All {
 		t.Run(s.Name, func(t *testing.T) {
 			dir := filepath.Join(t.TempDir(), "my-agent")
-			out, err := runInitCmd(t, "--template", s.Name, dir)
+			cp := initCP(t)
+			stdout, stderr, err := runAfy(t, cp, "init", "--template", s.Name, dir, "-y")
 			if err != nil {
-				t.Fatalf("afy init --template %s: %v\n%s", s.Name, err, out)
+				t.Fatalf("afy init --template %s: %v\n%s%s", s.Name, err, stdout, stderr)
 			}
 			files, err := s.Files()
 			if err != nil {
@@ -75,17 +63,45 @@ func TestInitTemplateWritesTheStarterAndItsYAML(t *testing.T) {
 			if doc["runtime"] != s.Runtime || doc["entrypoint"] != s.Entrypoint || doc["type"] != "service" {
 				t.Errorf("aetherfy.yaml = %v; want runtime %s, entrypoint %s, type service", doc, s.Runtime, s.Entrypoint)
 			}
-			if doc["name"] != "my-agent" {
-				t.Errorf("name = %v; want the directory's name", doc["name"])
+			posts := cp.called("POST", "/agents")
+			if len(posts) != 1 || posts[0].Body["name"] != "my-agent" {
+				t.Errorf("want one POST /agents named after the directory, got %+v", posts)
 			}
-			// DETECTION AGREES WITH THE PRESET: the scan of the written
-			// starter reaches the same runtime, so init never prints one
-			// runtime and writes another (.python-version / engines.node).
-			if !strings.Contains(out, "Detected runtime: "+s.Runtime+"\n") {
-				t.Errorf("the scan of %s did not detect %s:\n%s", s.Name, s.Runtime, out)
+			if f, err := link.Read(dir); err != nil || f.Targets["default"] != prodID {
+				t.Errorf("link = %+v, %v; want {default: %s}", f, err, prodID)
 			}
-			if !strings.Contains(out, "in dependencies — ") {
-				t.Errorf("no framework advice line after writing %s:\n%s", s.Name, out)
+		})
+	}
+}
+
+// DETECTION AGREES WITH THE PRESET. The preset is what aetherfy.yaml says; a
+// scan of the same files (what every later `afy init`, and the framework advice,
+// reads) must reach the same runtime and entrypoint, or init would print one
+// runtime and the folder say another (.python-version / engines.node). And every
+// starter is a framework the table knows, so its advice line is not silent.
+func TestEveryStarterIsDetectedAsItsPreset(t *testing.T) {
+	for _, s := range starters.All {
+		t.Run(s.Name, func(t *testing.T) {
+			dir := t.TempDir()
+			files, err := s.Files()
+			if err != nil {
+				t.Fatal(err)
+			}
+			for p, b := range files {
+				if err := os.MkdirAll(filepath.Dir(filepath.Join(dir, p)), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, p), b, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			h := detect.Project(dir)
+			if h.Runtime != s.Runtime || h.Entrypoint != s.Entrypoint {
+				t.Errorf("the scan of %s reached runtime %q, entrypoint %q; the preset is %q, %q",
+					s.Name, h.Runtime, h.Entrypoint, s.Runtime, s.Entrypoint)
+			}
+			if len(h.Frameworks) == 0 {
+				t.Errorf("no framework detected in %s: its advice line would be silent", s.Name)
 			}
 		})
 	}
@@ -94,8 +110,9 @@ func TestInitTemplateWritesTheStarterAndItsYAML(t *testing.T) {
 // A flag still wins over the starter's preset.
 func TestInitTemplateFlagsOverrideThePreset(t *testing.T) {
 	dir := t.TempDir()
-	if out, err := runInitCmd(t, "--template", "node-ts-hono", "--runtime", "node20-ts", dir); err != nil {
-		t.Fatalf("%v\n%s", err, out)
+	cp := initCP(t)
+	if stdout, stderr, err := runAfy(t, cp, "init", "--template", "node-ts-hono", "--runtime", "node20-ts", dir, "-y"); err != nil {
+		t.Fatalf("%v\n%s%s", err, stdout, stderr)
 	}
 	if doc := readYAML(t, filepath.Join(dir, "aetherfy.yaml")); doc["runtime"] != "node20-ts" {
 		t.Errorf("runtime = %v; --runtime should win over the starter's preset", doc["runtime"])
@@ -103,16 +120,22 @@ func TestInitTemplateFlagsOverrideThePreset(t *testing.T) {
 }
 
 // NOTHING IS OVERWRITTEN, AND NOTHING IS HALF-WRITTEN. One existing file makes
-// the whole template refuse, before the first file is created.
+// the whole template refuse, before the agent is created and before the first
+// file is written.
 func TestInitTemplateRefusesToOverwrite(t *testing.T) {
 	dir := t.TempDir()
 	mine := []byte("my own README\n")
 	if err := os.WriteFile(filepath.Join(dir, "README.md"), mine, 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := runInitCmd(t, "--template", "python-fastapi", dir)
-	if err == nil || !strings.Contains(err.Error(), "README.md") || !strings.Contains(err.Error(), "--force") {
-		t.Fatalf("err = %v; want a refusal naming README.md and --force", err)
+	cp := initCP(t)
+	stdout, stderr, err := runAfy(t, cp, "init", "--template", "python-fastapi", dir, "-y")
+	refusal := stdout + stderr
+	if err == nil || !strings.Contains(refusal+err.Error(), "README.md") || !strings.Contains(refusal+err.Error(), "--force") {
+		t.Fatalf("err = %v\n%s; want a refusal naming README.md and --force", err, refusal)
+	}
+	if n := len(cp.called("POST", "/agents")); n != 0 {
+		t.Errorf("an agent was created (%d) although the template refused", n)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "README.md")); string(got) != string(mine) {
 		t.Error("the customer's README.md was changed")
@@ -127,11 +150,16 @@ func TestInitTemplateRefusesToOverwrite(t *testing.T) {
 // aetherfy.yaml counts as a conflict too.
 func TestInitTemplateRefusesAnExistingConfig(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "aetherfy.yaml"), []byte("name: x\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "aetherfy.yaml"), []byte("runtime: node22\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runInitCmd(t, "--template", "node-express", dir); err == nil || !strings.Contains(err.Error(), "aetherfy.yaml") {
-		t.Fatalf("err = %v; want a refusal naming aetherfy.yaml", err)
+	cp := initCP(t)
+	stdout, stderr, err := runAfy(t, cp, "init", "--template", "node-express", dir, "-y")
+	if err == nil || !strings.Contains(stdout+stderr+err.Error(), "aetherfy.yaml") {
+		t.Fatalf("err = %v\n%s%s; want a refusal naming aetherfy.yaml", err, stdout, stderr)
+	}
+	if len(cp.called("POST", "/agents")) != 0 {
+		t.Error("an agent was created although the template refused")
 	}
 }
 
@@ -140,39 +168,106 @@ func TestInitTemplateForceOverwrites(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "main.py"), []byte("old\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if out, err := runInitCmd(t, "--template", "python-litestar", "--force", dir); err != nil {
-		t.Fatalf("%v\n%s", err, out)
+	cp := initCP(t)
+	if stdout, stderr, err := runAfy(t, cp, "init", "--template", "python-litestar", "--force", dir, "-y"); err != nil {
+		t.Fatalf("%v\n%s%s", err, stdout, stderr)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "main.py")); !strings.Contains(string(got), "Litestar") {
 		t.Error("--force did not replace main.py")
 	}
 }
 
+// A REFUSED CREATE WRITES NOTHING. The starter is written once the agent
+// exists, so a name that is already taken leaves the folder as it was and the
+// same command can be run again with another --name.
+func TestInitTemplateWritesNothingWhenTheCreateIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	cp := initCP(t)
+	cp.on("POST", "/agents", 409, `{"detail":{"code":"AGENT_NAME_TAKEN","message":"That name is taken."}}`)
+	_, _, err := runAfy(t, cp, "init", "--template", "python-fastapi", dir, "-y", "--name", "taken")
+	if err == nil {
+		t.Fatal("a refused create reported success")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("the folder was written to although no agent was created: %v", entries)
+	}
+}
+
 func TestInitTemplateUnknownNameListsTheRealOnes(t *testing.T) {
-	_, err := runInitCmd(t, "--template", "python-flask", t.TempDir())
+	cp := initCP(t)
+	stdout, stderr, err := runAfy(t, cp, "init", "--template", "python-flask", t.TempDir(), "-y")
 	if err == nil {
 		t.Fatal("an unknown template was accepted")
 	}
 	for _, name := range starters.Names() {
-		if !strings.Contains(err.Error(), name) {
-			t.Errorf("the refusal does not name %s: %v", name, err)
+		if !strings.Contains(stdout+stderr+err.Error(), name) {
+			t.Errorf("the refusal does not name %s: %v\n%s%s", name, err, stdout, stderr)
 		}
+	}
+	if len(cp.called("POST", "/agents")) != 0 {
+		t.Error("an agent was created for an unknown template")
 	}
 }
 
+// A template makes a NEW agent; --agent links an existing one. Together they
+// mean nothing, so they are refused before anything is asked of the server.
+func TestInitTemplateRefusesToCombineWithAgent(t *testing.T) {
+	dir := t.TempDir()
+	cp := initCP(t)
+	_, _, err := runAfy(t, cp, "init", "--template", "node-express", "--agent", "invoice-parser", dir, "-y")
+	if err == nil || ExitCode(err) != exitInputRefused {
+		t.Fatalf("err = %v; want an input refusal", err)
+	}
+	if len(cp.all()) != 0 {
+		t.Errorf("the server was called: %+v", cp.all())
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Errorf("the folder was written to: %v", entries)
+	}
+}
+
+// --list-templates reads the binary: no account, no server, no files.
 func TestInitListTemplates(t *testing.T) {
 	dir := t.TempDir()
-	out, err := runInitCmd(t, "--list-templates", dir)
+	cp := newFakeCP(t)
+	stdout, stderr, err := runAfy(t, cp, "init", "--list-templates", dir)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("%v\n%s", err, stderr)
 	}
 	for _, s := range starters.All {
-		if !strings.Contains(out, s.Name) || !strings.Contains(out, s.Runtime) {
-			t.Errorf("--list-templates does not list %s (%s):\n%s", s.Name, s.Runtime, out)
+		if !strings.Contains(stdout, s.Name) || !strings.Contains(stdout, s.Runtime) {
+			t.Errorf("--list-templates does not list %s (%s):\n%s", s.Name, s.Runtime, stdout)
 		}
+	}
+	if len(cp.all()) != 0 {
+		t.Errorf("--list-templates called the server: %+v", cp.all())
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Errorf("--list-templates wrote files: %v", entries)
+	}
+}
+
+// With --json the list is the result, in the CLI's one JSON contract: the
+// human text goes to stderr, stdout carries one object.
+func TestInitListTemplatesJSON(t *testing.T) {
+	stdout, _, err := runAfy(t, nil, "init", "--list-templates", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Templates []map[string]string `json:"templates"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
+	}
+	if len(got.Templates) != len(starters.All) {
+		t.Fatalf("%d templates listed, want %d", len(got.Templates), len(starters.All))
+	}
+	for i, s := range starters.All {
+		g := got.Templates[i]
+		if g["name"] != s.Name || g["runtime"] != s.Runtime || g["entrypoint"] != s.Entrypoint || g["description"] != s.Description {
+			t.Errorf("template %d = %v, want %+v", i, g, s)
+		}
 	}
 }
 

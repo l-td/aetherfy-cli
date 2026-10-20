@@ -58,7 +58,8 @@ type Client struct {
 type sender func(method, url string, body []byte, headers http.Header, timeout time.Duration) (int, []byte, error)
 
 // New builds a client for an already-resolved endpoint (see Resolve).
-// workspace "" means no workspace: collections are not namespaced.
+// Every collection lives in a workspace, so workspace is always named: the
+// vectors API refuses a collection path without one (400 WORKSPACE_REQUIRED).
 func New(endpoint, apiKey, workspace string) *Client {
 	return &Client{
 		endpoint:      strings.TrimRight(endpoint, "/"),
@@ -76,7 +77,7 @@ func New(endpoint, apiKey, workspace string) *Client {
 // Endpoint is the base URL requests go to, without /api/v1.
 func (c *Client) Endpoint() string { return c.endpoint }
 
-// Workspace is the workspace collection names are scoped to, "" for none.
+// Workspace is the workspace collection names are scoped to.
 func (c *Client) Workspace() string { return c.workspace }
 
 func httpSend(method, target string, body []byte, headers http.Header, timeout time.Duration) (int, []byte, error) {
@@ -108,24 +109,17 @@ func apiURL(endpoint, path string) string {
 	return strings.TrimRight(endpoint, "/") + "/api/v1/" + strings.TrimLeft(path, "/")
 }
 
-// collectionPath is the SDKs' _build_collection_path: the nested
-// workspaces/{ws}/collections/{name} form when a workspace is set, else the
-// flat one. Every segment is escaped whole, "/" included, as quote(safe="")
-// does, so a name cannot split into two segments.
+// collectionPath is the SDKs' _build_collection_path:
+// workspaces/{ws}/collections/{name}. There is no flat form: every collection
+// lives in a workspace. Every segment is escaped whole, "/" included, as
+// quote(safe="") does, so a name cannot split into two segments.
 func (c *Client) collectionPath(name, suffix string) string {
-	enc := url.PathEscape(name)
-	if c.workspace != "" {
-		return "workspaces/" + url.PathEscape(c.workspace) + "/collections/" + enc + suffix
-	}
-	return "collections/" + enc + suffix
+	return "workspaces/" + url.PathEscape(c.workspace) + "/collections/" + url.PathEscape(name) + suffix
 }
 
 // collectionsPath is the SDKs' _build_collections_list_path.
 func (c *Client) collectionsPath() string {
-	if c.workspace != "" {
-		return "workspaces/" + url.PathEscape(c.workspace) + "/collections"
-	}
-	return "collections"
+	return "workspaces/" + url.PathEscape(c.workspace) + "/collections"
 }
 
 func (c *Client) headers(withBody bool) http.Header {
@@ -145,6 +139,12 @@ func (c *Client) headers(withBody bool) http.Header {
 // out (when out is not nil). A non-2xx answer is an *APIError; no answer is a
 // *TimeoutError or a *NetworkError. Nothing is retried here.
 func (c *Client) do(method, path string, body interface{}, timeout time.Duration, out interface{}) error {
+	return c.doWith(method, path, body, nil, timeout, out)
+}
+
+// doWith is do with extra request headers (the schema write's If-Match), set
+// over the client's own.
+func (c *Client) doWith(method, path string, body interface{}, extra http.Header, timeout time.Duration, out interface{}) error {
 	var payload []byte
 	if body != nil {
 		var err error
@@ -152,7 +152,11 @@ func (c *Client) do(method, path string, body interface{}, timeout time.Duration
 			return fmt.Errorf("encoding the request: %w", err)
 		}
 	}
-	status, data, err := c.send(method, apiURL(c.endpoint, path), payload, c.headers(body != nil), timeout)
+	headers := c.headers(body != nil)
+	for k, v := range extra {
+		headers[k] = v
+	}
+	status, data, err := c.send(method, apiURL(c.endpoint, path), payload, headers, timeout)
 	if err != nil {
 		if isTimeout(err) {
 			return &TimeoutError{Message: fmt.Sprintf("Request to %s timed out after %s seconds", path, seconds(timeout))}
@@ -206,7 +210,11 @@ func (e *NetworkError) Error() string { return e.Message }
 // twenty files under backend/); middleware/errorHandler.js has an ERROR_CODES
 // map, but only its global handler uses it, and most codes a route answers
 // (NOT_FOUND, COLLECTION_LIST_ERROR, INVALID_POINT_ID, ...) are not in it. So
-// nothing here switches on a code: the CLI prints it and exits non-zero.
+// nothing here switches on a code: the CLI prints it and exits non-zero. The
+// one exception is `afy collections schema set` (cmd/collection_schema.go),
+// which branches on the two codes the contract sheet's 1.5 makes public:
+// SCHEMA_NOT_DEFINED (no schema yet) and SCHEMA_VERSION_MISMATCH (a stale
+// If-Match).
 type APIError struct {
 	Status  int
 	Code    string

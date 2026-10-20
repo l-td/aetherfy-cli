@@ -9,9 +9,31 @@ permissions:
   contents: write
 
 jobs:
+  # THE MAC GATE. A release never ships a darwin build that has not run on a
+  # Mac: the publishing job below needs this one green. It runs on the tag
+  # itself, because a `needs:` cannot reach CI's macOS job (another workflow).
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Run tests
+        run: go test -v -race ./...
+
   release:
     name: Release
     runs-on: ubuntu-latest
+    needs: test-macos
     steps:
       - name: Checkout
         uses: actions/checkout@v7

@@ -1,42 +1,64 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/detect"
+	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/starters"
-	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
-	"golang.org/x/term"
 )
+
+// yamlSchemaModeline is aetherfy.yaml's first line: an editor that speaks the
+// yaml-language-server protocol validates and completes the file against the
+// published schema. The control plane's export starts with the same line.
+const yamlSchemaModeline = "# yaml-language-server: $schema=https://docs.aetherfy.com/aetherfy-yaml.schema.json"
 
 var initCmd = &cobra.Command{
 	Use:   "init [path]",
-	Short: "Initialize an aetherfy.yaml configuration file",
-	Long: `Scan the current directory and generate an aetherfy.yaml configuration file.
+	Short: "Create an agent for this folder, or link it to an existing one",
+	Long: `Set up a folder to deploy to an agent.
 
-The command detects your project type and asks a few questions to build a
-configuration that is ready to deploy. Run 'afy deploy' when you are satisfied
-with the generated file.
+With no --agent, creates a NEW agent: scans the folder, asks which workspace
+the agent lives in and how it runs, creates the agent, writes aetherfy.yaml
+and links the folder to the agent (.aetherfy/agent.json).
 
-All prompts can be skipped by providing flags directly, or pass -y/--yes to
-accept every prompt's default without asking (useful for scripting/CI).`,
-	Example: `  # Interactive
+With --agent <name>, links the folder to an EXISTING agent. If the folder has
+no aetherfy.yaml yet, the agent's current configuration is written as one
+(this also works in an empty folder); an existing aetherfy.yaml is kept unless
+--force.
+
+--target names the link (default: "default"); other targets in the file are
+left alone. That is how one codebase deploys to several agents:
+'afy init --agent invoice-parser-staging --target staging', then
+'afy deploy --target staging'.
+
+Commit .aetherfy/ so every clone and CI job deploys to the same agent.
+
+The regions and memory sizes offered are the ones your plan allows, read from
+the server. All prompts can be skipped by providing flags, or pass -y/--yes to
+accept every default (useful for scripting/CI).`,
+	Example: `  # Create an agent for this folder (interactive)
   afy init
-  afy init ./my-agent
 
   # Accept all defaults (non-interactive)
-  afy init -y
+  afy init -y --workspace default
 
-  # Non-interactive (all flags provided)
-  afy init --name my-bot --runtime python3.11 --type service --region us-east-1 --memory 256
+  # Link this folder to an existing agent
+  afy init --agent invoice-parser
 
-  # Start from a starter project (see --list-templates)
+  # Add a staging target pointing at another agent
+  afy init --agent invoice-parser-staging --target staging
+
+  # Start a new agent from a starter project (see --list-templates)
   afy init --template node-ts-hono ./my-agent
   afy init --list-templates`,
 	Args: cobra.MaximumNArgs(1),
@@ -45,13 +67,15 @@ accept every prompt's default without asking (useful for scripting/CI).`,
 
 var (
 	initName       string
+	initAgent      string
+	initTarget     string
+	initWorkspace  string
 	initRuntime    string
 	initEntrypoint string
 	initType       string
 	initRegion     string
 	initMemory     int
 	initKeepAlive  bool
-	initWorkspace  bool
 	initForce      bool
 	initYes        bool
 	initSchedule   string
@@ -60,17 +84,19 @@ var (
 )
 
 func init() {
-	initCmd.Flags().StringVar(&initName, "name", "", "Agent name (skips prompt)")
-	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile (skips prompt)")
+	initCmd.Flags().StringVar(&initName, "name", "", "Name of the new agent (skips prompt)")
+	initCmd.Flags().StringVar(&initAgent, "agent", "", "Link this folder to this existing agent instead of creating one")
+	initCmd.Flags().StringVar(&initTarget, "target", link.DefaultTarget, "Name of the link written (other targets are kept)")
+	initCmd.Flags().StringVar(&initWorkspace, "workspace", "", "Workspace the new agent lives in (asked when the account has several)")
+	initCmd.Flags().StringVar(&initRuntime, "runtime", "", "Runtime, one the server accepts (afy init lists them; skips prompt)")
 	initCmd.Flags().StringVar(&initEntrypoint, "entrypoint", "", "Entrypoint file, e.g. main.py or index.js (skips prompt)")
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
-	initCmd.Flags().StringVar(&initRegion, "region", "", "Region: us-east-1, eu-central-1, ap-southeast-1 (skips prompt)")
-	initCmd.Flags().IntVar(&initMemory, "memory", 0, "Memory in MB: 256, 512, 1024 (skips prompt)")
+	initCmd.Flags().StringVar(&initRegion, "region", "", "Region, one your plan allows (skips prompt)")
+	initCmd.Flags().IntVar(&initMemory, "memory", 0, "Memory in MB, a size your plan allows (skips prompt)")
 	initCmd.Flags().BoolVar(&initKeepAlive, "keep-alive", false, "Enable always-on billing (skips billing prompt)")
-	initCmd.Flags().BoolVar(&initWorkspace, "workspace", false, "Enable VectorDB workspace (skips workspace prompt)")
-	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite existing aetherfy.yaml without asking")
+	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite an existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
-	initCmd.Flags().StringVar(&initTemplate, "template", "", "Write a starter project first (see --list-templates), then aetherfy.yaml for it")
+	initCmd.Flags().StringVar(&initTemplate, "template", "", "Create the new agent from a starter project (see --list-templates): its files are written, then aetherfy.yaml for it")
 	initCmd.Flags().BoolVar(&initListTempl, "list-templates", false, "List the starter projects --template can write, and exit")
 	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
 }
@@ -89,7 +115,7 @@ var (
 // When false (CI, piped input, e2e tests), prompts are skipped and
 // defaults are used for any missing flags.
 func isInteractive() bool {
-	return term.IsTerminal(int(os.Stdin.Fd()))
+	return stdinIsTerminal()
 }
 
 // slugify turns a string into a safe agent name
@@ -101,11 +127,16 @@ func slugify(s string) string {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	// The list needs no account: it is read from the binary.
 	if initListTempl {
-		printStarters()
-		return nil
+		return printStarters()
 	}
-
+	if initTemplate != "" && cmd.Flags().Changed("agent") {
+		return refuse("--template writes a starter project for a NEW agent; --agent links an existing one. Use one or the other")
+	}
+	if err := checkAuth(); err != nil {
+		return err
+	}
 	dir := "."
 	if len(args) > 0 {
 		dir = args[0]
@@ -114,67 +145,269 @@ func runInit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("invalid path: %w", err)
 	}
+	if strings.TrimSpace(initTarget) == "" {
+		return refuse("--target needs a name")
+	}
+	client := api.NewClient()
+	p := newPrompter() // every question of this run reads from it
+	if cmd.Flags().Changed("agent") {
+		return initLinkExisting(cmd, client, p, absDir, initAgent, initTarget)
+	}
+	return initNewAgent(cmd, client, p, absDir)
+}
+
+// initLinkExisting links dir's target to an existing agent, by its id, and
+// writes the agent's configuration as aetherfy.yaml when the folder has none.
+// The file is the control plane's export, written unchanged: the server owns
+// its shape, its modeline included.
+func initLinkExisting(cmd *cobra.Command, client *api.Client, p *prompter, dir, name, target string) error {
+	if strings.TrimSpace(name) == "" {
+		return refuse("--agent needs the name of the agent to link")
+	}
+	agent, err := client.GetAgent(name)
+	if err != nil {
+		return printRefusal("Failed to find agent '"+name+"'", err)
+	}
+
+	// ONE RULE: export when the agent has a release, generate when it does
+	// not. An existing aetherfy.yaml is kept unless --force.
+	configPath := filepath.Join(dir, "aetherfy.yaml")
+	wroteYAML, generated := false, false
+	if !fileExists(configPath) || initForce {
+		data, err := client.GetAgentYAML(agent.ID)
+		switch {
+		case isNotDeployed(err):
+			// A draft (made with `afy create`): nothing to export, so the
+			// file is generated from this folder, in the draft's workspace.
+			ws, err := workspaceOf(client, agent)
+			if err != nil {
+				return printRefusal("Failed to find agent '"+agent.Name+"''s workspace", err)
+			}
+			gen, err := generateConfig(cmd, client, p, dir, ws, isInteractive() && !initYes)
+			if err != nil {
+				return err
+			}
+			data, generated = []byte(gen.content), true
+		case err != nil:
+			// RELEASE_CONFIG_NOT_ON_RECORD and the rest: as the server wrote them.
+			return printRefusal("Failed to read agent '"+agent.Name+"''s configuration", err)
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(configPath, data, 0o644); err != nil {
+			return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
+		}
+		wroteYAML = true
+	}
+
+	previous := ""
+	if f, err := link.Read(dir); err == nil {
+		previous = f.Targets[target]
+	}
+	if err := link.Write(dir, target, agent.ID); err != nil {
+		return fmt.Errorf("failed to write %s: %w", link.RelPath(), err)
+	}
+
+	output.PrintSuccess("Linked this folder to agent '%s' (target '%s').", agent.Name, target)
+	if previous != "" && previous != agent.ID {
+		output.Dim.Printf("  Target '%s' pointed at agent %s before.\n", target, previous)
+	}
+	switch {
+	case generated:
+		output.PrintInfo("%s has no release yet: wrote a new aetherfy.yaml from this folder; `afy deploy` ships the first release.", agent.Name)
+	case wroteYAML:
+		output.PrintInfo("Wrote aetherfy.yaml from the agent's live release.")
+	default:
+		output.PrintInfo("Kept your aetherfy.yaml (--force replaces it with the agent's current configuration).")
+	}
+	printLinkNextSteps(target)
+	return output.Result(map[string]interface{}{
+		"agent": agent, "target": target, "linked": true,
+		"wrote_aetherfy_yaml": wroteYAML, "generated_aetherfy_yaml": generated,
+	})
+}
+
+func printLinkNextSteps(target string) {
+	output.Println("")
+	output.Println("Commit .aetherfy/ so every clone and CI job deploys to the same agent.")
+	if target == link.DefaultTarget {
+		output.Println("Run 'afy deploy' when you are ready to go live.")
+	} else {
+		output.Println("Run 'afy deploy --target " + target + "' when you are ready to go live.")
+	}
+}
+
+// initNewAgent creates an agent for dir: it asks what it needs, creates the
+// agent (in a workspace, by id), then writes aetherfy.yaml and the link. A
+// refused create writes nothing.
+func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir string) error {
+	if f, err := link.Read(absDir); err == nil {
+		if id, ok := f.Targets[initTarget]; ok {
+			return refuse("this folder's target '%s' is already linked to agent %s. To link it to another "+
+				"existing agent, use 'afy init --agent <name>'; to add a new agent beside it, pass --target <name>", initTarget, id)
+		}
+	} else if !errors.Is(err, link.ErrNotLinked) {
+		return err
+	}
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
 
-	// A starter is written BEFORE the scan, so detection reads it like any
-	// other project and the advice lines below describe what was written.
-	// Its conflict check covers aetherfy.yaml too, so the overwrite prompt
-	// below is not asked a second time.
-	starter, err := writeStarter(absDir, configPath)
+	// A starter is CHECKED here and WRITTEN only once the agent exists, so a
+	// refused create (a name already taken, a plan limit) leaves the folder as
+	// it was and the same command can be run again. Its check covers
+	// aetherfy.yaml too, so the overwrite question is not asked a second time.
+	starter, err := planStarter(absDir, configPath)
+	if err != nil {
+		return err
+	}
+	if starter == nil {
+		if proceed, err := confirmOverwrite(p, configPath); err != nil || !proceed {
+			if err == nil {
+				return output.Result(map[string]interface{}{"created": false, "aborted": true})
+			}
+			return err
+		}
+	} else {
+		// The files are written for one runtime and one entrypoint, and the
+		// starter is a service: preset all three unless a flag says otherwise.
+		if initRuntime == "" {
+			initRuntime = starter.def.Runtime
+		}
+		if initEntrypoint == "" {
+			initEntrypoint = starter.def.Entrypoint
+		}
+		if initType == "" {
+			initType = "service"
+		}
+	}
+
+	// -y / --yes disables the interactive path entirely, reusing the
+	// non-interactive default fallbacks for every prompt. Does NOT imply
+	// --force: overwriting an existing aetherfy.yaml still requires an
+	// explicit opt-in.
+	interactive := isInteractive() && !initYes
+
+	// --- Agent name ---
+	agentName := initName
+	if agentName == "" {
+		defaultName := slugify(filepath.Base(absDir))
+		if interactive {
+			var err error
+			if agentName, err = p.text("Agent name", defaultName); err != nil {
+				return err
+			}
+		} else {
+			agentName = defaultName
+		}
+	}
+	agentName = slugify(strings.TrimSpace(agentName))
+
+	// --- Workspace: where the agent lives. Not in aetherfy.yaml. ---
+	ws, err := pickWorkspace(client, initWorkspace, cmd.Flags().Changed("workspace"), interactive, p)
+	if err != nil {
+		return printRefusal("Failed to find the workspace", err)
+	}
+
+	gen, err := generateConfig(cmd, client, p, absDir, ws, interactive)
 	if err != nil {
 		return err
 	}
 
-	// Warn if config already exists
-	if starter == nil && fileExists(configPath) && !initForce {
+	output.Println("")
+	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s' in workspace '%s'...", agentName, ws.Name))
+	sp.Start()
+	agent, err := createAgentRecord(client, agentName, "", ws.ID)
+	sp.Stop()
+	if err != nil {
+		return printRefusal("Failed to create agent", err)
+	}
+	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
+
+	files := []string{"aetherfy.yaml", link.RelPath()}
+	if starter != nil {
+		if err := starter.write(absDir); err != nil {
+			output.PrintError("The agent was created, but the %s starter could not be written (%v). "+
+				"Link the folder with 'afy init --agent %s'.", starter.def.Name, err, agent.Name)
+			return shown(err)
+		}
+		files = append(append([]string{}, starter.paths...), files...)
+	}
+	if err := os.WriteFile(configPath, []byte(gen.content), 0o644); err != nil {
+		output.PrintError("The agent was created, but aetherfy.yaml could not be written (%v). "+
+			"Link the folder with 'afy init --agent %s'.", err, agent.Name)
+		return shown(err)
+	}
+	if err := link.Write(absDir, initTarget, agent.ID); err != nil {
+		output.PrintError("The agent was created, but %s could not be written (%v). "+
+			"Link the folder with 'afy init --agent %s'.", link.RelPath(), err, agent.Name)
+		return shown(err)
+	}
+	output.PrintSuccess("aetherfy.yaml and %s written.", link.RelPath())
+	output.Println("")
+	printConfigSummary(agent.Name, ws.Name, gen.runtime, gen.agentType, gen.region, gen.memoryMB, gen.keepAlive, gen.schedule)
+	printLinkNextSteps(initTarget)
+	result := map[string]interface{}{
+		"agent": agent, "workspace": ws, "target": initTarget, "created": true,
+		"files": files,
+	}
+	if starter != nil {
+		result["template"] = starter.def.Name
+	}
+	return output.Result(result)
+}
+
+// confirmOverwrite applies init's rule for an existing aetherfy.yaml: --force
+// overwrites; otherwise a terminal is asked, and without one it is refused.
+// It reports whether to go on (false with no error: the person declined).
+func confirmOverwrite(p *prompter, configPath string) (bool, error) {
+	if fileExists(configPath) && !initForce {
 		if !isInteractive() {
 			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
-			return fmt.Errorf("aetherfy.yaml already exists")
+			return false, shown(fmt.Errorf("aetherfy.yaml already exists"))
 		}
-		prompt := promptui.Prompt{
-			Label:     "aetherfy.yaml already exists. Overwrite",
-			IsConfirm: true,
+		yes, err := p.confirm("aetherfy.yaml already exists. Overwrite")
+		if err != nil {
+			return false, err
 		}
-		if _, err := prompt.Run(); err != nil {
+		if !yes {
 			output.Println("Aborted.")
-			return nil
+			return false, nil
 		}
 	}
 
+	return true, nil
+}
+
+// generatedConfig is the aetherfy.yaml init writes for an agent that has no
+// release, and what the summary prints of it.
+type generatedConfig struct {
+	content, runtime, agentType, region, schedule string
+	memoryMB                                      int
+	keepAlive                                     bool
+}
+
+// generateConfig scans dir and asks (or takes from flags, or defaults) how the
+// agent runs, offering only the regions the plan allows inside workspace ws and
+// the memory sizes the plan allows (GET /deploy-options). The content is the
+// file `afy init` writes: the schema modeline first, nothing the platform owns.
+// Used for a new agent and for a draft (an agent with no release to export).
+func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir string, ws *api.Workspace, interactive bool) (*generatedConfig, error) {
 	output.Println("")
 	output.PrintInfo("Scanning your project...")
 
 	hints := detect.Project(absDir)
-
-	// Print detections
 	if hints.Runtime != "" {
 		output.PrintSuccess("Detected runtime: %s", hints.Runtime)
 	}
 	if hints.Entrypoint != "" {
 		output.PrintSuccess("Detected entrypoint: %s", hints.Entrypoint)
 	}
-	if hints.VectorDB {
-		output.PrintSuccess("Found 'qdrant_memory' — will suggest VectorDB workspace")
-	}
 	if hints.Runtime == "" && initRuntime == "" {
 		if isInteractive() {
 			output.PrintWarning("Could not detect runtime — you will be asked to choose")
 		} else {
 			output.PrintWarning("Could not detect runtime — use --runtime to specify one")
-		}
-	}
-	// A starter's files are written for one runtime and one entrypoint, and it
-	// is a service: preset all three unless a flag says otherwise.
-	if starter != nil {
-		if initRuntime == "" {
-			initRuntime = starter.Runtime
-		}
-		if initEntrypoint == "" {
-			initEntrypoint = starter.Entrypoint
-		}
-		if initType == "" {
-			initType = "service"
 		}
 	}
 	selectedRuntime := initRuntime
@@ -209,63 +442,37 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 	output.Println("")
 
-	// -y / --yes disables the interactive path entirely, reusing the existing
-	// non-interactive default fallbacks for every prompt. Does NOT imply --force:
-	// overwriting an existing aetherfy.yaml still requires an explicit opt-in.
-	interactive := isInteractive() && !initYes
-
-	// --- Agent name ---
-	agentName := initName
-	if agentName == "" {
-		defaultName := slugify(filepath.Base(absDir))
-		if interactive {
-			namePrompt := promptui.Prompt{
-				Label:   "Agent name",
-				Default: defaultName,
-				Validate: func(s string) error {
-					if strings.TrimSpace(s) == "" {
-						return fmt.Errorf("name cannot be empty")
-					}
-					return nil
-				},
-			}
-			agentName, err = namePrompt.Run()
-			if err != nil {
-				return fmt.Errorf("prompt cancelled")
-			}
-		} else {
-			agentName = defaultName
-		}
+	// The runtimes, and the regions and sizes an agent in ws may have, from
+	// the server: offered exactly as returned, with no rule of the CLI's own.
+	opts, err := client.GetDeployOptions(ws.ID)
+	if err != nil {
+		return nil, printRefusal("Failed to read the regions and memory sizes your plan allows", err)
 	}
-	agentName = slugify(strings.TrimSpace(agentName))
 
 	// --- Runtime ---
+	runtimeOptions := opts.Runtimes
+	if len(runtimeOptions) == 0 {
+		return nil, fmt.Errorf("the server listed no runtimes to deploy with")
+	}
 	runtime := initRuntime
+	if runtime != "" && !contains(runtimeOptions, runtime) {
+		return nil, refuse("--runtime %s is not one the server accepts (%s)", runtime, strings.Join(runtimeOptions, ", "))
+	}
 	if runtime == "" {
 		if interactive {
-			runtimeOptions := []string{"python3.13", "python3.12", "python3.11", "node22", "node20", "node22-ts", "node20-ts", "bun", "dockerfile"}
-			runtimeDefault := 2 // python3.11
-			if hints.Runtime != "" {
-				for i, r := range runtimeOptions {
-					if r == hints.Runtime {
-						runtimeDefault = i
-						break
-					}
-				}
+			runtimeDefault := 0
+			if i := indexOf(runtimeOptions, hints.Runtime); hints.Runtime != "" && runtimeOptions[i] == hints.Runtime {
+				runtimeDefault = i
 			}
-			runtimeSelect := promptui.Select{
-				Label:     "Runtime",
-				Items:     runtimeOptions,
-				CursorPos: runtimeDefault,
-			}
-			_, runtime, err = runtimeSelect.Run()
+			i, err := p.choose("Runtime", runtimeOptions, runtimeDefault)
 			if err != nil {
-				return fmt.Errorf("prompt cancelled")
+				return nil, err
 			}
-		} else if hints.Runtime != "" {
+			runtime = runtimeOptions[i]
+		} else if hints.Runtime != "" && contains(runtimeOptions, hints.Runtime) {
 			runtime = hints.Runtime
 		} else {
-			return fmt.Errorf("could not detect runtime. Use --runtime to specify one (python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile)")
+			return nil, refuse("could not detect the runtime. Pass --runtime, one of: %s", strings.Join(runtimeOptions, ", "))
 		}
 	}
 
@@ -273,16 +480,12 @@ func runInit(cmd *cobra.Command, args []string) error {
 	agentType := initType
 	if agentType == "" {
 		if interactive {
-			typeSelect := promptui.Select{
-				Label: "Agent type",
-				Items: []string{
-					"service  (always-on listener, e.g. API or webhook handler)",
-					"job      (ephemeral, wakes up, runs, then stops)",
-				},
-			}
-			typeIdx, _, err := typeSelect.Run()
+			typeIdx, err := p.choose("Agent type", []string{
+				"service  (always-on listener, e.g. API or webhook handler)",
+				"job      (ephemeral, wakes up, runs, then stops)",
+			}, 0)
 			if err != nil {
-				return fmt.Errorf("prompt cancelled")
+				return nil, err
 			}
 			agentType = "service"
 			if typeIdx == 1 {
@@ -294,110 +497,80 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	// --- Schedule ---
-	// A schedule is a trigger on either agent type: a job's run executes its
-	// entrypoint, a service's run is a request to its POST /aetherfy/run. The
-	// server is the authoritative cron validator (min interval, 5-field
-	// dialect) — we never validate the expression here, we just carry it into
+	// A schedule is a trigger on either agent type. The server is the
+	// authoritative cron validator; the expression is only carried into
 	// aetherfy.yaml. The --schedule flag skips the prompt.
 	schedule := initSchedule
 	if schedule == "" && interactive {
-		schedulePrompt := promptui.Prompt{
-			Label:   "Schedule — UTC, 5-field cron (min every 5 minutes), e.g. '0 3 * * *' — leave blank for none",
-			Default: "",
+		s, err := p.text("Schedule — UTC, 5-field cron (min every 5 minutes), e.g. '0 3 * * *' — leave blank for none", "")
+		if err != nil {
+			return nil, err
 		}
-		s, sErr := schedulePrompt.Run()
-		if sErr == nil {
-			schedule = strings.TrimSpace(s)
-		}
+		schedule = s
 	}
 
-	// --- Region ---
+	// --- Region: exactly the ones the server allows an agent in ws ---
+	// (the deploy's own region checks, workspace scope and back-fill
+	// included: GET /deploy-options?workspace_id).
+	allowedRegions := opts.AllowedRegions()
+	if len(allowedRegions) == 0 {
+		return nil, fmt.Errorf("no region is open to an agent in workspace '%s' on your plan; change the workspace's "+
+			"regions (afy workspaces regions %s --regions ...) or your plan", ws.Name, ws.Name)
+	}
+	defaultRegion := allowedRegions[0]
 	region := initRegion
-	if region == "" {
-		if interactive {
-			regionItems := []string{
-				"us-east-1       (US East — Virginia)",
-				"eu-central-1    (EU Central — Frankfurt)",
-				"ap-southeast-1  (AP Southeast — Singapore)",
-			}
-			regionKeys := []string{"us-east-1", "eu-central-1", "ap-southeast-1"}
-			regionSelect := promptui.Select{
-				Label:     "Region",
-				Items:     regionItems,
-				CursorPos: 0,
-			}
-			regionIdx, _, err := regionSelect.Run()
-			if err != nil {
-				return fmt.Errorf("prompt cancelled")
-			}
-			region = regionKeys[regionIdx]
-		} else {
-			region = "us-east-1"
+	switch {
+	case region != "":
+		if !contains(allowedRegions, region) {
+			return nil, refuse("--region %s is not one your plan allows in workspace '%s' (allowed: %s)",
+				region, ws.Name, strings.Join(allowedRegions, ", "))
 		}
+	case interactive:
+		idx, err := p.choose("Region", allowedRegions, indexOf(allowedRegions, defaultRegion))
+		if err != nil {
+			return nil, err
+		}
+		region = allowedRegions[idx]
+	default:
+		region = defaultRegion
 	}
 
-	// --- Memory ---
+	// --- Memory: a size the plan allows ---
+	allowedMemory := opts.AllowedMemory()
+	if len(allowedMemory) == 0 {
+		return nil, fmt.Errorf("your plan allows no memory size; check your plan on the dashboard")
+	}
 	memoryMB := initMemory
-	if memoryMB == 0 {
-		if interactive {
-			memoryItems := []string{
-				"256 MB   (Default)",
-				"512 MB   (Recommended for AI)",
-				"1024 MB  (Heavy workloads)",
-			}
-			memoryValues := []int{256, 512, 1024}
-			memorySelect := promptui.Select{
-				Label:     "Memory",
-				Items:     memoryItems,
-				CursorPos: 0, // default 256
-			}
-			memIdx, _, err := memorySelect.Run()
-			if err != nil {
-				return fmt.Errorf("prompt cancelled")
-			}
-			memoryMB = memoryValues[memIdx]
-		} else {
-			memoryMB = 256
+	switch {
+	case memoryMB != 0:
+		if !containsInt(allowedMemory, memoryMB) {
+			return nil, refuse("--memory %d is not a size your plan allows (allowed: %s MB)", memoryMB, joinInts(allowedMemory))
 		}
+	case interactive:
+		items := make([]string, len(allowedMemory))
+		for i, m := range allowedMemory {
+			items[i] = fmt.Sprintf("%d MB", m)
+		}
+		idx, err := p.choose("Memory", items, 0)
+		if err != nil {
+			return nil, err
+		}
+		memoryMB = allowedMemory[idx]
+	default:
+		memoryMB = allowedMemory[0]
 	}
 
 	// --- Billing mode ---
 	keepAlive := initKeepAlive
-	if !cmd.Flags().Changed("keep-alive") {
-		if interactive {
-			billingSelect := promptui.Select{
-				Label: "Billing mode",
-				Items: []string{
-					"auto-sleep  ($0 when idle, ~500ms cold start)",
-					"always-on   (+$10/mo, 0ms cold start)",
-				},
-			}
-			billingIdx, _, err := billingSelect.Run()
-			if err != nil {
-				return fmt.Errorf("prompt cancelled")
-			}
-			keepAlive = billingIdx == 1
+	if !cmd.Flags().Changed("keep-alive") && interactive {
+		billingIdx, err := p.choose("Billing mode", []string{
+			"auto-sleep  ($0 when idle, ~500ms cold start)",
+			"always-on   (+$10/mo, 0ms cold start)",
+		}, 0)
+		if err != nil {
+			return nil, err
 		}
-		// non-interactive default: false (auto-sleep) — zero value already set
-	}
-
-	// --- VectorDB workspace ---
-	enableVectorDB := initWorkspace
-	if !cmd.Flags().Changed("workspace") {
-		if interactive {
-			vectorDBDefault := "n"
-			if hints.VectorDB {
-				vectorDBDefault = "y"
-			}
-			vectorPrompt := promptui.Prompt{
-				Label:     "Enable VectorDB workspace",
-				Default:   vectorDBDefault,
-				IsConfirm: true,
-			}
-			_, vectorErr := vectorPrompt.Run()
-			enableVectorDB = vectorErr == nil // confirmed = yes
-		}
-		// non-interactive default: false — zero value already set
+		keepAlive = billingIdx == 1
 	}
 
 	// --- Entrypoint ---
@@ -409,55 +582,85 @@ func runInit(cmd *cobra.Command, args []string) error {
 			entrypoint = hints.Entrypoint
 		}
 		if entrypoint == "" && interactive {
-			epPrompt := promptui.Prompt{
-				Label:   "Entrypoint file (e.g. main.py, index.js) — leave blank to set later",
-				Default: "",
+			ep, err := p.text("Entrypoint file (e.g. main.py, index.js) — leave blank to set later", "")
+			if err != nil {
+				return nil, err
 			}
-			ep, epErr := epPrompt.Run()
-			if epErr == nil {
-				entrypoint = strings.TrimSpace(ep)
-			}
+			entrypoint = ep
 		}
 	}
 
-	output.Println("")
-	output.PrintInfo("Writing aetherfy.yaml...")
+	return &generatedConfig{
+		content:   buildAetherfyYAML(runtime, agentType, region, memoryMB, keepAlive, entrypoint, schedule),
+		runtime:   runtime,
+		agentType: agentType,
+		region:    region,
+		memoryMB:  memoryMB,
+		keepAlive: keepAlive,
+		schedule:  schedule,
+	}, nil
 
-	content := buildAetherfyYAML(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, entrypoint, schedule)
+}
 
-	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write aetherfy.yaml: %w", err)
+// workspaceOf is the workspace agent lives in, found by its id among the
+// account's (the agent's read names it by id and name; its regions come from
+// the workspace's own record).
+func workspaceOf(client *api.Client, agent *api.Agent) (*api.Workspace, error) {
+	all, err := client.ListWorkspaces()
+	if err != nil {
+		return nil, err
 	}
+	for i := range all {
+		if all[i].ID == agent.WorkspaceID {
+			return &all[i], nil
+		}
+	}
+	return nil, fmt.Errorf("workspace %s of agent '%s' is not among the account's workspaces", agent.WorkspaceID, agent.Name)
+}
 
-	output.PrintSuccess("aetherfy.yaml created.")
-	output.Println("")
-	printConfigSummary(agentName, runtime, agentType, region, memoryMB, keepAlive, enableVectorDB, schedule)
-	output.Println("")
-	output.Println("Run 'afy deploy' when you are ready to go live.")
-	return nil
+func indexOf(list []string, s string) int {
+	for i, v := range list {
+		if v == s {
+			return i
+		}
+	}
+	return 0
+}
+
+func containsInt(list []int, n int) bool {
+	for _, v := range list {
+		if v == n {
+			return true
+		}
+	}
+	return false
+}
+
+func joinInts(list []int) string {
+	out := make([]string, len(list))
+	for i, n := range list {
+		out[i] = strconv.Itoa(n)
+	}
+	return strings.Join(out, ", ")
 }
 
 // printConfigSummary prints the chosen config values as an aligned table.
 // Column widths are computed from the actual label set so adding or renaming
 // a row never requires re-padding by hand.
-func printConfigSummary(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool, schedule string) {
+func printConfigSummary(name, workspace, runtime, agentType, region string, memoryMB int, keepAlive bool, schedule string) {
 	billing := "auto-sleep"
 	if keepAlive {
 		billing = "always-on"
 	}
-	workspace := "none"
-	if vectorDB {
-		workspace = name + "-workspace"
-	}
 
 	rows := [][2]string{
-		{"Name", name},
+		{"Agent", name},
+		{"Workspace", workspace},
 		{"Runtime", runtime},
 		{"Type", agentType},
 		{"Region", region},
 		{"Memory", fmt.Sprintf("%d MB", memoryMB)},
 		{"Billing", billing},
-		{"Workspace", workspace},
 	}
 	// Only surface the schedule row when one was set — schedule-less agents
 	// keep the summary unchanged.
@@ -479,11 +682,15 @@ func printConfigSummary(name, runtime, agentType, region string, memoryMB int, k
 	}
 }
 
-func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, keepAlive, vectorDB bool, entrypoint, schedule string) string {
+// buildAetherfyYAML is the aetherfy.yaml `afy init` writes for a new agent:
+// how it runs, and nothing the platform owns (its name, description and
+// workspace are set on the agent, not in the file). The schema modeline is
+// the first line.
+func buildAetherfyYAML(runtime, agentType, region string, memoryMB int, keepAlive bool, entrypoint, schedule string) string {
 	var sb strings.Builder
 
+	sb.WriteString(yamlSchemaModeline + "\n")
 	sb.WriteString("# Aetherfy Configuration File\n")
-	sb.WriteString(fmt.Sprintf("name: %s\n", name))
 	sb.WriteString(fmt.Sprintf("runtime: %s\n", runtime))
 	sb.WriteString(fmt.Sprintf("type: %s\n", agentType))
 	sb.WriteString("regions:\n")
@@ -513,10 +720,6 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 		}
 	}
 
-	if vectorDB {
-		sb.WriteString(fmt.Sprintf("workspace: %s-workspace\n", name))
-	}
-
 	// Cron schedule. Quoted so cron expressions like "0 3 * * *"
 	// are always parsed as a string. Validated server-side on deploy.
 	if schedule != "" {
@@ -534,8 +737,9 @@ func buildAetherfyYAML(name, runtime, agentType, region string, memoryMB int, ke
 	return sb.String()
 }
 
-// printStarters is --list-templates: one line per starter, name first.
-func printStarters() {
+// printStarters is --list-templates: one line per starter, name first; with
+// --json, the same list as {"templates": [...]}.
+func printStarters() error {
 	width := 0
 	for _, s := range starters.All {
 		if len(s.Name) > width {
@@ -546,24 +750,39 @@ func printStarters() {
 	for _, s := range starters.All {
 		output.Println(fmt.Sprintf("  %-*s  %s (%s)", width, s.Name, s.Description, s.Runtime))
 	}
+	list := make([]map[string]string, 0, len(starters.All))
+	for _, s := range starters.All {
+		list = append(list, map[string]string{
+			"name": s.Name, "description": s.Description, "runtime": s.Runtime, "entrypoint": s.Entrypoint,
+		})
+	}
+	return output.Result(map[string]interface{}{"templates": list})
 }
 
-// writeStarter writes the --template starter into dir, or returns nil when no
-// template was asked for.
+// plannedStarter is a --template starter that has been checked and not yet
+// written.
+type plannedStarter struct {
+	def   starters.Starter
+	files map[string][]byte
+	paths []string // sorted
+}
+
+// planStarter checks the --template starter for dir, or returns nil when no
+// template was asked for. It writes nothing.
 //
-// NOTHING IS OVERWRITTEN WITHOUT --force, and nothing is half-written: every
-// path the starter would write, and aetherfy.yaml, is checked before the
-// first file is created, so a refusal leaves the directory exactly as it was.
-func writeStarter(dir, configPath string) (*starters.Starter, error) {
+// NOTHING IS OVERWRITTEN WITHOUT --force: every path the starter would write,
+// and aetherfy.yaml, is checked before anything is created, so a refusal
+// leaves the directory exactly as it was.
+func planStarter(dir, configPath string) (*plannedStarter, error) {
 	if initTemplate == "" {
 		return nil, nil
 	}
-	starter, ok := starters.Find(initTemplate)
+	def, ok := starters.Find(initTemplate)
 	if !ok {
-		return nil, fmt.Errorf("unknown template %q. Available: %s (see 'afy init --list-templates')",
+		return nil, refuse("unknown template %q. Available: %s (see 'afy init --list-templates')",
 			initTemplate, strings.Join(starters.Names(), ", "))
 	}
-	files, err := starter.Files()
+	files, err := def.Files()
 	if err != nil {
 		return nil, err
 	}
@@ -571,27 +790,31 @@ func writeStarter(dir, configPath string) (*starters.Starter, error) {
 
 	if !initForce {
 		var conflicts []string
-		for _, p := range append(paths, filepath.Base(configPath)) {
+		for _, p := range append(append([]string{}, paths...), filepath.Base(configPath)) {
 			if fileExists(filepath.Join(dir, p)) {
 				conflicts = append(conflicts, p)
 			}
 		}
 		if len(conflicts) > 0 {
-			output.PrintError("The %s template would overwrite: %s", starter.Name, strings.Join(conflicts, ", "))
-			return nil, fmt.Errorf("refusing to overwrite %s; use --force to replace them, or pick an empty directory",
-				strings.Join(conflicts, ", "))
+			output.PrintError("The %s template would overwrite: %s", def.Name, strings.Join(conflicts, ", "))
+			return nil, shown(fmt.Errorf("refusing to overwrite %s; use --force to replace them, or pick an empty directory",
+				strings.Join(conflicts, ", ")))
 		}
 	}
+	return &plannedStarter{def: def, files: files, paths: paths}, nil
+}
 
-	for _, p := range paths {
+// write creates the starter's files in dir.
+func (s *plannedStarter) write(dir string) error {
+	for _, p := range s.paths {
 		target := filepath.Join(dir, p)
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return nil, fmt.Errorf("creating %s: %w", filepath.Dir(target), err)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("creating %s: %w", filepath.Dir(target), err)
 		}
-		if err := os.WriteFile(target, files[p], 0644); err != nil {
-			return nil, fmt.Errorf("writing %s: %w", p, err)
+		if err := os.WriteFile(target, s.files[p], 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", p, err)
 		}
 	}
-	output.PrintSuccess("Wrote the %s starter: %s", starter.Name, strings.Join(paths, ", "))
-	return &starter, nil
+	output.PrintSuccess("Wrote the %s starter: %s", s.def.Name, strings.Join(s.paths, ", "))
+	return nil
 }

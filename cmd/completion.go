@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -37,6 +38,11 @@ PowerShell:
 	ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 	Args:                  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// The one command whose output is not a result: a shell script, which
+		// --json cannot wrap without breaking `source <(afy completion bash)`.
+		if output.IsJSON() {
+			return refuse("completion prints a shell script, not JSON: drop --json")
+		}
 		switch args[0] {
 		case "bash":
 			return rootCmd.GenBashCompletion(os.Stdout)
