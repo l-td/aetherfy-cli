@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 142
+      "count": 143
     },
     {
       "path": "api/routes/regions.py",
@@ -183,6 +183,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_WORKSPACE_NOT_GRANTED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "ALIAS_NAME_TAKEN": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -263,11 +267,11 @@
       "source": "api/routes/regions.py",
       "tier": "violation"
     },
-    "CONNECTION_LIMIT_EXCEEDED": {
+    "CONNECTION_GRANT_NOT_ENABLED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "CONNECTION_NAME_AMBIGUOUS": {
+    "CONNECTION_LIMIT_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

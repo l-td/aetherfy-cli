@@ -48,7 +48,14 @@ Adding access lets the agent's code read, write, create and delete every
 collection there, including ones added later, so the command shows what would
 become reachable and asks before granting. --yes skips the question; it is
 required when stdin is not a terminal and with --json. Removing asks nothing.
-A change takes effect within ` + accessChangeWindow + `.`,
+A change takes effect within ` + accessChangeWindow + `.
+
+A grant is data access only: it never lets the agent's key use the granted
+workspace's connections (Slack, Google and the like), because a connection token
+acts at the provider. Each grant has a connections switch, off when the grant is
+made. --connections-on turns it on for a granted workspace (and asks first, like
+--add), --connections-off turns it off. They take names, repeat, and cannot be
+combined with --add or --remove: grant first, then switch.`,
 	Example: `  # What can the agent reach?
   afy access support-bot
 
@@ -56,10 +63,19 @@ A change takes effect within ` + accessChangeWindow + `.`,
   afy access support-bot --add research
 
   # From a script: grant one workspace, revoke another
-  afy access support-bot --add research --remove archive --yes --json`,
+  afy access support-bot --add research --remove archive --yes --json
+
+  # Let it use the connections of a workspace it is granted
+  afy access support-bot --connections-on research`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interactive := term.IsTerminal(int(os.Stdin.Fd()))
+		if len(agentsAccessConnectionsOn)+len(agentsAccessConnectionsOff) > 0 {
+			return runVec(cmd, func(r *vecRun) int {
+				return agentsAccessConnections(r, args[0], agentsAccessAdd, agentsAccessRemove,
+					agentsAccessConnectionsOn, agentsAccessConnectionsOff, agentsAccessYes, os.Stdin, interactive)
+			})
+		}
 		return runVec(cmd, func(r *vecRun) int {
 			return agentsAccess(r, args[0], agentsAccessAdd, agentsAccessRemove, agentsAccessYes, os.Stdin, interactive)
 		})
@@ -70,6 +86,9 @@ var (
 	agentsAccessAdd    []string
 	agentsAccessRemove []string
 	agentsAccessYes    bool
+
+	agentsAccessConnectionsOn  []string
+	agentsAccessConnectionsOff []string
 )
 
 // scopes splits each flag value on commas (as --regions takes a list),
@@ -238,6 +257,112 @@ func changeAgentAccess(r *vecRun, agent string, add, remove []string, yes bool, 
 	return 0
 }
 
+// agentsAccessConnections turns the connections switch of granted workspaces on
+// or off. A connection token acts at the provider, so turning it ON is
+// confirmed like a grant is (--yes skips it; required without a terminal and
+// with --json); turning it off narrows and asks nothing.
+func agentsAccessConnections(r *vecRun, agent string, add, remove, on, off []string, yes bool, stdin io.Reader, interactive bool) int {
+	if len(add)+len(remove) > 0 {
+		return r.fail(refuse("--connections-on/--connections-off cannot be combined with --add or --remove: " +
+			"grant the workspace first, then switch its connections. Nothing was sent."))
+	}
+	for flag, values := range map[string][]string{"connections-on": on, "connections-off": off} {
+		if err := refuseFlagLikeValue(flag, values...); err != nil {
+			return r.fail(err)
+		}
+		if err := refuseEmptyScope(flag, values); err != nil {
+			return r.fail(err)
+		}
+	}
+	ons, offs := scopes(on), scopes(off)
+	for _, s := range ons {
+		if contains(offs, s) {
+			return r.fail(refuse("%s is both switched on and off: pass it to one of --connections-on or --connections-off", scopeLabel(s)))
+		}
+	}
+	if len(ons) > 0 && !yes && r.json {
+		return r.fail(refuse("not changing agent '%s': --json cannot answer the confirmation. "+
+			"Pass --yes to allow connections without the question.", agent))
+	}
+	if len(ons) > 0 && !yes && !interactive {
+		return r.fail(refuse("not changing agent '%s': stdin is not a terminal, so nobody can "+
+			"confirm. Pass --yes to allow connections without the question.", agent))
+	}
+
+	cp := r.controlPlane()
+	current, err := cp.GetAgentAccess(agent)
+	if err != nil {
+		return r.fail(err)
+	}
+	for _, s := range append(append([]string(nil), ons...), offs...) {
+		if isOwn(current, s) {
+			return r.fail(refuse("%s is agent '%s''s own: its key always uses its connections, so there is "+
+				"no switch to change", scopeLabel(s), agent))
+		}
+		if !granted(current, s) {
+			return r.fail(refuse("%s is not granted to agent '%s': grant it first (afy access %s --add %s). Nothing was sent.",
+				scopeLabel(s), agent, agent, s))
+		}
+	}
+	var toOn, toOff []string
+	for _, s := range ons {
+		if !contains(current.ConnectionsWorkspaces, s) {
+			toOn = append(toOn, s)
+		}
+	}
+	for _, s := range offs {
+		if contains(current.ConnectionsWorkspaces, s) {
+			toOff = append(toOff, s)
+		}
+	}
+	if len(toOn) == 0 && len(toOff) == 0 {
+		if r.json {
+			return r.printJSON(accessJSON(current, []string{}, []string{}))
+		}
+		fmt.Fprintf(r.stdout, "No change: agent '%s' already has the connections access asked for.\n", agent)
+		return 0
+	}
+	if !r.json {
+		for _, s := range toOn {
+			fmt.Fprintf(r.stdout, "Agent '%s' will be able to ask for tokens for every connection in %s, including ones added later, and act with them at the provider.\n",
+				agent, scopeLabel(s))
+		}
+		for _, s := range toOff {
+			fmt.Fprintf(r.stdout, "Agent '%s' will no longer be able to ask for tokens for the connections of %s.\n", agent, scopeLabel(s))
+		}
+	}
+	if len(toOn) > 0 && !yes {
+		fmt.Fprint(r.stderr, "Proceed? [y/N] ")
+		line, _ := bufio.NewReader(stdin).ReadString('\n')
+		answer := strings.ToLower(strings.TrimSpace(line))
+		if answer != "y" && answer != "yes" {
+			return r.fail(refuse("agent '%s' not changed: the change was not confirmed", agent))
+		}
+	}
+	final := current
+	// Narrow first, then widen: an interrupted run leaves less reachable, never more.
+	for _, s := range toOff {
+		next, err := cp.SetConnectionsSwitch(agent, s, false)
+		if err != nil {
+			return r.fail(err)
+		}
+		final = next
+	}
+	for _, s := range toOn {
+		next, err := cp.SetConnectionsSwitch(agent, s, true)
+		if err != nil {
+			return r.fail(err)
+		}
+		final = next
+	}
+	if r.json {
+		return r.printJSON(accessJSON(final, toOn, toOff))
+	}
+	fmt.Fprintf(r.stdout, "Connections access of agent '%s' changed; it takes effect within %s.\n", agent, accessChangeWindow)
+	printAccess(r.stdout, final)
+	return 0
+}
+
 func isOwn(a *api.AgentAccess, scope string) bool {
 	return a.OwnWorkspace == scope
 }
@@ -269,7 +394,11 @@ func printAccess(w io.Writer, a *api.AgentAccess) {
 	names := append([]string(nil), a.GrantedWorkspaces...)
 	sort.Strings(names)
 	for _, n := range names {
-		fmt.Fprintf(w, "  %s  (granted)\n", n)
+		if contains(a.ConnectionsWorkspaces, n) {
+			fmt.Fprintf(w, "  %s  (granted; connections on)\n", n)
+		} else {
+			fmt.Fprintf(w, "  %s  (granted; connections off)\n", n)
+		}
 	}
 }
 
@@ -320,5 +449,7 @@ func accessJSON(a *api.AgentAccess, added, removed []string) interface{} {
 func init() {
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated)")
+	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessConnectionsOn, "connections-on", nil, "Let the agent's key use a granted workspace's connections (repeat, or comma-separated)")
+	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessConnectionsOff, "connections-off", nil, "Stop the agent's key using a granted workspace's connections (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().BoolVarP(&agentsAccessYes, "yes", "y", false, "Grant access without asking")
 }

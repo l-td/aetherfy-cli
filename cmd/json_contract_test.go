@@ -142,7 +142,7 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"workspaces", "delete", "acme", "--force"}, ok: []route{{"DELETE", "/workspaces/acme", 200, `{"secrets_deleted":0}`}}, refuse: []string{"DELETE /workspaces/acme"}},
 		{class: "mutate", args: []string{"github", "unlink", "bot"}, ok: []route{{"DELETE", "/agents/bot/github", 200, `{}`}}, refuse: []string{"DELETE /agents/bot/github"}},
 		{class: "mutate", args: []string{"github", "disconnect"}, ok: []route{{"DELETE", "/auth/github", 200, `{}`}}, refuse: []string{"DELETE /auth/github"}},
-		{class: "mutate", args: []string{"connections", "disconnect", "google", "--agent", "bot"}, ok: []route{{"DELETE", "/agents/bot/connections/google", 200, `{"name":"google","provider_revoked":true}`}}, refuse: []string{"DELETE /agents/bot/connections/google"}},
+		{class: "mutate", args: []string{"connections", "disconnect", "6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411"}, ok: []route{{"DELETE", "/connections/6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411", 200, `{"id":"6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411","name":"google","provider_revoked":true}`}}, refuse: []string{"DELETE /connections/6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411"}},
 		{class: "mutate", args: []string{"logout"}},
 
 		// --- deploy ---

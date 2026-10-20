@@ -42,7 +42,7 @@ Subcommands:
   afy connections connect google --agent reporter --scope https://www.googleapis.com/auth/drive.file
   afy connections connect slack --workspace team --name team-slack
   afy connections list --agent reporter
-  afy connections disconnect google --agent reporter`,
+  afy connections disconnect 0b6f2d3a-91c4-4e0e-8a5d-7c1f3e9b2a64`,
 }
 
 var (
@@ -185,19 +185,42 @@ code gets a token for.`,
 			output.PrintInfo("No connections yet. Start one with: afy connections connect <provider> --agent <name>")
 			return nil
 		}
-		table := output.Table([]string{"Name", "Provider", "Scope", "Where", "Account", "Status", "Last used"})
+		table := output.Table([]string{"ID", "Label", "Provider", "Scope", "Where", "Account", "Status", "Last used", "Used by"})
 		for _, c := range conns {
 			lastUsed := "never"
 			if c.LastUsedAt != nil {
 				lastUsed = c.LastUsedAt.Local().Format("2006-01-02 15:04")
 			}
 			table.Append([]string{
-				c.Name, c.Provider, c.Scope, connectionWhere(c), orDash(c.AccountLabel), c.Status, lastUsed,
+				c.ID, c.Name, c.Provider, c.Scope, connectionWhere(c), orDash(c.AccountLabel), c.Status, lastUsed,
+				connectionUsedBy(c),
 			})
 		}
 		table.Render()
 		return nil
 	},
+}
+
+// connectionUsedBy words a connection's used_by: the agents whose key can ask
+// for a token for it ("(granted)" marks one that lives elsewhere and is granted
+// the workspace with the grant's connections switch on). "-" when the server did
+// not say (an agent's own key never reaches this command).
+func connectionUsedBy(c api.Connection) string {
+	if c.UsedBy == nil {
+		return "-"
+	}
+	if len(c.UsedBy) == 0 {
+		return "none"
+	}
+	names := make([]string, 0, len(c.UsedBy))
+	for _, u := range c.UsedBy {
+		if u.Via == "grant" {
+			names = append(names, u.Agent.Name+" (granted)")
+		} else {
+			names = append(names, u.Agent.Name)
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 // ---------------------------------------------------------------------------
@@ -214,8 +237,9 @@ permission shown; the provider then sends your browser back to the Aetherfy
 dashboard. The command waits until the connection is recorded, or until the
 link expires (ten minutes).
 
-Connecting again under a name that already exists replaces that grant, which
-is how a connection marked needs_reauth is fixed.
+Connecting again under a name (label) that already exists replaces that grant and
+keeps its id, which is how a connection marked needs_reauth is fixed. Agent code
+asks for a connection by its id, which this command prints.
 
 To use your own OAuth app (Google only), give its client id with
 --app-client-id and pipe its client secret in with --app-client-secret-stdin.`,
@@ -386,11 +410,12 @@ func waitForConnection(ctx context.Context, client *api.Client, target api.Conne
 			c := findConnection(conns, target, begun.Name)
 			if c != nil && (baseline == nil || c.ConnectedAt.After(*baseline)) {
 				output.PrintSuccess("Connected %s", c.Name)
+				output.KeyValue("ID", c.ID)
 				output.KeyValue("Provider", c.Provider)
 				output.KeyValue("Account", orDash(c.AccountLabel))
 				output.KeyValue("Scopes", strings.Join(c.Scopes, " "))
 				output.Println("")
-				output.Printf("Agent code fetches a token with POST $AETHERFY_API_URL/connections/%s/token.\n", c.Name)
+				output.Printf("Agent code fetches a token with POST $AETHERFY_API_URL/connections/%s/token.\n", c.ID)
 				if err := output.Result(c); err != nil {
 					output.PrintError("%v", err)
 					return connectFailed
@@ -406,9 +431,9 @@ func waitForConnection(ctx context.Context, client *api.Client, target api.Conne
 // ---------------------------------------------------------------------------
 
 var connectionsDisconnectCmd = &cobra.Command{
-	Use:   "disconnect <name>",
+	Use:   "disconnect <id>",
 	Short: "Remove a connection",
-	Long: `Remove a connection from an agent or a workspace.
+	Long: `Remove a connection by its id (see 'afy connections list').
 
 Aetherfy asks the provider to revoke the grant, then removes the connection
 either way, and says whether the provider confirmed. When it did not, remove
@@ -418,24 +443,20 @@ Aetherfy in your account settings at the provider.`,
 		if err := checkAuth(); err != nil {
 			return err
 		}
-		target, _, err := connectionTarget(true)
-		if err != nil {
-			return err
-		}
-		if code := runConnectionDisconnect(api.NewClient(), target, args[0]); code != 0 {
+		if code := runConnectionDisconnect(api.NewClient(), args[0]); code != 0 {
 			os.Exit(code)
 		}
 		return nil
 	},
 }
 
-func runConnectionDisconnect(client *api.Client, target api.ConnectionTarget, name string) int {
-	deleted, err := client.DeleteConnection(target, name)
+func runConnectionDisconnect(client *api.Client, id string) int {
+	deleted, err := client.DeleteConnection(id)
 	if err != nil {
-		_ = printRefusal("Failed to disconnect "+name, err)
+		_ = printRefusal("Failed to disconnect "+id, err)
 		return connectFailed
 	}
-	output.PrintSuccess("Disconnected %s from %s", deleted.Name, connectionTargetLabel(target))
+	output.PrintSuccess("Disconnected %s (%s)", deleted.Name, deleted.ID)
 	if deleted.ProviderRevoked {
 		output.Println("The provider confirmed the access is revoked.")
 	} else {
@@ -459,10 +480,7 @@ func init() {
 	connectionsConnectCmd.Flags().StringVar(&connAgent, "agent", "", "Agent name or UUID")
 	connectionsConnectCmd.Flags().StringVar(&connWorkspace, "workspace", "", "Workspace name")
 	connectionsConnectCmd.MarkFlagsMutuallyExclusive("agent", "workspace")
-	connectionsDisconnectCmd.Flags().StringVar(&connAgent, "agent", "", "Agent name or UUID")
-	connectionsDisconnectCmd.Flags().StringVar(&connWorkspace, "workspace", "", "Workspace name")
-	connectionsDisconnectCmd.MarkFlagsMutuallyExclusive("agent", "workspace")
-	connectionsConnectCmd.Flags().StringVar(&connName, "name", "", "Connection name agent code asks for (default: the provider)")
+	connectionsConnectCmd.Flags().StringVar(&connName, "name", "", "A label for the connection, unique within its agent or workspace (default: the provider). Code asks by id, not by this")
 	connectionsConnectCmd.Flags().StringArrayVar(&connScopes, "scope", nil, "Extra scope to request on top of the provider's defaults (repeatable)")
 	connectionsConnectCmd.Flags().StringVar(&connAppClientID, "app-client-id", "", "Client id of your own OAuth app (Google only; needs --app-client-secret-stdin)")
 	connectionsConnectCmd.Flags().BoolVar(&connAppSecretStdin, "app-client-secret-stdin", false, "Read your own OAuth app's client secret from stdin")

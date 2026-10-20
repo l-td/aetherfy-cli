@@ -60,11 +60,11 @@ func (c *Client) BeginConnection(target ConnectionTarget, req ConnectionCreateRe
 	return &resp, nil
 }
 
-// DeleteConnection removes one of the target's own connections. The server
-// asks the provider to revoke the grant first and reports whether it confirmed.
-func (c *Client) DeleteConnection(target ConnectionTarget, name string) (*ConnectionDeleted, error) {
+// DeleteConnection removes a connection by its id. The server asks the provider
+// to revoke the grant first and reports whether it confirmed.
+func (c *Client) DeleteConnection(id string) (*ConnectionDeleted, error) {
 	var resp ConnectionDeleted
-	if err := c.DeleteWithResult(fmt.Sprintf("%s/%s", target.path(), url.PathEscape(name)), &resp); err != nil {
+	if err := c.DeleteWithResult(fmt.Sprintf("/connections/%s", url.PathEscape(id)), &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

@@ -65,7 +65,7 @@ func (s *connServer) handler(t *testing.T) http.HandlerFunc {
 			s.deleted = r.URL.Path
 			parts := strings.Split(r.URL.Path, "/")
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"name": parts[len(parts)-1], "provider_revoked": s.revoked,
+				"id": parts[len(parts)-1], "name": "google", "provider_revoked": s.revoked,
 			})
 		default:
 			http.NotFound(w, r)
@@ -75,7 +75,7 @@ func (s *connServer) handler(t *testing.T) http.HandlerFunc {
 
 func conn(name, scope, connectedAt string) map[string]interface{} {
 	c := map[string]interface{}{
-		"name": name, "provider": "google", "scope": scope, "account_label": "you@example.com",
+		"id": "id-" + name, "name": name, "provider": "google", "scope": scope, "account_label": "you@example.com",
 		"scopes": []string{"openid"}, "status": "connected", "connected_at": connectedAt,
 	}
 	if scope == "agent" {
@@ -222,9 +222,9 @@ func TestDisconnectReportsAConfirmedRevoke(t *testing.T) {
 
 	var code int
 	out := captureStdout(t, func() {
-		code = runConnectionDisconnect(api.NewClientWithURL(srv.URL, "k"), api.ConnectionTarget{Agent: "reporter"}, "google")
+		code = runConnectionDisconnect(api.NewClientWithURL(srv.URL, "k"), "6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411")
 	})
-	if code != connectOK || s.deleted != "/agents/reporter/connections/google" {
+	if code != connectOK || s.deleted != "/connections/6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411" {
 		t.Fatalf("exit %d, DELETE %q", code, s.deleted)
 	}
 	if !strings.Contains(out, "confirmed the access is revoked") {
@@ -238,7 +238,7 @@ func TestDisconnectNeverClaimsARevokeThatWasNotConfirmed(t *testing.T) {
 	defer srv.Close()
 
 	out := captureStdout(t, func() {
-		runConnectionDisconnect(api.NewClientWithURL(srv.URL, "k"), api.ConnectionTarget{Workspace: "team"}, "notes")
+		runConnectionDisconnect(api.NewClientWithURL(srv.URL, "k"), "6f1c2b7e-0a2d-4f8e-9c31-2b0d5a7e4411")
 	})
 	if strings.Contains(out, "confirmed the access is revoked") {
 		t.Errorf("claimed a revoke the provider did not confirm:\n%s", out)

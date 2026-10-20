@@ -21,7 +21,11 @@ type AgentAccess struct {
 	GrantedWorkspaceRefs []WorkspaceRef `json:"granted_workspace_refs"`
 	AllowedWorkspaces    []string       `json:"allowed_workspaces"`
 	AllowedWorkspaceRefs []WorkspaceRef `json:"allowed_workspace_refs"`
-	Changed              *bool          `json:"changed"`
+	// ConnectionsWorkspaces: the granted workspaces whose grant also covers
+	// connections (the grant's connections switch is on), by name and as pairs.
+	ConnectionsWorkspaces    []string       `json:"connections_workspaces"`
+	ConnectionsWorkspaceRefs []WorkspaceRef `json:"connections_workspace_refs"`
+	Changed                  *bool          `json:"changed"`
 }
 
 func accessPath(agent string) string {
@@ -53,6 +57,18 @@ func (c *Client) GrantWorkspace(agent, workspace string) (*AgentAccess, error) {
 func (c *Client) RevokeWorkspace(agent, workspace string) (*AgentAccess, error) {
 	var out AgentAccess
 	if err := c.DeleteWithResult(accessPath(agent)+"/workspaces/"+url.PathEscape(workspace), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// SetConnectionsSwitch turns a grant's connections switch on or off: may the
+// agent's key also use the granted workspace's connections. Off when a grant is
+// made. A workspace the agent is not granted: 404 AGENT_WORKSPACE_NOT_GRANTED.
+func (c *Client) SetConnectionsSwitch(agent, workspace string, enabled bool) (*AgentAccess, error) {
+	var out AgentAccess
+	body := map[string]bool{"enabled": enabled}
+	if err := c.Put(accessPath(agent)+"/workspaces/"+url.PathEscape(workspace)+"/connections", body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
