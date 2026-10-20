@@ -13,11 +13,10 @@ import (
 const (
 	accessPath        = "/api/v1/agents/bot/access"
 	accessWsPath      = accessPath + "/workspaces"
-	accessNonePath    = accessPath + "/workspaceless"
 	botInAlphaGranted = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta"],` +
-		`"workspaceless_granted":false,"allowed_workspaces":["alpha","beta"],"workspaceless_allowed":false,"changed":null}`
+		`"allowed_workspaces":["alpha","beta"],"changed":null}`
 	botAfterGamma = `{"agent":"bot","own_workspace":"alpha","granted_workspaces":["beta","gamma"],` +
-		`"workspaceless_granted":false,"allowed_workspaces":["alpha","beta","gamma"],"workspaceless_allowed":false,"changed":true}`
+		`"allowed_workspaces":["alpha","beta","gamma"],"changed":true}`
 )
 
 // accessCP answers the access routes; every call is recorded by the server.
@@ -26,12 +25,9 @@ func accessCP(t *testing.T) *vecServer {
 		return func(vecRequest) (int, string) { return 200, body }
 	}
 	return cpFake(t, map[string]func(vecRequest) (int, string){
-		"GET " + accessPath:                         ok(botInAlphaGranted),
-		"POST " + accessWsPath:                      ok(botAfterGamma),
-		"DELETE " + accessWsPath + "/beta":          ok(botInAlphaGranted),
-		"DELETE " + accessWsPath + "/workspaceless": ok(botInAlphaGranted),
-		"PUT " + accessNonePath:                     ok(botInAlphaGranted),
-		"DELETE " + accessNonePath:                  ok(botInAlphaGranted),
+		"GET " + accessPath:                ok(botInAlphaGranted),
+		"POST " + accessWsPath:             ok(botAfterGamma),
+		"DELETE " + accessWsPath + "/beta": ok(botInAlphaGranted),
 	})
 }
 
@@ -158,17 +154,29 @@ func TestAccessOwnWorkspaceIsRefusedBeforeAnythingChanges(t *testing.T) {
 	}
 }
 
-func TestAccessEmptyNameIsTheWorkspacelessScopeAndANamedWorkspaceIsNot(t *testing.T) {
-	r, cp, _, errOut := runAccess(t, false)
-	if code := agentsAccess(r, "bot", []string{""}, []string{"workspaceless"}, true, strings.NewReader(""), true); code != 0 {
-		t.Fatalf("exit %d: %s", code, errOut.String())
-	}
-	if n := len(requestsTo(cp, "PUT", accessNonePath)); n != 1 {
-		t.Errorf(`--add "" sent %d workspaceless grants`, n)
-	}
-	// "workspaceless" is a workspace NAME; not granted here, so nothing to revoke.
-	if n := len(requestsTo(cp, "DELETE", accessNonePath)); n != 0 {
-		t.Error(`--remove workspaceless revoked the workspaceless scope`)
+func TestAccessAnEmptyWorkspaceNameIsRefusedBeforeAnyRequest(t *testing.T) {
+	// There is no "no workspace" scope any more: an empty name is an input
+	// error, for --add and --remove alike, alone or inside a list.
+	for _, c := range []struct {
+		name        string
+		add, remove []string
+	}{
+		{"--add empty", []string{""}, nil},
+		{"--remove empty", nil, []string{""}},
+		{"empty inside a list", []string{"beta,"}, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r, cp, _, errOut := runAccess(t, false)
+			if code := agentsAccess(r, "bot", c.add, c.remove, true, strings.NewReader(""), true); code != exitInputRefused {
+				t.Fatalf("exit %d, want %d", code, exitInputRefused)
+			}
+			if len(cp.got()) != 0 {
+				t.Errorf("requests were sent: %v", cp.got())
+			}
+			if !strings.Contains(errOut.String(), "empty workspace name") {
+				t.Errorf("stderr %q", errOut.String())
+			}
+		})
 	}
 }
 
@@ -202,8 +210,8 @@ func TestAccessTheSameScopeAddedAndRemovedIsRefused(t *testing.T) {
 	}
 }
 
-func TestAccessFlagValuesSplitOnCommasAndKeepALoneEmpty(t *testing.T) {
-	if got := strings.Join(scopes([]string{"a,b", "b", ""}), "|"); got != "a|b|" {
+func TestAccessFlagValuesSplitOnCommasAndDropDuplicates(t *testing.T) {
+	if got := strings.Join(scopes([]string{"a,b", "b", "c"}), "|"); got != "a|b|c" {
 		t.Errorf("scopes = %q", got)
 	}
 }

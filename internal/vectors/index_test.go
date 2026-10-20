@@ -91,7 +91,7 @@ func newIndexClient(t *testing.T, cost time.Duration, answers ...string) (*Clien
 	t.Helper()
 	clock := &fakeClock{t: time.Unix(0, 0)}
 	route := &indexRoute{t: t, clock: clock, answers: answers, cost: cost, maxCreates: 200}
-	c := New("https://vectors.test", "afy_test_key", "")
+	c := New("https://vectors.test", "afy_test_key", "default")
 	c.now, c.sleep, c.send = clock.now, clock.sleep, route.send
 	c.jitter = func() float64 { return 1.0 } // the top of 50-100%, as the SDK's tests pin random()
 	return c, route, clock
@@ -109,7 +109,7 @@ func TestAcknowledgedThenCompletedIsOneMoreCreate(t *testing.T) {
 		t.Fatalf("creates = %d, want 2", len(route.attempts))
 	}
 	for _, a := range route.attempts {
-		if a.method != "PUT" || a.url != "https://vectors.test/api/v1/collections/articles/index" {
+		if a.method != "PUT" || a.url != "https://vectors.test/api/v1/workspaces/default/collections/articles/index" {
 			t.Errorf("create went to %s %s", a.method, a.url)
 		}
 		var body map[string]interface{}

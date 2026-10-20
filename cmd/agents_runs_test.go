@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 )
 
 // A SERVICE RUN HAS A DURATION TOO. It holds no machine of its own, so it has
@@ -63,7 +62,7 @@ func TestRunsPrintsNoDurationWhenTheServerSendsNone(t *testing.T) {
 }
 
 // BENCHMARK RUNS 3 AND 4. The table printed local time with no zone while
-// `-o json` printed UTC, so the same run read two hours apart. The table prints
+// `--json` printed UTC, so the same run read two hours apart. The table prints
 // the JSON's instant, in UTC, marked.
 func TestRunsTablePrintsTheJSONsInstantInUTC(t *testing.T) {
 	// The terminal's zone is not UTC here, as it was not for the benchmark: on a
@@ -105,9 +104,7 @@ func TestRunsTableNamesTheReleaseEachRunExecuted(t *testing.T) {
 }
 
 func TestRunsJSONCarriesTheReleaseAndSaysNullWhenThereIsNone(t *testing.T) {
-	previous := config.Get().OutputFormat
-	config.SetOutputFormat("json")
-	t.Cleanup(func() { config.SetOutputFormat(previous) })
+	jsonRun(t, true)
 
 	out := runsTable(t, `[`+
 		`{"id":"run-new","trigger_source":"cron","state":"failed","created_at":"2026-09-17T12:20:09Z","release_version":3},`+
@@ -115,7 +112,7 @@ func TestRunsJSONCarriesTheReleaseAndSaysNullWhenThereIsNone(t *testing.T) {
 
 	var runs []map[string]any
 	if err := json.Unmarshal([]byte(out), &runs); err != nil {
-		t.Fatalf("afy runs -o json printed no JSON: %v\n%s", err, out)
+		t.Fatalf("afy runs --json printed no JSON: %v\n%s", err, out)
 	}
 	if len(runs) != 2 || runs[0]["release_version"] != float64(3) {
 		t.Fatalf("the first run's release is missing: %v", runs)

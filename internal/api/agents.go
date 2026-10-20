@@ -73,6 +73,16 @@ func (c *Client) CreateAgent(req *AgentCreateRequest) (*Agent, error) {
 }
 
 // UpdateAgent updates an agent by ID or name
+// MoveAgent moves an agent to another workspace (POST /agents/{agent}/move).
+// The control plane redeploys it there, so the new workspace applies at once.
+func (c *Client) MoveAgent(idOrName, workspace string) (*AgentMove, error) {
+	var out AgentMove
+	if err := c.Post("/agents/"+idOrName+"/move", &AgentMoveRequest{WorkspaceName: workspace}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 func (c *Client) UpdateAgent(idOrName string, req *AgentUpdateRequest) (*Agent, error) {
 	var agent Agent
 	err := c.Patch("/agents/"+idOrName, req, &agent)

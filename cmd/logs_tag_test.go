@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/fatih/color"
 	"github.com/l-td/aetherfy-cli/internal/output"
 )
 
@@ -16,8 +17,11 @@ import (
 // "[SYSTEM] [SYSTEM] ...". A platform ERROR must still not read like the
 // customer's own ERROR: it prints as "[SYSTEM ERROR]".
 func TestAPlatformLinePrintsItsTagOnceAndAPlatformErrorStaysDistinct(t *testing.T) {
+	// Restore what it was, not "on": a test that leaves colour enabled breaks every
+	// plain-text assertion that runs after it, which shows under -count=N.
+	previous := color.NoColor
 	output.DisableColors()
-	defer output.EnableColors()
+	t.Cleanup(func() { color.NoColor = previous })
 	ts := time.Date(2026, 9, 27, 9, 8, 31, 0, time.UTC)
 	cases := []struct {
 		entry api.LogEntry

@@ -73,13 +73,17 @@ func skipList() map[string]bool { return map[string]bool{guardFile: true} }
 // nothing else in the tree records.
 var notControlPlaneCodes = map[string]string{
 	// Environment variables the CLI reads.
-	"AETHERFY_API_KEY":    "env var: the API key, read by internal/config/credentials.go",
-	"AETHERFY_CONFIG_DIR": "env var: overrides the credentials directory",
-	"AETHERFY_API_URL":    "env var: overrides the control-plane API URL (config api_url, internal/config)",
-	"NO_COLOR":          "env var: the no-color convention, honoured by internal/output",
-	"XDG_CONFIG_HOME":     "env var: XDG base-directory lookup on unix",
-	"AETHERFY_CP_ROOT":    "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
-	"AETHERFY_REQUIRE_CP": "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
+	"AETHERFY_API_KEY":      "env var: the API key, read by internal/config/credentials.go",
+	"AETHERFY_CONFIG_DIR":   "env var: overrides the credentials directory",
+	"AETHERFY_API_URL":      "env var: overrides the control-plane API URL (config api_url, internal/config)",
+	"NO_COLOR":              "env var: the no-color convention, honoured by internal/output",
+	"XDG_CONFIG_HOME":       "env var: XDG base-directory lookup on unix",
+	"AETHERFY_CP_ROOT":      "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
+	"AETHERFY_WORKSPACE_ID": "env var: the workspace id the control plane injects into agents (for the SDKs); the CLI reads it NOT, pinned by a test",
+	"PLATFORM_FIELDS":       "the control plane's constant of the keys that left aetherfy.yaml, read by test/cpyaml",
+	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
+	"CLI_USAGE_ERROR":       "the CLI's own code (cmd.usageErrorCode) for input it refused before sending anything; no server sends it",
+	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
 
@@ -92,17 +96,22 @@ var notControlPlaneCodes = map[string]string{
 	// internal/vectors/resolve.go.
 	"AETHERFY_VECTORS_URL":        "env var: the vectors endpoint, as the SDKs read it",
 	"AETHERFY_VECTORS_API_REGION": "env var: the vectors API region, as the SDKs read it",
-	"AETHERFY_WORKSPACE":          "env var: the workspace vector collections default to, as the SDKs read it",
+	"AETHERFY_WORKSPACE":          "env var: no longer injected nor read; a test pins that the CLI ignores it",
 
 	// VECTORDB error codes, in the internal/vectors fixtures. The vector
 	// commands talk to vectordb, not the control plane, and vectordb has no
 	// code registry to pin them against: it writes each code as a literal in
 	// the route that raises it (see the APIError comment in
-	// internal/vectors/client.go). Nothing in the CLI branches on any of them; the
-	// commands print the code they are sent.
-	"NOT_FOUND":         "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
-	"PROXY_ERROR":       "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
-	"PAYLOAD_TOO_LARGE": "vectordb code: an upsert body over the byte cap (middleware/streamingPointsParser.js), in cmd/points_upsert_test.go",
+	// internal/vectors/client.go). The commands print the code they are sent;
+	// only `afy collections schema set` branches, on SCHEMA_NOT_DEFINED and
+	// SCHEMA_VERSION_MISMATCH (contract sheet 1.5).
+	"NOT_FOUND":               "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
+	"PROXY_ERROR":             "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
+	"PAYLOAD_TOO_LARGE":       "vectordb code: an upsert body over the byte cap (middleware/streamingPointsParser.js), in cmd/points_upsert_test.go",
+	"SCHEMA_NOT_DEFINED":      "vectordb code: GET …/schema with no schema (routes/schema.js); schema set branches on it to set a first schema",
+	"SCHEMA_VERSION_MISMATCH": "vectordb code: PUT …/schema with a stale If-Match (routes/schema.js); schema set prints its own sentence for it",
+	"ADDRESSED_AN_ALIAS":      "vectordb code: a schema write through an alias, 409 (routes/schema.js, sheet 1.6), in cmd/collection_schema_test.go",
+	"SPARSE_FIELD":            "vectordb analyzer warning, not an error code (services/schemaAnalyzer.js), in cmd/collection_schema_test.go",
 
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.

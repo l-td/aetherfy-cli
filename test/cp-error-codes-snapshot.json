@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 132
+      "count": 135
     },
     {
       "path": "api/routes/regions.py",
@@ -40,10 +40,6 @@
       "tier": "top-level"
     },
     "AGENT_HAS_WORKER_DEPENDENTS": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "AGENT_KEEP_ALIVE_NOT_ON_JOB": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -115,6 +111,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_PAUSED_CANNOT_MOVE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AGENT_PAUSED_CANNOT_REDEPLOY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -147,6 +147,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_SAFETY_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AGENT_SCHEDULE_NOT_SET": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -164,10 +168,6 @@
       "tier": "top-level"
     },
     "AGENT_SPAWN_WORKERS_REQUIRED": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "AGENT_TOGGLE_RATE_LIMITED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -196,6 +196,10 @@
       "tier": "top-level"
     },
     "AGENT_WORKSPACE_GRANT_REDUNDANT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "ALIAS_NAME_TAKEN": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -240,6 +244,14 @@
       "tier": "top-level"
     },
     "COLLECTION_MOVE_OUTSIDE_TARGET_REGIONS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_NAME_IS_AN_ALIAS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "COLLECTION_NAME_TAKEN": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -367,10 +379,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "HOME_REGION_NOT_APPLICABLE": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "INVALID_API_KEY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -451,6 +459,10 @@
       "source": "api/routes/regions.py",
       "tier": "violation"
     },
+    "RELEASE_CONFIG_NOT_ON_RECORD": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "RESOURCE_BUSY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -484,10 +496,6 @@
       "tier": "top-level"
     },
     "SOFT_CAP_EXCEEDED": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
-    "STARTER_REGION_CONSISTENCY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -535,11 +543,11 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "WORKSPACE_LIMIT_EXCEEDED": {
+    "WORKSPACE_IS_LAST": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "WORKSPACE_NAME_IMMUTABLE": {
+    "WORKSPACE_LIMIT_EXCEEDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -556,6 +564,10 @@
       "tier": "top-level"
     },
     "WORKSPACE_REGIONS_EMPTY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "WORKSPACE_REGIONS_REQUIRED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     }

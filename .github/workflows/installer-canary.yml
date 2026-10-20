@@ -71,6 +71,37 @@ jobs:
           fi
           echo "hosted install.sh -> afy ${version}"
 
+  # The same one-liner on a Mac (Apple Silicon): install.sh's darwin branch,
+  # the darwin-arm64 asset and its checksum. BSD userland, so the checks below
+  # stay within what macOS's sed and grep accept.
+  macos:
+    name: Hosted one-liner (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Install the way the docs say to
+        run: |
+          set -euo pipefail
+          export AETHERFY_INSTALL_DIR="${RUNNER_TEMP}/afybin"
+          mkdir -p "$AETHERFY_INSTALL_DIR"
+
+          # The published one-liner, verbatim.
+          curl -fsSL https://aetherfy.com/install.sh | bash
+
+          "$AETHERFY_INSTALL_DIR/afy" version
+
+      - name: It installed a real release, not a source build
+        run: |
+          set -euo pipefail
+          afy="${RUNNER_TEMP}/afybin/afy"
+          version="$("$afy" version | sed -n 's/^Version:[[:space:]]*//p' | tr -d '[:space:]')"
+
+          if ! printf '%s\n' "$version" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "FAILED: the hosted installer produced a binary reporting version '${version}'."
+            echo "Expected a plain X.Y.Z from a published release archive."
+            exit 1
+          fi
+          echo "hosted install.sh (macOS) -> afy ${version}"
+
   windows:
     name: Hosted one-liner (Windows)
     runs-on: windows-latest

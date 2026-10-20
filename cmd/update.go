@@ -123,7 +123,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	currentTag := release.NormalizeTag(current)
 	if currentTag == target {
 		output.PrintSuccess("already on %s", target)
-		return nil
+		return output.Result(map[string]interface{}{"current": current, "target": target, "updated": false, "update_available": false})
 	}
 	if updateCheckOnly {
 		// Nothing above this point has written to disk, and nothing below it
@@ -139,7 +139,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 			output.PrintInfo("Requested %s; running %s", target, current)
 			output.Printf("Run 'afy upgrade --version %s' to switch.\n", updateToVersion)
 		}
-		return nil
+		return output.Result(map[string]interface{}{"current": current, "target": target, "updated": false, "update_available": true})
 	}
 
 	// (h, hoisted) Where this binary lives, and whether it can be written.
@@ -210,5 +210,5 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	// (i)
 	output.PrintSuccess("Updated %s: %s -> %s", self, current, target)
-	return nil
+	return output.Result(map[string]interface{}{"current": current, "target": target, "updated": true, "path": self})
 }

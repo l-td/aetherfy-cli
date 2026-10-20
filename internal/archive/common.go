@@ -17,26 +17,24 @@ import (
 // (TestKnownFieldsEqualTheControlPlaneModel). So every field the server accepts
 // has a field here, including the ones the CLI never reads.
 type AetherfyConfig struct {
-	Name       string   `yaml:"name"`
 	Runtime    string   `yaml:"runtime"`
 	Type       string   `yaml:"type"`
 	Regions    []string `yaml:"regions"`
 	MemoryMB   int      `yaml:"memory_mb"`
 	KeepAlive  bool     `yaml:"keep_alive"`
 	Entrypoint string   `yaml:"entrypoint,omitempty"`
-	Workspace  string   `yaml:"workspace,omitempty"`
-	// Schedule is a 5-field UTC cron expression for a top-level agent of either type.
-	// The server is the authoritative validator (CP-2) — the CLI never
-	// validates cron client-side; it is mutable via push (merge-patch:
-	// omitted=preserve, null=clear), so it must NOT get a runtime-style
-	// immutability special-case in the diff view.
+	// Schedule is a 5-field UTC cron expression, valid on an agent of either
+	// type. The server is the authoritative validator (CP-2) — the CLI never
+	// validates cron client-side. Like every field here, a deploy applies the
+	// file whole: omitted (or null), the agent has no schedule. It changes
+	// with any deploy, so it must NOT get a runtime-style immutability
+	// special-case in the diff view.
 	Schedule string `yaml:"schedule,omitempty"`
 
 	// Declared so they are KNOWN, not because the CLI reads them. Typed `any`
 	// on purpose: the server is the validator of their values, and a Go type
 	// here would refuse a value it accepts (a quoted "5" for an int, say)
 	// before the server ever saw it.
-	Description        any          `yaml:"description,omitempty"`
 	IdleTimeoutMinutes any          `yaml:"idle_timeout_minutes,omitempty"`
 	GithubDependencies any          `yaml:"github_dependencies,omitempty"`
 	Spawn              *SpawnConfig `yaml:"spawn,omitempty"`
@@ -49,13 +47,27 @@ type SpawnConfig struct {
 	Workers any `yaml:"workers,omitempty"`
 }
 
+// MissingConfigMessage is the control plane's sentence for a release without
+// aetherfy.yaml (shared/config_parser.py MISSING_CONFIG_MESSAGE): an upload
+// and a push without one are refused with it. The CLI refuses a deploy before
+// uploading, so the server's sentence cannot arrive; this one says the same
+// thing, the same way, after the path it looked at, as the push refusal names
+// the repo, commit, branch and path it read.
+const MissingConfigMessage = "Missing required aetherfy.yaml. Add it beside your code with at least `runtime:`; " +
+	"every field it leaves out takes its default."
+
+// MissingConfigError is a folder without aetherfy.yaml.
+type MissingConfigError struct{ Path string }
+
+func (e *MissingConfigError) Error() string { return e.Path + ": " + MissingConfigMessage }
+
 // ParseAetherfyConfig reads and parses aetherfy.yaml from the given directory
 func ParseAetherfyConfig(dir string) (*AetherfyConfig, error) {
 	configPath := filepath.Join(dir, "aetherfy.yaml")
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("aetherfy.yaml not found in %s", dir)
+			return nil, &MissingConfigError{Path: configPath}
 		}
 		return nil, fmt.Errorf("failed to read aetherfy.yaml: %w", err)
 	}
@@ -143,18 +155,16 @@ func LoadIgnorePatterns(dir string) ([]string, error) {
 }
 
 // ValidateAetherfyConfig checks that aetherfy.yaml exists and contains the
-// fields the backend requires: name and runtime. entrypoint is optional —
-// the backend falls back to a runtime-specific default (main.py, index.js,
-// main.ts) if not declared.
+// one field the backend requires: runtime. entrypoint is optional — the
+// backend falls back to a runtime-specific default (main.py, index.js,
+// main.ts) if not declared. The agent is not named in the file: a folder
+// reaches its agent through .aetherfy/agent.json.
 func ValidateAetherfyConfig(dir string) error {
 	cfg, err := ParseAetherfyConfig(dir)
 	if err != nil {
 		return err
 	}
 	var missing []string
-	if cfg.Name == "" {
-		missing = append(missing, "name")
-	}
 	if cfg.Runtime == "" {
 		missing = append(missing, "runtime")
 	}

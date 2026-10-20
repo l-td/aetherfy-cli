@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -81,18 +80,17 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to get logs: %v", err)
-		return nil
+		return printRefusal("Failed to get logs", err)
+	}
+
+	// --json: the array, empty or not (a script reads the same shape).
+	if output.IsJSON() {
+		return output.JSON(logs)
 	}
 
 	if len(logs) == 0 {
 		output.PrintInfo("No logs found for agent '%s'", agentID)
 		return nil
-	}
-
-	// Check output format
-	if config.Get().OutputFormat == "json" {
-		return output.JSON(logs)
 	}
 
 	// Print logs
@@ -142,9 +140,14 @@ const systemStream = "system"
 
 // printLogLine prints one stored line as `<time> [<tag>] <message>`.
 func printLogLine(log api.LogEntry, timeLayout string) {
+	// --json with --follow is a stream, one compact JSON object per line.
+	if output.IsJSON() {
+		_ = output.JSONLine(log)
+		return
+	}
 	output.Dim.Printf("%s ", log.Timestamp.Format(timeLayout))
 	getLevelColor(log.Level).Printf("[%s] ", logTag(log))
-	fmt.Println(log.Message)
+	fmt.Fprintln(output.Out(), log.Message)
 }
 
 // logTag is what goes in the brackets: the line's level, and for a line the
@@ -160,17 +163,17 @@ func logTag(log api.LogEntry) string {
 	return log.Level
 }
 
-func getLevelColor(level string) *output.ColorPrinter {
+func getLevelColor(level string) *output.Printer {
 	switch level {
 	case "ERROR", "FATAL", "CRITICAL":
-		return (*output.ColorPrinter)(output.Red)
+		return output.Red
 	case "WARN", "WARNING":
-		return (*output.ColorPrinter)(output.Yellow)
+		return output.Yellow
 	case "INFO":
-		return (*output.ColorPrinter)(output.Cyan)
+		return output.Cyan
 	case "DEBUG", "TRACE":
-		return (*output.ColorPrinter)(output.Gray)
+		return output.Gray
 	default:
-		return (*output.ColorPrinter)(output.White)
+		return output.White
 	}
 }

@@ -10,31 +10,18 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
-// TestAgentCreateRequestWithRuntime tests that AgentCreateRequest includes runtime field
-func TestAgentCreateRequestWithRuntime(t *testing.T) {
-	req := &api.AgentCreateRequest{
-		Name:         "test-agent",
-		Description:  "Test agent",
-		AgentType:    "SERVICE",
-		Runtime:      "python3.11",
-		SpawnEnabled: false,
+// TestAgentCreateRequestCarriesOnlyThePlatformsFields pins POST /agents' body:
+// name, description and the workspace by id. The control plane refuses the
+// yaml-owned fields there (422), and a create without a workspace.
+func TestAgentCreateRequestCarriesOnlyThePlatformsFields(t *testing.T) {
+	raw, err := json.Marshal(&api.AgentCreateRequest{Name: "test-agent", Description: "d", WorkspaceID: "w-1"})
+	if err != nil {
+		t.Fatal(err)
 	}
-
-	if req.Runtime != "python3.11" {
-		t.Errorf("Expected runtime to be 'python3.11', got '%s'", req.Runtime)
-	}
-}
-
-// TestAgentCreateRequestRuntimeOptional tests that runtime is optional
-func TestAgentCreateRequestRuntimeOptional(t *testing.T) {
-	req := &api.AgentCreateRequest{
-		Name:      "test-agent",
-		AgentType: "SERVICE",
-	}
-
-	// Runtime should be empty string when not set (omitempty)
-	if req.Runtime != "" {
-		t.Errorf("Expected runtime to be empty, got '%s'", req.Runtime)
+	var body map[string]interface{}
+	_ = json.Unmarshal(raw, &body)
+	if len(body) != 3 || body["name"] != "test-agent" || body["description"] != "d" || body["workspace_id"] != "w-1" {
+		t.Errorf("body = %v, want exactly {name, description, workspace_id}", body)
 	}
 }
 
@@ -92,43 +79,31 @@ func TestAgentUpdateRequestOptionalFields(t *testing.T) {
 	if req.Description != nil {
 		t.Error("Expected Description to be nil when not set")
 	}
-	if req.MemoryMB != nil {
-		t.Error("Expected MemoryMB to be nil when not set")
-	}
-	if req.KeepAlive != nil {
-		t.Error("Expected KeepAlive to be nil when not set")
-	}
 }
 
 // TestAgentUpdateRequestPartialUpdate tests updating only some fields
 func TestAgentUpdateRequestPartialUpdate(t *testing.T) {
 	newName := "renamed-agent"
-	memoryMB := 512
 
 	req := &api.AgentUpdateRequest{
-		Name:     &newName,
-		MemoryMB: &memoryMB,
+		Name: &newName,
 	}
 
 	// Set fields should have values
 	if req.Name == nil || *req.Name != "renamed-agent" {
 		t.Error("Expected Name to be set to 'renamed-agent'")
 	}
-	if req.MemoryMB == nil || *req.MemoryMB != 512 {
-		t.Error("Expected MemoryMB to be set to 512")
-	}
-
 	// Unset fields should be nil
 	if req.Description != nil {
 		t.Error("Expected Description to be nil")
 	}
 }
 
-// --- workspace_name three-way (omitted / null / string) on PATCH /agents ---
+// --- PATCH /agents carries the platform's fields only ---
 //
-// AgentUpdateRequest.WorkspaceName is json.RawMessage so the CLI can express
-// the backend's three-way semantic. These tests pin the wire bytes for each
-// case via a capturing test server.
+// The control plane accepts name and description there and refuses every
+// other field (422): the workspace is POST /agents/{agent}/move, and how the
+// agent runs is aetherfy.yaml's.
 
 func captureUpdateAgentBody(t *testing.T, req *api.AgentUpdateRequest) map[string]interface{} {
 	t.Helper()
@@ -148,44 +123,12 @@ func captureUpdateAgentBody(t *testing.T, req *api.AgentUpdateRequest) map[strin
 	return body
 }
 
-func TestUpdateAgentWorkspaceSetSerializesString(t *testing.T) {
-	encoded, _ := json.Marshal("my-ws")
-	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{
-		WorkspaceName: json.RawMessage(encoded),
-	})
+func TestUpdateAgentSendsOnlyNameAndDescription(t *testing.T) {
+	newName, desc := "renamed-agent", "Parses inbound invoices"
+	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Name: &newName, Description: &desc})
 
-	v, present := body["workspace_name"]
-	if !present {
-		t.Fatal("Expected workspace_name present in body")
-	}
-	if v != "my-ws" {
-		t.Errorf("Expected workspace_name 'my-ws', got %v", v)
-	}
-}
-
-func TestUpdateAgentNoWorkspaceSerializesNull(t *testing.T) {
-	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{
-		WorkspaceName: json.RawMessage("null"),
-	})
-
-	v, present := body["workspace_name"]
-	if !present {
-		t.Fatal("Explicit null must reach the wire, not be omitted — otherwise the agent can't be cleared to workspaceless")
-	}
-	if v != nil {
-		t.Errorf("Expected workspace_name null, got %v", v)
-	}
-}
-
-func TestUpdateAgentOmitsWorkspaceWhenUnset(t *testing.T) {
-	// A rename-style update (workspace_name unset) MUST omit the field —
-	// otherwise every rename/other PATCH would send "workspace_name": null
-	// and silently clear the agent's workspace.
-	newName := "renamed-agent"
-	body := captureUpdateAgentBody(t, &api.AgentUpdateRequest{Name: &newName})
-
-	if _, present := body["workspace_name"]; present {
-		t.Errorf("Unset workspace_name must be omitted (no-change semantic), got body %v", body)
+	if len(body) != 2 || body["name"] != newName || body["description"] != desc {
+		t.Errorf("the PATCH body must be exactly {name, description}, got %v", body)
 	}
 }
 

@@ -4,49 +4,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
 )
 
-// Format represents output format types
-type Format string
-
-const (
-	FormatText  Format = "text"
-	FormatJSON  Format = "json"
-	FormatTable Format = "table"
-)
-
-// CurrentFormat is the active output format
-var CurrentFormat Format = FormatText
-
-// SetFormat sets the output format
-func SetFormat(f string) {
-	switch strings.ToLower(f) {
-	case "json":
-		CurrentFormat = FormatJSON
-	case "table":
-		CurrentFormat = FormatTable
-	default:
-		CurrentFormat = FormatText
-	}
-}
-
-// Print outputs a message to stdout
+// Print outputs a message to Out (stdout; stderr in JSON mode).
 func Print(format string, args ...interface{}) {
-	fmt.Printf(format, args...)
+	fmt.Fprintf(Out(), format, args...)
 }
 
-// Println outputs a message with newline to stdout
+// Println outputs a message with newline to Out.
 func Println(args ...interface{}) {
-	fmt.Println(args...)
+	fmt.Fprintln(Out(), args...)
 }
 
-// Printf outputs a formatted message to stdout
+// Printf outputs a formatted message to Out.
 func Printf(format string, args ...interface{}) {
-	fmt.Printf(format, args...)
+	fmt.Fprintf(Out(), format, args...)
 }
 
 // PrintSuccess outputs a success message
@@ -54,9 +29,10 @@ func PrintSuccess(format string, args ...interface{}) {
 	Success.Printf("✓ "+format+"\n", args...)
 }
 
-// PrintError outputs an error message to stderr
+// PrintError outputs an error message to stderr: "Error: ...", or in JSON mode
+// the {"error":{"message"}} object (PrintAPIError carries a status and code).
 func PrintError(format string, args ...interface{}) {
-	Error.Fprintf(os.Stderr, "Error: "+format+"\n", args...)
+	PrintAPIError(0, "", fmt.Sprintf(format, args...))
 }
 
 // PrintWarning outputs a warning message
@@ -76,16 +52,9 @@ func PrintVerbose(verbose bool, format string, args ...interface{}) {
 	}
 }
 
-// JSON outputs data as JSON
-func JSON(data interface{}) error {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
-}
-
 // Table creates a new table writer
 func Table(headers []string) *tablewriter.Table {
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewWriter(Out())
 	table.SetHeader(headers)
 	table.SetBorder(false)
 	table.SetHeaderLine(true)
@@ -110,13 +79,13 @@ func TableWithWriter(w io.Writer, headers []string) *tablewriter.Table {
 // KeyValue prints a key-value pair
 func KeyValue(key, value string) {
 	Bold.Printf("%-15s", key+":")
-	fmt.Printf(" %s\n", value)
+	fmt.Fprintf(Out(), " %s\n", value)
 }
 
 // Header prints a section header
 func Header(title string) {
 	BoldCyan.Println(title)
-	fmt.Println(strings.Repeat("-", len(title)))
+	fmt.Fprintln(Out(), strings.Repeat("-", len(title)))
 }
 
 // Divider prints a horizontal divider
