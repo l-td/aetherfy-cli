@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +12,7 @@ import (
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/archive"
-	"github.com/l-td/aetherfy-cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/yamldiff"
 	"github.com/spf13/cobra"
@@ -44,12 +45,11 @@ func printAgentList(client *api.Client) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to list agents: %v", err)
-		return err
+		return printRefusal("Failed to list agents", err)
 	}
 
 	// Check output format first
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(agents)
 	}
 
@@ -132,60 +132,43 @@ func printAgentList(client *api.Client) error {
 // --- CREATE ---
 var agentsCreateCmd = &cobra.Command{
 	Use:   "create <name>",
-	Short: "Create a new agent",
-	Long:  "Create a new agent with the specified name.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAgentsCreate,
+	Short: "Create an agent in a workspace",
+	Long: `Create an agent, with no code yet, in a workspace.
+
+The agent lives in the workspace --workspace names. With one workspace in the
+account, that one is used; with several, you are asked (without a terminal,
+--workspace is required). How the agent runs comes from aetherfy.yaml at its
+first deploy. Link a folder to it with 'afy init --agent <name>', then
+'afy deploy' from that folder.
+
+'afy init' creates an agent and links the folder in one step.`,
+	Example: `  # Create an agent in the account's only workspace
+  afy create invoice-parser
+
+  # In a named workspace, with a description
+  afy create invoice-parser --workspace acme -d "Parses inbound invoices"`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsCreate,
 }
 
 var (
 	agentDescription string
-	agentType        string
-	agentRuntime     string
-	spawnEnabled     bool
-	spawnWorkers     []string
+	agentWorkspace   string
 )
 
 func init() {
 	agentsCreateCmd.Flags().StringVarP(&agentDescription, "description", "d", "", "Agent description")
-	agentsCreateCmd.Flags().StringVarP(&agentType, "type", "t", "SERVICE", "Agent type: SERVICE or JOB")
-	agentsCreateCmd.Flags().StringVarP(&agentRuntime, "runtime", "r", "python3.11", "Runtime: python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile")
-	agentsCreateCmd.Flags().BoolVar(&spawnEnabled, "spawn-enabled", false, "Enable spawning for this agent (requires --spawn-workers)")
-	agentsCreateCmd.Flags().StringSliceVar(&spawnWorkers, "spawn-workers", nil, `Agents this agent may spawn, comma-separated, or "*" for any of your agents`)
+	agentsCreateCmd.Flags().StringVar(&agentWorkspace, "workspace", "", "Workspace the agent lives in (asked when the account has several)")
 }
 
-// normalizeAgentType validates a user-supplied agent type against the
-// SERVICE|JOB enum and returns the lowercase value the backend expects.
-//
-// Single source for BOTH creation surfaces — the `-t` flag on `agents create`
-// and the `type:` a consented `afy deploy --create` reads from aetherfy.yaml —
-// so the deploy path cannot accept a type the create command would reject.
-func normalizeAgentType(raw string) (string, error) {
-	switch strings.ToUpper(strings.TrimSpace(raw)) {
-	case "SERVICE":
-		return "service", nil
-	case "JOB":
-		return "job", nil
-	}
-	return "", fmt.Errorf("invalid agent type: must be SERVICE or JOB")
-}
-
-// createAgentRecord issues the POST /agents that creates an agent. Both
-// `afy create` and the consented create inside `afy deploy` go through
-// here rather than building their own request body, so the two can't drift.
-// agentType must already be normalized (lowercase, backend form).
-//
-// The spawn rule (enabled requires workers; "*" stands alone) is the control
-// plane's to state: it answers 422 AGENT_SPAWN_WORKERS_REQUIRED with the
-// sentence naming the fix, which the caller prints. No local copy to drift.
-func createAgentRecord(client *api.Client, name, description, agentType, runtime string, spawnEnabled bool, spawnWorkers []string) (*api.Agent, error) {
+// createAgentRecord issues the POST /agents that creates an agent, in the
+// workspace given by id. `afy create` and `afy init` both go through here, so
+// the two cannot send different bodies.
+func createAgentRecord(client *api.Client, name, description, workspaceID string) (*api.Agent, error) {
 	return client.CreateAgent(&api.AgentCreateRequest{
-		Name:           name,
-		Description:    description,
-		AgentType:      agentType,
-		Runtime:        runtime,
-		SpawnEnabled:   spawnEnabled,
-		AllowedWorkers: spawnWorkers,
+		Name:        name,
+		Description: description,
+		WorkspaceID: workspaceID,
 	})
 }
 
@@ -195,39 +178,31 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
-
-	// Validate agent type
-	normalizedType, typeErr := normalizeAgentType(agentType)
-	if typeErr != nil {
-		output.PrintError("Invalid agent type. Must be SERVICE or JOB")
-		return typeErr
-	}
-
-	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s'...", name))
-	sp.Start()
-
 	client := api.NewClient()
-	agent, err := createAgentRecord(client, name, agentDescription, normalizedType, agentRuntime, spawnEnabled, spawnWorkers)
-	sp.Stop()
-
+	ws, err := pickWorkspace(client, agentWorkspace, cmd.Flags().Changed("workspace"), isInteractive(), newPrompter())
 	if err != nil {
-		output.PrintError("Failed to create agent: %v", err)
-		return err
+		return printRefusal("Failed to find the workspace", err)
 	}
 
-	output.PrintSuccess("Agent '%s' created successfully!", agent.Name)
+	sp := output.NewSpinner(fmt.Sprintf("Creating agent '%s' in workspace '%s'...", name, ws.Name))
+	sp.Start()
+	agent, err := createAgentRecord(client, name, agentDescription, ws.ID)
+	sp.Stop()
+	if err != nil {
+		return printRefusal("Failed to create agent", err)
+	}
+
+	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
 	output.Println("")
 	output.KeyValue("ID", agent.ID)
 	output.KeyValue("Name", agent.Name)
-	output.KeyValue("Type", agent.AgentType)
-	output.KeyValue("Status", agent.Status)
+	output.KeyValue("Workspace", ws.Name)
 
 	output.Println("")
 	output.Println("Next steps:")
-	output.Println("  1. Add your code to a directory with aetherfy.yaml")
-	output.Println("  2. Run 'afy deploy' to deploy your agent")
-
-	return nil
+	output.Println("  1. In your code's folder, link it: afy init --agent " + agent.Name)
+	output.Println("  2. Deploy: afy deploy")
+	return output.Result(agent)
 }
 
 // --- DELETE ---
@@ -255,12 +230,12 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 	// Confirm deletion
 	if !forceDelete {
 		output.Warning.Printf("This will permanently delete agent '%s' and all its deployments.\n", idOrName)
-		fmt.Print("Type the agent name to confirm: ")
+		fmt.Fprint(output.Out(), "Type the agent name to confirm: ")
 		var confirm string
 		_, _ = fmt.Scanln(&confirm)
 		if confirm != idOrName {
 			output.PrintInfo("Deletion cancelled.")
-			return nil
+			return output.Result(map[string]interface{}{"agent": idOrName, "deleted": false})
 		}
 	}
 
@@ -272,12 +247,11 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to delete agent: %v", err)
-		return err
+		return printRefusal("Failed to delete agent", err)
 	}
 
 	output.PrintSuccess("Agent '%s' deleted successfully.", idOrName)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "deleted": true})
 }
 
 // --- STOP / START (user-invoked pause) ---
@@ -360,8 +334,7 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to pause agent: %v", err)
-		return err
+		return printRefusal("Failed to pause agent", err)
 	}
 
 	// Two facts, because two things are true on return. The pause IS applied —
@@ -372,7 +345,7 @@ func runAgentsStop(cmd *cobra.Command, args []string) error {
 	// reports paused immediately.
 	output.PrintSuccess("Agent '%s' paused; its machines are stopping. Resume with 'afy start %s'.", idOrName, idOrName)
 	output.PrintInfo("Stopped agents keep billing at the base rate; archive to stop billing.")
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "paused"})
 }
 
 func runAgentsStart(cmd *cobra.Command, args []string) error {
@@ -399,8 +372,7 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to start agent: %v", err)
-		return err
+		return printRefusal("Failed to start agent", err)
 	}
 
 	if result != nil && result.Resume.UnderWay() {
@@ -417,14 +389,17 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		}
 		if !wait {
 			output.PrintInfo("Nothing more to do. Follow it with 'afy status %s', or use --wait.", idOrName)
-			return nil
+			return output.Result(map[string]interface{}{
+				"agent": idOrName, "status": "start_accepted",
+				"resume": result.Resume, "wait_bound_seconds": result.WaitBoundSeconds,
+			})
 		}
 		if result.WaitBoundSeconds == nil {
 			// The server states how long its start can take; a guess here would
 			// be a second bound to drift from the platform's own.
 			output.PrintError("The control plane did not say how long the start can take, so --wait has "+
 				"nothing to wait by. Follow it with 'afy status %s'.", idOrName)
-			return fmt.Errorf("no wait_bound_seconds in the accepted start")
+			return shown(fmt.Errorf("no wait_bound_seconds in the accepted start"))
 		}
 		return waitForAcceptedStart(client, idOrName, *result.WaitBoundSeconds)
 	}
@@ -434,7 +409,7 @@ func startAgent(client *api.Client, idOrName string, wait bool) error {
 		readiness = result.Readiness
 	}
 	printStartOutcome(idOrName, readiness)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "started", "readiness": readiness})
 }
 
 // resumeCauses: the words for an accepted start that is not waiting on a stop,
@@ -550,7 +525,7 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 		if err != nil {
 			sp.Stop()
 			output.PrintError("Could not read agent '%s' while waiting for it to start: %v", name, err)
-			return err
+			return shown(err)
 		}
 		if agent.Status == "running" {
 			sp.Stop()
@@ -558,7 +533,7 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 			// ONCE, AT THE END: whether the start recreated a machine is
 			// known only once it is carried out, and the agent read keeps it.
 			printColdStart(agent.MachinesRecreated)
-			return nil
+			return output.Result(map[string]interface{}{"agent": name, "status": "running"})
 		}
 		if !agent.Resume.UnderWay() {
 			sp.Stop()
@@ -568,7 +543,7 @@ func waitForAcceptedStart(client *api.Client, name string, waitBoundSeconds int)
 			}
 			output.PrintError("Agent '%s' was not started: %s. It is %s; run 'afy start %s' to start it now.",
 				name, why, agent.Status, name)
-			return fmt.Errorf("agent '%s' was not started: %s", name, why)
+			return shown(fmt.Errorf("agent '%s' was not started: %s", name, why))
 		}
 		if waited >= deadline {
 			sp.Stop()
@@ -648,12 +623,11 @@ func runAgentsArchive(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// AGENT_ALREADY_ARCHIVED (and the other archive 409s) carry a clear
 		// server message — pass it straight through.
-		output.PrintError("Failed to archive agent: %v", err)
-		return err
+		return printRefusal("Failed to archive agent", err)
 	}
 
 	output.PrintSuccess("Agent '%s' archived. Its config is preserved; run 'afy restore %s' to redeploy it.", idOrName, idOrName)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "archived"})
 }
 
 func runAgentsRestore(cmd *cobra.Command, args []string) error {
@@ -671,16 +645,16 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to restore agent: %v", err)
+		_ = printRefusal("Failed to restore agent", err)
 		// Quota is re-checked on restore. When the plan is full the server
 		// returns PLAN_LIMIT_EXCEEDED — add an actionable hint on top of the
 		// server message. AGENT_NOT_ARCHIVED and other 409s pass through
 		// unchanged (their server message is already self-explanatory).
-		if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "PLAN_LIMIT_EXCEEDED" {
+		if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "PLAN_LIMIT_EXCEEDED" && !output.IsJSON() {
 			output.Println("")
 			output.PrintInfo("Delete or archive another agent to free a slot before restoring, or upgrade your plan.")
 		}
-		return err
+		return shown(err)
 	}
 
 	// 'afy status', NOT 'afy list': the restore is checked again when it runs,
@@ -688,7 +662,7 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 	// record. The list shows the status alone, which reads the same for a
 	// restore still under way and one that was refused.
 	output.PrintSuccess("Agent '%s' restore initiated. This may take a few minutes while the deploy runs. Run 'afy status %s' to follow it: if the restore is refused, it says why.", idOrName, idOrName)
-	return nil
+	return output.Result(map[string]interface{}{"agent": idOrName, "status": "restoring"})
 }
 
 // --- CANCEL (abandon an in-flight deployment) ---
@@ -728,8 +702,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	deployments, err := client.ListDeployments(idOrName)
 	if err != nil {
 		sp.Stop()
-		output.PrintError("Failed to list deployments: %v", err)
-		return err
+		return printRefusal("Failed to list deployments", err)
 	}
 
 	var pending *api.Deployment
@@ -746,7 +719,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	if pending == nil {
 		sp.Stop()
 		output.PrintInfo("No pending deployment to cancel for '%s'.", idOrName)
-		return nil
+		return output.Result(map[string]interface{}{"agent": idOrName, "cancelled": false})
 	}
 
 	sp.UpdateMessage(fmt.Sprintf("Cancelling deployment v%d (state: %s)...", pending.Version, pending.Status))
@@ -754,8 +727,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	result, err := client.CancelDeployment(idOrName, pending.Version)
 	sp.Stop()
 	if err != nil {
-		output.PrintError("Failed to cancel deployment: %v", err)
-		return err
+		return printRefusal("Failed to cancel deployment", err)
 	}
 
 	// Two response shapes from the route:
@@ -776,7 +748,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 			result.Version, result.Status, idOrName,
 		)
 	}
-	return nil
+	return output.Result(result)
 }
 
 // --- STATUS ---
@@ -795,6 +767,35 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 	return showAgentStatus(api.NewClient(), args[0])
 }
 
+// printLastDeployFailure says, in full, why the agent's newest release deploy
+// failed, when it did. The agent's own failure_message covers only a lost app
+// or a refused restore; an ordinary failed deploy -- a push without
+// aetherfy.yaml, a frozen account's refused deploy -- is explained only on the
+// deployment (error_message), and the agent may still be serving its previous
+// release, so nothing else on this screen says it. Runs (ephemeral rows) are
+// skipped: `Last run` speaks for them. A deployments read that fails is said,
+// and the rest of the status still prints.
+func printLastDeployFailure(client *api.Client, agent *api.Agent) {
+	deployments, err := client.ListDeployments(agent.ID)
+	if err != nil {
+		output.Dim.Printf("  (could not read the deployment history: %v)\n", err)
+		return
+	}
+	for _, d := range deployments {
+		if d.IsEphemeral {
+			continue
+		}
+		if !strings.EqualFold(d.Status, "failed") {
+			return
+		}
+		output.KeyValue("Last deploy", fmt.Sprintf("v%d failed", d.Version))
+		if d.ErrorMessage != "" {
+			output.KeyValue("Deploy error", d.ErrorMessage)
+		}
+		return
+	}
+}
+
 // showAgentStatus is `afy status` past the auth check. Split out so a test can
 // hand it a client pointed at a server it controls and count what the command
 // asks that server for.
@@ -806,13 +807,12 @@ func showAgentStatus(client *api.Client, name string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to get agent: %v", err)
-		return err
+		return printRefusal("Failed to get agent", err)
 	}
 
 	// Check output format. The GitHub link travels inside the agent, under
 	// "github", so the agent is the whole payload.
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(agent)
 	}
 
@@ -844,6 +844,7 @@ func showAgentStatus(client *api.Client, name string) error {
 		output.KeyValue("Reason", fmt.Sprintf(
 			"%s (this CLI has no description for it — 'afy upgrade' may)", agent.FailureCode))
 	}
+	printLastDeployFailure(client, agent)
 	// Where to send a request, when the server says there is one.
 	if agent.URL != "" {
 		output.KeyValue("URL", agent.URL)
@@ -1103,8 +1104,7 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 
 	payload, err := parseRunPayload()
 	if err != nil {
-		output.PrintError("%v", err)
-		return nil
+		return refuse("%v", err)
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Starting run of '%s'...", name))
@@ -1113,12 +1113,13 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 	resp, err := client.RunAgent(name, payload)
 	sp.Stop()
 	if err != nil {
-		printAgentActionError("Failed to run agent", err)
-		return err
+		return printAgentActionError("Failed to run agent", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
-		return output.JSON(resp)
+	// --json: the run that was started is the result; with --wait the run is
+	// still followed (on stderr) and the exit code carries how it ended.
+	if err := output.Result(resp); err != nil {
+		return err
 	}
 
 	output.PrintSuccess("Run started.")
@@ -1210,11 +1211,10 @@ func printAgentRuns(client *api.Client, name string) error {
 	runs, err := client.ListAgentRuns(name, api.RunsQuery{Limit: runsLimit})
 	sp.Stop()
 	if err != nil {
-		printAgentActionError("Failed to list runs", err)
-		return nil
+		return printAgentActionError("Failed to list runs", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(runs)
 	}
 	if len(runs) == 0 {
@@ -1226,7 +1226,7 @@ func printAgentRuns(client *api.Client, name string) error {
 	for i := range runs {
 		r := runs[i]
 		table.Append([]string{
-			// UTC, MARKED, the instant `-o json` prints. The table used to print
+			// UTC, MARKED, the instant `--json` prints. The table used to print
 			// local time with no zone next to a JSON that says UTC, so the same
 			// run read two hours apart (benchmark runs 3 and 4).
 			formatUTCTime(&r.CreatedAt),
@@ -1303,11 +1303,10 @@ func runScheduleToggle(name string, pause bool) error {
 	sp.Stop()
 
 	if err != nil {
-		printAgentActionError("Failed to update schedule", err)
-		return err
+		return printAgentActionError("Failed to update schedule", err)
 	}
 
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(resp)
 	}
 
@@ -1333,32 +1332,7 @@ func runScheduleToggle(name string, pause bool) error {
 	return nil
 }
 
-// --- RENAME ---
-var agentsRenameCmd = &cobra.Command{
-	Use:   "rename <current-name> <new-name>",
-	Short: "Rename an agent",
-	Long: `Rename an agent to a new name.
-
-An agent's address is fixed when it is FIRST DEPLOYED, and renaming does not
-move it. The practical rule: rename before your first deploy and the address
-follows the new name; rename after and it stays as it was, so existing
-integrations, links and webhooks keep working.
-
-THE LOCAL FILE IS UPDATED TOO. 'afy deploy' finds its target through the
-'name:' in aetherfy.yaml, so a rename leaves that file naming an agent that no
-longer exists. If the aetherfy.yaml in the current directory declares the OLD
-name, this rewrites that one field and tells you it did. If it declares a
-different agent, or there is no file here, nothing is touched and you are told
-which file to update -- a file naming a different agent belongs to a different
-project, and rewriting it would retarget that project's deploys.`,
-	Args: cobra.ExactArgs(2),
-	RunE: runAgentsRename,
-}
-
-var forceRename bool
-
 func init() {
-	agentsRenameCmd.Flags().BoolVarP(&forceRename, "force", "f", false, "Skip confirmation prompt")
 	// AGENTS ARE THE DEFAULT NOUN — these register at the ROOT, not under an
 	// `agents` group. See the note above the registrations in cmd/root.go.
 	//
@@ -1366,13 +1340,13 @@ func init() {
 	// list is a wall. GroupID is presentation and nothing branches on it.
 	for _, c := range []*cobra.Command{
 		agentsCreateCmd, agentsDeleteCmd, agentsStopCmd, agentsStartCmd,
-		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd, agentsRenameCmd,
+		agentsArchiveCmd, agentsRestoreCmd, agentsCancelCmd,
 		agentsUpdateCmd, agentsAccessCmd,
 	} {
 		c.GroupID = groupAgentLifecycle
 	}
 	for _, c := range []*cobra.Command{
-		agentsListCmd, agentsStatusCmd, agentsPullCmd, agentsDiffCmd,
+		agentsListCmd, agentsStatusCmd, agentsDiffCmd,
 		agentsRunCmd, agentsRunsCmd, agentsScheduleCmd,
 	} {
 		c.GroupID = groupAgentOps
@@ -1399,9 +1373,7 @@ func init() {
 	rootCmd.AddCommand(agentsRestoreCmd)
 	rootCmd.AddCommand(agentsCancelCmd)
 	rootCmd.AddCommand(agentsStatusCmd)
-	rootCmd.AddCommand(agentsRenameCmd)
 	rootCmd.AddCommand(agentsUpdateCmd)
-	rootCmd.AddCommand(agentsPullCmd)
 	rootCmd.AddCommand(agentsDiffCmd)
 	rootCmd.AddCommand(agentsRunCmd)
 	rootCmd.AddCommand(agentsRunsCmd)
@@ -1415,145 +1387,46 @@ func init() {
 	agentsScheduleCmd.AddCommand(agentsScheduleResumeCmd)
 }
 
-func runAgentsRename(cmd *cobra.Command, args []string) error {
-	if err := checkAuth(); err != nil {
-		return err
-	}
-
-	currentName := args[0]
-	newName := args[1]
-
-	// Validate new name is different
-	if currentName == newName {
-		output.PrintError("New name must be different from current name")
-		return fmt.Errorf("new name must be different from current name")
-	}
-
-	// Get current agent to verify it exists
-	client := api.NewClient()
-	_, err := client.GetAgent(currentName)
-	if err != nil {
-		output.PrintError("Failed to find agent '%s': %v", currentName, err)
-		return err
-	}
-
-	// Confirm rename
-	if !forceRename {
-		output.Warning.Printf("Renaming agent '%s' to '%s'\n", currentName, newName)
-		fmt.Print("Continue? (y/N): ")
-		var confirm string
-		_, _ = fmt.Scanln(&confirm)
-		if confirm != "y" && confirm != "Y" {
-			output.PrintInfo("Rename cancelled.")
-			return nil
-		}
-	}
-
-	sp := output.NewSpinner(fmt.Sprintf("Renaming agent '%s' to '%s'...", currentName, newName))
-	sp.Start()
-
-	// Update agent with new name
-	updatedAgent, err := client.UpdateAgent(currentName, &api.AgentUpdateRequest{
-		Name: &newName,
-	})
-	sp.Stop()
-
-	if err != nil {
-		output.PrintError("Failed to rename agent: %v", err)
-		return err
-	}
-
-	output.PrintSuccess("Agent renamed successfully!")
-	output.Println("")
-	output.KeyValue("Old Name", currentName)
-	output.KeyValue("New Name", updatedAgent.Name)
-	output.KeyValue("ID", updatedAgent.ID)
-
-	printRenameNote(updatedAgent)
-	reportLocalManifestRename(currentName, newName)
-
-	return nil
-}
-
-// reportLocalManifestRename keeps the working directory pointing at the agent
-// that was just renamed, and says out loud what it did or did not do.
-//
-// SAYING SO IS HALF THE FEATURE. The failure this prevents is silent and
-// convincing: `afy deploy` resolves its target by the `name:` in aetherfy.yaml,
-// so after a rename that file names an agent that no longer exists, the deploy
-// gets AGENT_NOT_FOUND, and the prompt that follows offers to CREATE one under
-// the old name. That offer reads like the fix. Taking it leaves the user with
-// two agents and no error to explain it.
-//
-// EVERY BRANCH PRINTS. A silent no-op is indistinguishable from a rewrite that
-// worked, and the case it would hide -- the file lives one directory up -- is
-// the common one.
-func reportLocalManifestRename(oldName, newName string) {
-	dir, err := os.Getwd()
-	if err != nil {
-		output.Println("")
-		output.Dim.Printf("  Could not check this directory for an aetherfy.yaml (%v).\n", err)
-		output.Dim.Printf("  Set 'name: %s' in the aetherfy.yaml you deploy this agent from.\n", newName)
-		return
-	}
-
-	outcome, path, writeErr := archive.RewriteAgentName(dir, oldName, newName)
-	output.Println("")
-	switch outcome {
-	case archive.RewriteDone:
-		output.Info.Printf("i Updated 'name:' in %s\n", path)
-		output.Dim.Printf("  `afy deploy` from this directory still targets this agent.\n")
-	case archive.RewriteNameMismatch:
-		output.Warning.Printf("! %s names a different agent - left untouched.\n", path)
-		output.Dim.Printf("  Set 'name: %s' in whichever aetherfy.yaml declares '%s',\n", newName, oldName)
-		output.Dim.Printf("  or `afy deploy` from that directory will not find this agent.\n")
-	case archive.RewriteNoNameField:
-		output.Dim.Printf("  %s declares no 'name:' - nothing to update here.\n", path)
-	case archive.RewriteUnreadable:
-		if writeErr != nil {
-			output.Warning.Printf("! Could not update %s: %v\n", path, writeErr)
-		} else {
-			output.Warning.Printf("! Could not read %s - left untouched.\n", path)
-		}
-		output.Dim.Printf("  Set 'name: %s' there by hand before your next deploy.\n", newName)
-	default: // RewriteNoFile
-		output.Dim.Printf("  No aetherfy.yaml in this directory.\n")
-		output.Dim.Printf("  Set 'name: %s' in whichever aetherfy.yaml declares '%s',\n", newName, oldName)
-		output.Dim.Printf("  or `afy deploy` from that directory will not find this agent.\n")
-	}
-}
-
 // --- UPDATE ---
 var agentsUpdateCmd = &cobra.Command{
 	Use:   "update <name>",
-	Short: "Update an agent's workspace assignment or description",
-	Long: `Update mutable fields on an existing agent.
+	Short: "Rename an agent, move it to another workspace, or set its description",
+	Long: `Change what the platform owns about an agent: its name, the workspace it
+lives in, and its description. How it runs (runtime, memory, regions, ...) is
+aetherfy.yaml's, and only a deploy changes that.
 
-Use --workspace to move the agent into a workspace, or --no-workspace to
-make it workspaceless (the two are mutually exclusive). Use --description
-to set the agent's description. At least one flag is required; flags that
-aren't given are left unchanged.`,
-	Example: `  # Assign the agent to a workspace
+--name renames the agent. Its address does not change, and the folders linked
+to it keep deploying to it: a link names the agent by id. Code that calls the
+agent by its old name stops finding it.
+
+--workspace moves the agent to another workspace. A MOVE REDEPLOYS the agent,
+so its key reaches the new workspace at once; if it cannot be redeployed, the
+move is refused and says why. Its conversation history stays in the old
+workspace. Grants are unchanged, except a grant to the new home, which is
+dropped as redundant.
+
+At least one flag is required; flags not given are left unchanged.`,
+	Example: `  # Rename the agent
+  afy update my-agent --name invoice-parser
+
+  # Move it to another workspace (it is redeployed there)
   afy update my-agent --workspace invoice-pipeline
 
-  # Make the agent workspaceless (clear its workspace)
-  afy update my-agent --no-workspace
-
-  # Set the description (leaves the workspace untouched)
+  # Set the description
   afy update my-agent --description "Parses inbound invoices"`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsUpdate,
 }
 
 var (
+	agentUpdateName        string
 	agentUpdateWorkspace   string
-	agentUpdateNoWorkspace bool
 	agentUpdateDescription string
 )
 
 func init() {
-	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Assign the agent to this workspace")
-	agentsUpdateCmd.Flags().BoolVar(&agentUpdateNoWorkspace, "no-workspace", false, "Clear the agent's workspace (make it workspaceless)")
+	agentsUpdateCmd.Flags().StringVar(&agentUpdateName, "name", "", "Rename the agent")
+	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Move the agent to this workspace (redeploys it)")
 	agentsUpdateCmd.Flags().StringVarP(&agentUpdateDescription, "description", "d", "", "Set the agent's description")
 }
 
@@ -1563,149 +1436,134 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	name := args[0]
-
+	nameChanged := cmd.Flags().Changed("name")
 	wsChanged := cmd.Flags().Changed("workspace")
 	descChanged := cmd.Flags().Changed("description")
 
-	// Exactly one of --workspace / --no-workspace must be supplied — they
-	// are distinct intents (set vs clear) and must not be combined.
-	if wsChanged && agentUpdateNoWorkspace {
-		output.PrintError("--workspace and --no-workspace are mutually exclusive")
-		return fmt.Errorf("--workspace and --no-workspace are mutually exclusive")
+	if !nameChanged && !wsChanged && !descChanged {
+		return refuse("Specify at least one of --name <new>, --workspace <name> or --description <text>")
 	}
-	if !wsChanged && !agentUpdateNoWorkspace && !descChanged {
-		output.PrintError("Specify at least one of --workspace <name>, --no-workspace, or --description <text>")
-		return fmt.Errorf("no update specified")
+	if nameChanged && agentUpdateName == "" {
+		return refuse("--name needs the agent's new name")
+	}
+	if wsChanged && agentUpdateWorkspace == "" {
+		return refuse("--workspace needs the name of the workspace to move the agent to")
 	}
 
-	req := &api.AgentUpdateRequest{}
+	client := api.NewClient()
 
-	// Only touch workspace_name when a workspace flag was actually given —
-	// otherwise a description-only update would send a workspace_name and
-	// clobber the existing assignment.
+	// THE MOVE FIRST: it is the step most likely to be refused (a frozen
+	// account, a paused agent, regions outside the new workspace), and a
+	// refused move then leaves everything as it was. The rename and the
+	// description follow, addressing the agent by the id the move answered
+	// with, so the order of the two cannot lose track of it.
+	target := name
+	var moved *api.AgentMove
 	if wsChanged {
-		// Reject the empty string: clearing is --no-workspace's job, so we
-		// don't want two ways to express "workspaceless".
-		if agentUpdateWorkspace == "" {
-			output.PrintError("--workspace requires a non-empty name; use --no-workspace to clear")
-			return fmt.Errorf("empty workspace name")
-		}
-		encoded, err := json.Marshal(agentUpdateWorkspace)
+		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
+		sp.Start()
+		move, err := client.MoveAgent(name, agentUpdateWorkspace)
+		sp.Stop()
 		if err != nil {
-			return err
+			return printRefusal("Failed to move agent", err)
 		}
-		req.WorkspaceName = json.RawMessage(encoded)
-	} else if agentUpdateNoWorkspace {
-		// --no-workspace → explicit JSON null clears the assignment.
-		req.WorkspaceName = json.RawMessage("null")
+		printAgentMove(move)
+		moved, target = move, move.AgentID
 	}
+	var updated *api.Agent
 
-	if descChanged {
-		req.Description = &agentUpdateDescription
+	if nameChanged || descChanged {
+		if moved != nil {
+			output.Println("")
+		}
+		req := &api.AgentUpdateRequest{}
+		if nameChanged {
+			req.Name = &agentUpdateName
+		}
+		if descChanged {
+			req.Description = &agentUpdateDescription
+		}
+		agent, err := client.UpdateAgent(target, req)
+		if err != nil {
+			var apiErr *api.APIError
+			if moved != nil && errors.As(err, &apiErr) && apiErr.Message != "" {
+				// Exactly what happened: the move stands, the rest does not.
+				output.PrintAPIError(apiErr.StatusCode, apiErr.Code, fmt.Sprintf("Agent '%s' moved to workspace '%s'; %s refused: %s",
+					moved.Agent, moved.Workspace.Name, updatedWhat(nameChanged, descChanged), apiErr.Message))
+				return &printedError{err}
+			}
+			return printRefusal("Failed to update agent", err)
+		}
+		updated = agent
+		output.PrintSuccess("Agent '%s' updated.", agent.Name)
+		output.KeyValue("Name", agent.Name)
+		if agent.Description != "" {
+			output.KeyValue("Description", agent.Description)
+		}
+		if nameChanged {
+			printRenameNote(agent)
+		}
 	}
+	return output.Result(map[string]interface{}{"move": moved, "agent": updated})
+}
 
-	sp := output.NewSpinner(fmt.Sprintf("Updating agent '%s'...", name))
-	sp.Start()
-
-	client := api.NewClient()
-	agent, err := client.UpdateAgent(name, req)
-	sp.Stop()
-
-	if err != nil {
-		output.PrintError("Failed to update agent: %v", err)
-		return err
+func updatedWhat(name, description bool) string {
+	switch {
+	case name && description:
+		return "rename and description"
+	case name:
+		return "rename"
+	default:
+		return "description"
 	}
+}
 
-	output.PrintSuccess("Agent '%s' updated.", agent.Name)
-	output.Println("")
-	output.KeyValue("Name", agent.Name)
-	if agent.WorkspaceName != "" {
-		output.KeyValue("Workspace", agent.WorkspaceName)
+// printAgentMove says where the agent lives now and what the move redeployed.
+func printAgentMove(m *api.AgentMove) {
+	if !m.Changed {
+		output.PrintInfo("Agent '%s' already lives in workspace '%s'. Nothing changed.", m.Agent, m.Workspace.Name)
+		return
+	}
+	output.PrintSuccess("Agent '%s' moved from workspace '%s' to '%s'.", m.Agent, m.PreviousWorkspace.Name, m.Workspace.Name)
+	if m.Redeployed && m.Deployment != nil {
+		output.KeyValue("Redeploy", fmt.Sprintf("version %d (deployment %s)", m.Deployment.Version, m.Deployment.ID))
+		output.Println("Run 'afy logs " + m.Agent + "' to follow it.")
 	} else {
-		output.KeyValue("Workspace", "(none)")
+		output.Dim.Println("  It had no release serving, so nothing was redeployed; its next deploy runs in the new workspace.")
 	}
-	if agent.Description != "" {
-		output.KeyValue("Description", agent.Description)
-	}
-
-	return nil
+	output.Dim.Printf("  Its conversation history stays in workspace '%s'.\n", m.PreviousWorkspace.Name)
 }
 
-// --- PULL (export current state as aetherfy.yaml) ---
-var agentsPullCmd = &cobra.Command{
-	Use:   "pull <agent-name>",
-	Short: "Export an agent's current configuration as aetherfy.yaml",
-	Long: `Export an agent's current configuration as aetherfy.yaml.
-
-Use this to re-sync a local aetherfy.yaml after editing the agent via the
-dashboard or API. Prints to stdout by default (so you can redirect it):
-
-  afy pull my-agent > aetherfy.yaml
-
-Or write to a file directly with -o. The YAML is the declarative subset only
-(server-derived fields like id/status are excluded) and re-deploying it is a
-no-op — it's the inverse of 'afy deploy' under merge-patch semantics.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runAgentsPull,
-}
-
-var pullOutputFile string
-
-func init() {
-	agentsPullCmd.Flags().StringVarP(&pullOutputFile, "output", "o", "", "Write YAML to this file instead of stdout")
-}
-
-func runAgentsPull(cmd *cobra.Command, args []string) error {
-	if err := checkAuth(); err != nil {
-		return err
-	}
-
-	name := args[0]
-	client := api.NewClient()
-	data, err := client.GetAgentYAML(name)
-	if err != nil {
-		output.PrintError("Failed to pull agent '%s': %v", name, err)
-		return err
-	}
-
-	if pullOutputFile != "" {
-		if err := os.WriteFile(pullOutputFile, data, 0o644); err != nil {
-			output.PrintError("Failed to write %s: %v", pullOutputFile, err)
-			return err
-		}
-		output.PrintSuccess("Wrote %s", pullOutputFile)
-		return nil
-	}
-
-	// Raw to stdout — no spinner/color/decoration, so `afy pull foo >
-	// foo.yaml` produces a clean file.
-	fmt.Print(string(data))
-	return nil
-}
-
-// --- DIFF (preview what `afy deploy` would change vs preserve) ---
+// --- DIFF (preview what `afy deploy` would change) ---
 var agentsDiffCmd = &cobra.Command{
 	Use:   "diff",
-	Short: "Preview what `afy deploy` would change vs preserve",
-	Long: `Compare the local aetherfy.yaml against the agent's current state and
-print what 'afy deploy' would do, under merge-patch semantics:
+	Short: "Preview what `afy deploy` would change",
+	Long: `Compare the local aetherfy.yaml with the configuration of the agent this
+folder is linked to (.aetherfy/agent.json), and print what 'afy deploy' would
+change:
 
   ~ field: old → new   would change
   + field: value       would set (currently unset)
-  - field              would clear (declared null)
-  = field: value       no-op (declared, already matches)
-    field: value       preserved (omitted locally — deploy keeps it)
+  - field              would unset (declared null)
+  = field: value       no change
 
-Auto-detects aetherfy.yaml in the current directory (like 'afy deploy').
+A deploy applies the whole file: a field the file leaves out takes its
+DEFAULT, shown with "(default)", never the value the agent had before.
+
+--target picks among the folder's linked agents (default: "default").
 Exits non-zero when there are changes, so it's usable as a CI gate.`,
 	Args: cobra.NoArgs,
 	RunE: runAgentsDiff,
 }
 
-var diffPath string
+var (
+	diffPath   string
+	diffTarget string
+)
 
 func init() {
 	agentsDiffCmd.Flags().StringVarP(&diffPath, "path", "p", ".", "Project directory containing aetherfy.yaml")
+	agentsDiffCmd.Flags().StringVar(&diffTarget, "target", link.DefaultTarget, "Which of the folder's linked agents to compare with")
 }
 
 func runAgentsDiff(cmd *cobra.Command, args []string) error {
@@ -1713,46 +1571,65 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Parse the local aetherfy.yaml into a map (NOT the typed struct) so we
-	// preserve the declared / omitted / explicit-null distinction merge-patch
-	// depends on.
-	localPath := filepath.Join(diffPath, "aetherfy.yaml")
+	// Parse the local aetherfy.yaml into a map (NOT the typed struct) so the
+	// declared / omitted / explicit-null distinction survives.
+	absPath, err := filepath.Abs(diffPath)
+	if err != nil {
+		return err
+	}
+	localPath := filepath.Join(absPath, "aetherfy.yaml")
 	data, err := os.ReadFile(localPath)
 	if err != nil {
 		output.PrintError("Could not read %s: %v", localPath, err)
-		return err
+		return shown(err)
 	}
 	var local map[string]interface{}
 	if err := yaml.Unmarshal(data, &local); err != nil {
 		output.PrintError("Invalid aetherfy.yaml: %v", err)
-		return err
+		return shown(err)
 	}
 	// A key `afy deploy` would refuse is not a change to preview: shown as
 	// "+ schedul: ..." it would read as a field the deploy is about to set.
 	if err := archive.CheckUnknownFields(data); err != nil {
 		output.PrintError("%v", err)
-		return err
+		return shown(err)
 	}
-	name, _ := local["name"].(string)
-	if name == "" {
-		output.PrintError("aetherfy.yaml has no 'name' — cannot resolve the agent to diff against")
-		return fmt.Errorf("missing name in aetherfy.yaml")
+	for _, f := range archive.PlatformFields {
+		if _, declared := local[f]; declared {
+			// The server refuses the file at deploy; nothing it would change
+			// is worth showing until the key is gone.
+			output.PrintError("aetherfy.yaml declares '%s:', which a deploy refuses: the agent's %s is set on the "+
+				"platform ('afy update <agent> --%s'), not in the file. Remove it.", f, f, f)
+			return shown(fmt.Errorf("aetherfy.yaml declares %s", f))
+		}
 	}
 
 	client := api.NewClient()
-	serverYAML, err := client.GetAgentYAML(name)
+	agent, err := resolveLinkedAgent(client, absPath, diffTarget, false)
 	if err != nil {
-		output.PrintError("Failed to fetch current state for '%s': %v", name, err)
-		return err
+		return printRefusal("", err)
+	}
+	serverYAML, err := client.GetAgentYAML(agent.ID)
+	if err != nil {
+		if isNotDeployed(err) {
+			// Nothing released yet, so nothing to compare with: said plainly,
+			// not as a 404.
+			output.PrintError("%s", noReleaseYet(agent.Name))
+			os.Exit(1)
+		}
+		return printRefusal("Failed to fetch the configuration of '"+agent.Name+"'", err)
 	}
 	var server map[string]interface{}
 	if err := yaml.Unmarshal(serverYAML, &server); err != nil {
 		output.PrintError("Control plane returned invalid YAML: %v", err)
-		return err
+		return shown(err)
 	}
 
 	diffs := yamldiff.Diff(local, server)
-	printAgentDiff(name, diffs)
+	printAgentDiff(agent.Name, diffs)
+	if err := output.Result(diffJSON(agent.Name, diffs)); err != nil {
+		return err
+	}
 
 	// CI-friendly: non-zero exit when a deploy would change something.
 	if yamldiff.HasChanges(diffs) {
@@ -1761,14 +1638,31 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// printAgentDiff renders the merge-patch diff with the project's color scheme.
+// diffJSON is `afy diff --json`: every field the deploy would touch or leave,
+// and whether any would change (the exit code says the same).
+func diffJSON(agent string, diffs []yamldiff.FieldDiff) map[string]interface{} {
+	kinds := map[yamldiff.Kind]string{yamldiff.NoOp: "unchanged", yamldiff.Change: "change", yamldiff.Add: "add", yamldiff.Clear: "clear"}
+	fields := make([]map[string]interface{}, 0, len(diffs))
+	for _, d := range diffs {
+		fields = append(fields, map[string]interface{}{
+			"key": d.Key, "kind": kinds[d.Kind], "current": d.Current, "declared": d.Declared, "defaulted": d.Defaulted,
+		})
+	}
+	return map[string]interface{}{"agent": agent, "changes": yamldiff.HasChanges(diffs), "fields": fields}
+}
+
+// printAgentDiff renders the diff with the project's color scheme.
 func printAgentDiff(name string, diffs []yamldiff.FieldDiff) {
 	output.Header(fmt.Sprintf("Diff for agent: %s", name))
 	output.Println("")
 	for _, d := range diffs {
+		declared := d.Declared
+		if d.Defaulted {
+			declared += " (default)"
+		}
 		switch d.Kind {
 		case yamldiff.Change:
-			line := fmt.Sprintf("~ %s: %s → %s", d.Key, d.Current, d.Declared)
+			line := fmt.Sprintf("~ %s: %s → %s", d.Key, d.Current, declared)
 			// runtime is immutable post-create (the deploy rejects a change
 			// with RUNTIME_IMMUTABLE) — flag it so the preview isn't misleading.
 			if d.Key == "runtime" {
@@ -1777,13 +1671,11 @@ func printAgentDiff(name string, diffs []yamldiff.FieldDiff) {
 				output.Yellow.Println(line)
 			}
 		case yamldiff.Add:
-			output.Green.Printf("+ %s: %s\n", d.Key, d.Declared)
+			output.Green.Printf("+ %s: %s\n", d.Key, declared)
 		case yamldiff.Clear:
 			output.Red.Printf("- %s  (clear; currently %s)\n", d.Key, d.Current)
 		case yamldiff.NoOp:
-			output.Dim.Printf("= %s: %s\n", d.Key, d.Declared)
-		case yamldiff.Preserve:
-			output.Dim.Printf("  %s: %s (preserved by deploy)\n", d.Key, d.Current)
+			output.Dim.Printf("= %s: %s\n", d.Key, declared)
 		}
 	}
 	output.Println("")
@@ -1885,11 +1777,11 @@ func formatDeploymentState(state string) string {
 // through to the plain server message (already actionable). Never special-cases
 // HTTP 502 — a bare 502 is edge infra, handled generically like the rest of the
 // CLI.
-func printAgentActionError(prefix string, err error) {
-	output.PrintError("%s: %v", prefix, err)
+func printAgentActionError(prefix string, err error) error {
+	shownErr := printRefusal(prefix, err)
 	apiErr, ok := err.(*api.APIError)
-	if !ok {
-		return
+	if !ok || output.IsJSON() {
+		return shownErr
 	}
 	switch apiErr.Code {
 	case "AGENT_NOT_DEPLOYED":
@@ -1897,6 +1789,7 @@ func printAgentActionError(prefix string, err error) {
 	case "AGENT_SCHEDULE_NOT_SET":
 		output.PrintInfo("Add `schedule:` to aetherfy.yaml and push (afy deploy).")
 	}
+	return shownErr
 }
 
 // formatRunState colorizes a run's deployment state for the runs table:

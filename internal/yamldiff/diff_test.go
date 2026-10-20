@@ -29,73 +29,97 @@ func find(t *testing.T, diffs []FieldDiff, key string) FieldDiff {
 	return FieldDiff{}
 }
 
+func absent(t *testing.T, diffs []FieldDiff, key string) {
+	t.Helper()
+	for _, d := range diffs {
+		if d.Key == key {
+			t.Errorf("%s: want no row, got %+v", key, d)
+		}
+	}
+}
+
 func TestDiffCategorizesEachState(t *testing.T) {
-	// server = current state; local = the aetherfy.yaml on disk.
+	// server = the agent's current configuration (the export); local = the
+	// aetherfy.yaml on disk.
 	server := mustMap(t, `
-name: svc
 runtime: python3.11
-type: service
+type: job
 memory_mb: 1024
+idle_timeout_minutes: 5
 keep_alive: true
-workspace: ws-a
+schedule: "0 3 * * *"
 `)
 	local := mustMap(t, `
-name: svc
 runtime: python3.11
 memory_mb: 512
 keep_alive: true
-workspace: null
-database_collection: coll-new
+schedule: null
+entrypoint: main.py
 `)
 
 	diffs := Diff(local, server)
 
-	// name: declared, same → NoOp
-	if d := find(t, diffs, "name"); d.Kind != NoOp {
-		t.Errorf("name kind = %v, want NoOp", d.Kind)
+	if d := find(t, diffs, "runtime"); d.Kind != NoOp {
+		t.Errorf("runtime kind = %v, want NoOp", d.Kind)
 	}
-	// memory_mb: declared 512 vs server 1024 → Change
 	if d := find(t, diffs, "memory_mb"); d.Kind != Change || d.Current != "1024" || d.Declared != "512" {
 		t.Errorf("memory_mb = %+v, want Change 1024→512", d)
 	}
-	// keep_alive: declared true, server true → NoOp
 	if d := find(t, diffs, "keep_alive"); d.Kind != NoOp {
 		t.Errorf("keep_alive kind = %v, want NoOp", d.Kind)
 	}
-	// type: omitted locally, server has it → Preserve
-	if d := find(t, diffs, "type"); d.Kind != Preserve || d.Current != "service" {
-		t.Errorf("type = %+v, want Preserve service", d)
+	// Explicit null over a value → Clear.
+	if d := find(t, diffs, "schedule"); d.Kind != Clear || d.Current != "0 3 * * *" {
+		t.Errorf("schedule = %+v, want Clear", d)
 	}
-	// workspace: explicit null, server has ws-a → Clear
-	if d := find(t, diffs, "workspace"); d.Kind != Clear || d.Current != "ws-a" {
-		t.Errorf("workspace = %+v, want Clear ws-a", d)
+	// Declared, unset on the server → Add.
+	if d := find(t, diffs, "entrypoint"); d.Kind != Add || d.Declared != "main.py" {
+		t.Errorf("entrypoint = %+v, want Add main.py", d)
 	}
-	// database_collection: declared, server absent → Add
-	if d := find(t, diffs, "database_collection"); d.Kind != Add || d.Declared != "coll-new" {
-		t.Errorf("database_collection = %+v, want Add coll-new", d)
+}
+
+// NOTHING IS PRESERVED. A field the file leaves out becomes its default on
+// deploy: a change when the agent has something else, a no-op when it already
+// has the default.
+func TestAnOmittedFieldIsComparedAsItsDefault(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\ntype: job\nidle_timeout_minutes: 5\nkeep_alive: true\n")
+	diffs := Diff(mustMap(t, "runtime: python3.11\n"), server)
+
+	if d := find(t, diffs, "type"); d.Kind != Change || d.Current != "job" || d.Declared != "service" || !d.Defaulted {
+		t.Errorf("type = %+v, want Change job→service (default)", d)
+	}
+	if d := find(t, diffs, "keep_alive"); d.Kind != Change || d.Declared != "false" || !d.Defaulted {
+		t.Errorf("keep_alive = %+v, want Change true→false (default)", d)
+	}
+	if d := find(t, diffs, "idle_timeout_minutes"); d.Kind != NoOp || !d.Defaulted {
+		t.Errorf("idle_timeout_minutes = %+v, want NoOp: the agent already has the default", d)
+	}
+	// Unset on both sides: nothing to say.
+	absent(t, diffs, "schedule")
+	absent(t, diffs, "github_dependencies")
+	if !HasChanges(diffs) {
+		t.Error("type and keep_alive change, so HasChanges must be true")
 	}
 }
 
 func TestHasChanges(t *testing.T) {
-	server := mustMap(t, "name: svc\nruntime: python3.11\nmemory_mb: 512\n")
+	server := mustMap(t, "runtime: python3.11\ntype: service\nmemory_mb: 512\nidle_timeout_minutes: 5\nkeep_alive: false\n")
 
-	// Identical declaration (plus an omitted field that's preserved) → no changes.
-	noChange := Diff(mustMap(t, "name: svc\nmemory_mb: 512\n"), server)
+	noChange := Diff(mustMap(t, "runtime: python3.11\nmemory_mb: 512\n"), server)
 	if HasChanges(noChange) {
-		t.Errorf("expected no changes, got %+v", noChange)
+		t.Errorf("expected no changes (the omitted fields already hold their defaults), got %+v", noChange)
 	}
 
-	// A differing value → changes.
-	changed := Diff(mustMap(t, "name: svc\nmemory_mb: 1024\n"), server)
+	changed := Diff(mustMap(t, "runtime: python3.11\nmemory_mb: 1024\n"), server)
 	if !HasChanges(changed) {
 		t.Errorf("expected changes for memory_mb 512→1024")
 	}
 }
 
 func TestRenderListsAndMaps(t *testing.T) {
-	server := mustMap(t, "name: svc\n")
+	server := mustMap(t, "runtime: python3.11\n")
 	local := mustMap(t, `
-name: svc
+runtime: python3.11
 regions:
   - us-east-1
   - eu-central-1
@@ -113,15 +137,52 @@ spawn:
 	}
 }
 
-func TestNullOnAbsentServerFieldIsNoOp(t *testing.T) {
-	// `workspace: null` when the agent is already workspaceless → no-op clear.
-	server := mustMap(t, "name: svc\n")
-	local := mustMap(t, "name: svc\nworkspace: null\n")
-	diffs := Diff(local, server)
-	if d := find(t, diffs, "workspace"); d.Kind != NoOp {
-		t.Errorf("workspace null-on-absent = %v, want NoOp", d.Kind)
+// regions and github_dependencies are in the export (ccc10c6) and compared
+// like every other field: a difference is a change, an equal value is not.
+func TestRegionsAndGithubDependenciesAreComparedLikeAnyField(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\nregions: [eu-central-1]\ngithub_dependencies: [org/lib@v1]\n")
+
+	same := Diff(mustMap(t, "runtime: python3.11\nregions: [eu-central-1]\ngithub_dependencies: [org/lib@v1]\n"), server)
+	if HasChanges(same) {
+		t.Errorf("equal regions and dependencies must not be a change: %+v", same)
+	}
+
+	diffs := Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\ngithub_dependencies: [org/lib@v2]\n"), server)
+	for _, key := range []string{"regions", "github_dependencies"} {
+		if d := find(t, diffs, key); d.Kind != Change {
+			t.Errorf("%s = %+v, want Change", key, d)
+		}
+	}
+
+	// Omitted: they take their defaults (none / no dependencies) -- a change
+	// from what the release has.
+	omitted := Diff(mustMap(t, "runtime: python3.11\n"), server)
+	if d := find(t, omitted, "github_dependencies"); d.Kind != Clear || !d.Defaulted {
+		t.Errorf("github_dependencies omitted = %+v, want Clear (default)", d)
+	}
+}
+
+// regions is a SET: the same regions in another order are not a change; a
+// different set is.
+func TestRegionsReorderedAreNotAChange(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\nregions: [eu-central-1, us-east-1]\n")
+	diffs := Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1, eu-central-1]\n"), server)
+	if d := find(t, diffs, "regions"); d.Kind != NoOp {
+		t.Errorf("the same regions reordered = %+v, want NoOp", d)
 	}
 	if HasChanges(diffs) {
-		t.Errorf("null-on-absent should not count as a change")
+		t.Error("a reordering is never a change")
+	}
+	diffs = Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\n"), server)
+	if d := find(t, diffs, "regions"); d.Kind != Change {
+		t.Errorf("a different set = %+v, want Change", d)
+	}
+}
+
+func TestNullOnAbsentServerFieldIsNoOp(t *testing.T) {
+	server := mustMap(t, "runtime: python3.11\n")
+	diffs := Diff(mustMap(t, "runtime: python3.11\nschedule: null\n"), server)
+	if d := find(t, diffs, "schedule"); d.Kind != NoOp {
+		t.Errorf("schedule = %+v, want NoOp (already unset)", d)
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/test/cperrors"
+	"github.com/l-td/aetherfy-cli/internal/yamldiff"
 	"github.com/l-td/aetherfy-cli/test/cpyaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -147,12 +148,46 @@ func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 // one side accepts what the other refuses. Live against the sibling checkout
 // like the other control-plane guards: skipped where there is none, FAILED
 // where cperrors.RequireEnv says there must be (the e2e nightly).
+func TestAPlatformFieldPassesThroughAndATypoOfOneDoesNot(t *testing.T) {
+	for _, key := range PlatformFields {
+		assert.NoError(t, CheckUnknownFields([]byte(key+": x\nruntime: python3.11\n")),
+			"%s: is the server's to refuse, in its own words", key)
+	}
+	assert.Error(t, CheckUnknownFields([]byte("nmae: x\nruntime: python3.11\n")), "a typo is still refused here")
+	assert.Error(t, CheckUnknownFields([]byte("spawn:\n  name: x\n")), "only TOP-LEVEL keys pass through")
+}
+
 func TestKnownFieldsEqualTheControlPlaneModel(t *testing.T) {
 	src := controlPlaneSource(t)
 	assert.Equal(t, cpyaml.Paths(src), KnownFields().Paths(),
 		"archive.AetherfyConfig's yaml tags and the control plane's %s (%s) disagree. Add the field to the "+
 			"struct (typed `any` if the CLI does not read it) -- and to docs-site's aetherfy-yaml schema.",
 		cpyaml.RootModel, cpyaml.SourcePath)
+	// The keys passed through for the server to refuse are exactly the
+	// control plane's PLATFORM_FIELDS: one more here would upload a typo the
+	// CLI should have caught; one fewer would refuse it in the CLI's words,
+	// not the server's. Part of this comparison (not a test of its own) so the
+	// e2e nightly, which lists this test, runs it.
+	assert.Equal(t, src.PlatformFields, PlatformFields,
+		"archive.PlatformFields and the control plane's PLATFORM_FIELDS (%s) disagree", cpyaml.SourcePath)
+
+	// What a field left out of the file becomes on deploy: `afy diff` compares
+	// an omitted field with yamldiff.Defaults, a copy of the model's defaults.
+	// Here, not in a test of its own, for the same nightly reason.
+	defaults, required, err := cpyaml.Defaults(cpRootForPair(t))
+	require.NoError(t, err)
+	assert.Equal(t, defaults, yamldiff.Defaults,
+		"yamldiff.Defaults and the defaults of the control plane's %s (%s) disagree: `afy diff` would "+
+			"misreport what an omitted field becomes", cpyaml.RootModel, cpyaml.SourcePath)
+	assert.Equal(t, []string{"runtime"}, required, "the model's required fields changed")
+
+	// A deploy without aetherfy.yaml is refused locally (there is nothing to
+	// upload, so the server's sentence cannot arrive); the CLI's sentence is
+	// the server's own.
+	missing, err := cpyaml.MissingConfigMessage(cpRootForPair(t))
+	require.NoError(t, err)
+	assert.Equal(t, missing, MissingConfigMessage,
+		"archive.MissingConfigMessage and the control plane's MISSING_CONFIG_MESSAGE (%s) disagree", cpyaml.SourcePath)
 	assert.Empty(t, cpyaml.NotForbidding(src),
 		"these control-plane models accept unknown fields, which the CLI refuses: set "+
 			"model_config = ConfigDict(extra=\"forbid\") on them")
@@ -168,9 +203,15 @@ func TestUnknownFieldWordingEqualsTheControlPlanes(t *testing.T) {
 	assert.Equal(t, src.SuggestionCutoff, UnknownFieldSuggestionCutoff, "the suggestion cutoff")
 }
 
+// cpRootForPair is the control-plane checkout controlPlaneSource read.
+func cpRootForPair(t *testing.T) string {
+	t.Helper()
+	return cperrors.Root(filepath.Join("..", ".."))
+}
+
 func controlPlaneSource(t *testing.T) *cpyaml.Source {
 	t.Helper()
-	cpRoot := cperrors.Root(filepath.Join("..", ".."))
+	cpRoot := cpRootForPair(t)
 	if !cperrors.RootExists(cpRoot) {
 		cperrors.SkipUnlessRequired(t, "SKIPPED: no control-plane checkout at %s (set %s to point elsewhere)",
 			cpRoot, cperrors.RootEnv)

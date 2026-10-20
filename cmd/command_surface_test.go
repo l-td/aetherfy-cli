@@ -90,7 +90,7 @@ func TestTheAgentVerbsAreAllAtTheRoot(t *testing.T) {
 	// user typing it and being told it is unknown.
 	for _, name := range []string{
 		"list", "create", "delete", "stop", "start", "archive", "restore",
-		"cancel", "status", "rename", "update", "pull", "diff", "run", "runs",
+		"cancel", "status", "update", "diff", "run", "runs",
 		"schedule", "access",
 		// already flat before the flatten; here so the list reads as the whole
 		// agent surface rather than as "the ones that moved"
@@ -237,11 +237,23 @@ func TestTheNonDefaultNounsKeepTheirGroups(t *testing.T) {
 	}
 }
 
-// vectorLeaves is every runnable command under the three vector groups.
+// vectorLeaves is every runnable command under the three vector groups, at
+// any depth: a nested group (afy collections schema) is walked to its leaves,
+// not counted as one.
 func vectorLeaves() []*cobra.Command {
 	var leaves []*cobra.Command
+	var walk func(c *cobra.Command)
+	walk = func(c *cobra.Command) {
+		for _, sub := range c.Commands() {
+			if sub.HasSubCommands() {
+				walk(sub)
+			} else {
+				leaves = append(leaves, sub)
+			}
+		}
+	}
 	for _, group := range []*cobra.Command{collectionsCmd, indexCmd, pointsCmd} {
-		leaves = append(leaves, group.Commands()...)
+		walk(group)
 	}
 	return leaves
 }
@@ -256,10 +268,20 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// points upsert was the owner's (2026-10-08), writing a few points while
 	// debugging a collection, without the SDKs' chunking or retries;
 	// collections region-limits was the owner's (2026-10-12), the CLI's half
-	// of the dashboard's Usage figures for region changes.
+	// of the dashboard's Usage figures for region changes; collections update
+	// was the workspaces-required brief's (decision 1.17, the rename approved
+	// 2026-10-14): renaming a collection from the CLI as from the dashboard;
+	// collections schema get/set/delete/analyze were the supervisor's
+	// workspaces-required-cli-schema brief (2026-10-14), under the owner's rule
+	// that the CLI can do what a person can in the dashboard: its per-collection
+	// schema page. Schema conformance is NOT here on purpose: the dashboard does
+	// not offer it, so parity does not ask for it.
 	want := []string{
 		"afy collections create", "afy collections delete", "afy collections get", "afy collections list",
 		"afy collections move", "afy collections region-limits", "afy collections regions",
+		"afy collections schema analyze", "afy collections schema delete", "afy collections schema get",
+		"afy collections schema set",
+		"afy collections update",
 		"afy index create", "afy index delete",
 		"afy points count", "afy points delete", "afy points get", "afy points list", "afy points search",
 		"afy points upsert",
@@ -275,8 +297,7 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 }
 
 func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
-	// --json is the contract a coding agent reads, and the other three decide
-	// where a request goes and which workspace a name means. A command
+	// The three decide where a request goes and which workspace a name means. A command
 	// without one of them silently ignores it: cobra refuses an unknown flag,
 	// but a caller that gets that refusal from one command and not another
 	// cannot script against the set.
@@ -289,15 +310,30 @@ func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
 		t.Fatalf("only %d vector commands found; the walk is not reaching them", len(leaves))
 	}
 	for _, c := range leaves {
-		for _, flag := range []string{"json", "workspace", "vectors-url", "api-region"} {
+		// --json is the ROOT's one switch (TestJSONFlagReplacesOutputAndHasNoAlias):
+		// every vector command has it, and none declares its own.
+		if c.Flag("json") == nil {
+			t.Errorf("`%s` has no --json", c.CommandPath())
+		}
+		for _, flag := range []string{"workspace", "vectors-url", "api-region"} {
 			if c.Flag(flag) == nil {
 				t.Errorf("`%s` has no --%s", c.CommandPath(), flag)
 			}
 			if c.LocalNonPersistentFlags().Lookup(flag) != nil {
 				t.Errorf("`%s` declares --%s itself; it belongs to the group", c.CommandPath(), flag)
 			}
-			if c.Parent().PersistentFlags().Lookup(flag) == nil {
-				t.Errorf("`%s` is not a persistent flag of `%s`", flag, c.Parent().CommandPath())
+			// The top-level group, above a nested one (afy collections schema).
+			// A group in between must not declare its own copy: the leaf would
+			// inherit that copy, not the top-level group's.
+			group := c.Parent()
+			for group.Parent() != rootCmd {
+				if group.PersistentFlags().Lookup(flag) != nil || group.LocalNonPersistentFlags().Lookup(flag) != nil {
+					t.Errorf("`%s` declares --%s itself; it belongs to the top-level group", group.CommandPath(), flag)
+				}
+				group = group.Parent()
+			}
+			if group.PersistentFlags().Lookup(flag) == nil {
+				t.Errorf("`%s` is not a persistent flag of `%s`", flag, group.CommandPath())
 			}
 		}
 		if c.GroupID != "" {

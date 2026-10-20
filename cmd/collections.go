@@ -20,10 +20,11 @@ var collectionsCmd = &cobra.Command{
 	Short:   "Inspect and manage vector collections",
 	Long: `Inspect and manage vector collections in the vectors API.
 
-A collection is reachable only through its workspace (names are unique per
-account). The workspace is --workspace when
-given, else AETHERFY_WORKSPACE, else none, the same default as the SDKs. The
-endpoint is --vectors-url, else AETHERFY_VECTORS_URL, else the one region
+Every collection lives in a workspace, and its name is unique within it: the
+same name in two workspaces is two collections. The workspace is --workspace
+when given; otherwise the account's only workspace, or, when it has several,
+the one you pick (without a terminal, or with --json, --workspace is required).
+No environment variable sets it. The endpoint is --vectors-url, else AETHERFY_VECTORS_URL, else the one region
 discovery names for --api-region, else the global endpoint.
 
 To read what is in one, see afy collections get <name> and afy points count
@@ -76,9 +77,6 @@ func toCollectionJSON(c vectors.CollectionInfo) collectionJSON {
 }
 
 func workspaceLabel(ws string) string {
-	if ws == "" {
-		return "no workspace"
-	}
 	return "workspace '" + ws + "'"
 }
 
@@ -192,11 +190,10 @@ func collectionsGet(r *vecRun, name string) int {
 // collection: what it does, its state, and the operation to follow.
 func describeCollectionOperation(op *api.CollectionOperation) string {
 	what := "replicating to " + strings.Join(op.ToRegions, ", ")
-	if op.Kind == "move" {
-		what = "moving to no workspace"
-		if op.TargetWorkspace != nil {
-			what = "moving to workspace '" + op.TargetWorkspace.Name + "'"
-		}
+	// A move always names its target; target_workspace is null only for a
+	// regions change.
+	if op.Kind == "move" && op.TargetWorkspace != nil {
+		what = "moving to workspace '" + op.TargetWorkspace.Name + "'"
 	}
 	// The operation's status as words: the control plane answers pending or
 	// in_progress, the vocabulary its operation poll uses.

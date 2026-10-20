@@ -53,6 +53,11 @@ type Source struct {
 	Message          string  // UNKNOWN_FIELD_MESSAGE
 	Suggestion       string  // UNKNOWN_FIELD_SUGGESTION
 	SuggestionCutoff float64 // UNKNOWN_FIELD_SUGGESTION_CUTOFF
+	// PlatformFields are PLATFORM_FIELDS' keys, sorted: the keys that left
+	// aetherfy.yaml for the platform (name, description, workspace). The
+	// server refuses each with its own sentence; the CLI passes them through
+	// so that sentence is the one the user reads.
+	PlatformFields []string
 }
 
 var (
@@ -65,6 +70,11 @@ var (
 	ident     = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
 	strConst  = regexp.MustCompile(`^(UNKNOWN_FIELD_MESSAGE|UNKNOWN_FIELD_SUGGESTION) = "([^"]*)"\s*(?:#.*)?$`)
 	numConst  = regexp.MustCompile(`^UNKNOWN_FIELD_SUGGESTION_CUTOFF = ([0-9.]+)\s*(?:#.*)?$`)
+	// PLATFORM_FIELDS = { ... } at column 0, one `    "key": ...` per entry
+	// (the sentence may continue on the next lines, indented further).
+	platformOpen  = regexp.MustCompile(`^PLATFORM_FIELDS\s*(?::[^=]*)?=\s*\{\s*$`)
+	platformKey   = regexp.MustCompile(`^    "([A-Za-z_][A-Za-z0-9_]*)"\s*:`)
+	platformOther = regexp.MustCompile(`^    [^\s)]`) // a `    ),` closes a multi-line value
 )
 
 // Names an annotation may use without naming a model.
@@ -93,7 +103,25 @@ func Extract(cpRoot string) (*Source, error) {
 
 	var cur string
 	inDoc := false
+	inPlatform := false
 	for _, l := range lines {
+		if platformOpen.MatchString(l) {
+			seenConst["PLATFORM_FIELDS"]++
+			inPlatform = true
+			continue
+		}
+		if inPlatform {
+			if strings.HasPrefix(l, "}") {
+				inPlatform = false
+				continue
+			}
+			if m := platformKey.FindStringSubmatch(l); m != nil {
+				src.PlatformFields = append(src.PlatformFields, m[1])
+			} else if platformOther.MatchString(l) && !strings.HasPrefix(strings.TrimSpace(l), "#") {
+				return nil, fmt.Errorf("PLATFORM_FIELDS has an entry this reader cannot read: %q -- teach it the shape", l)
+			}
+			continue
+		}
 		if m := strConst.FindStringSubmatch(l); m != nil {
 			seenConst[m[1]]++
 			if m[1] == "UNKNOWN_FIELD_MESSAGE" {
@@ -174,6 +202,10 @@ func Extract(cpRoot string) (*Source, error) {
 			src.Models[model].Fields[field] = nested
 		}
 	}
+	if inPlatform {
+		return nil, fmt.Errorf("PLATFORM_FIELDS in %s never closes at column 0", SourcePath)
+	}
+	sort.Strings(src.PlatformFields)
 	return src, nil
 }
 
@@ -194,6 +226,10 @@ func Validate(src *Source) error {
 	if src.Message == "" || src.Suggestion == "" || src.SuggestionCutoff == 0 {
 		return fmt.Errorf("UNKNOWN_FIELD_MESSAGE, UNKNOWN_FIELD_SUGGESTION and UNKNOWN_FIELD_SUGGESTION_CUTOFF must all be "+
 			"module-level literals in %s (found %q, %q, %v)", SourcePath, src.Message, src.Suggestion, src.SuggestionCutoff)
+	}
+	if len(src.PlatformFields) == 0 {
+		return fmt.Errorf("no PLATFORM_FIELDS entries in %s -- an empty set would let the CLI pass nothing "+
+			"through and still agree", SourcePath)
 	}
 	return nil
 }
