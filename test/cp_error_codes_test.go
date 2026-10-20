@@ -113,6 +113,13 @@ var notControlPlaneCodes = map[string]string{
 	"ADDRESSED_AN_ALIAS":      "vectordb code: a schema write through an alias, 409 (routes/schema.js, sheet 1.6), in cmd/collection_schema_test.go",
 	"SPARSE_FIELD":            "vectordb analyzer warning, not an error code (services/schemaAnalyzer.js), in cmd/collection_schema_test.go",
 
+	// Recovering a deleted collection (vectordb services/collectionRecovery/restore.js,
+	// RecoveryRefusal): the commands print the code they are sent, nothing branches
+	// on it. In cmd/collection_recovery_test.go.
+	"COLLECTION_NAME_TAKEN_FOR_RESTORE": "vectordb code: a restore under a name already used in the workspace, 409 (restore.js)",
+	"COLLECTION_BACKUP_EXPIRED":         "vectordb code: a restore past the plan's recovery window, 410 (restore.js)",
+	"COLLECTION_RESTORE_LIMIT_EXCEEDED": "vectordb code: the plan's restores or restored volume for the month are used, 429 (restore.js)",
+
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.
 	"AETHERFY_AGENT_ID":        "reserved agent env var, not settable as a secret",
