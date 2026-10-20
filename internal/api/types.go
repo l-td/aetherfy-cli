@@ -580,6 +580,7 @@ type ConnectionAgentRef struct {
 // Status is "connected" or "needs_reauth" — the provider refused the stored
 // grant and the user must connect again.
 type Connection struct {
+	ID              string              `json:"id"`
 	Name            string              `json:"name"`
 	Provider        string              `json:"provider"`
 	Scope           string              `json:"scope"`
@@ -592,6 +593,15 @@ type Connection struct {
 	ConnectedAt     time.Time           `json:"connected_at"`
 	LastRefreshedAt *time.Time          `json:"last_refreshed_at"`
 	LastUsedAt      *time.Time          `json:"last_used_at"`
+	// UsedBy: the agents whose key can use it (own, home, or grant). Nil when
+	// the server did not say.
+	UsedBy []ConnectionAgentUse `json:"used_by"`
+}
+
+// ConnectionAgentUse is one agent whose key can ask for a token for a connection.
+type ConnectionAgentUse struct {
+	Agent ConnectionAgentRef `json:"agent"`
+	Via   string             `json:"via"` // own | home | grant
 }
 
 // ConnectionCreateRequest starts a connection. Name defaults server-side to
@@ -613,6 +623,7 @@ type ConnectionConnectURL struct {
 // ConnectionDeleted reports a disconnect. ProviderRevoked is true only when
 // the provider CONFIRMED the grant is revoked.
 type ConnectionDeleted struct {
+	ID              string `json:"id"`
 	Name            string `json:"name"`
 	ProviderRevoked bool   `json:"provider_revoked"`
 }
