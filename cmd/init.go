@@ -13,6 +13,7 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/detect"
 	"github.com/l-td/aetherfy-cli/internal/link"
 	"github.com/l-td/aetherfy-cli/internal/output"
+	"github.com/l-td/aetherfy-cli/internal/starters"
 	"github.com/spf13/cobra"
 )
 
@@ -55,7 +56,11 @@ accept every default (useful for scripting/CI).`,
   afy init --agent invoice-parser
 
   # Add a staging target pointing at another agent
-  afy init --agent invoice-parser-staging --target staging`,
+  afy init --agent invoice-parser-staging --target staging
+
+  # Start a new agent from a starter project (see --list-templates)
+  afy init --template node-ts-hono ./my-agent
+  afy init --list-templates`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runInit,
 }
@@ -74,6 +79,8 @@ var (
 	initForce      bool
 	initYes        bool
 	initSchedule   string
+	initTemplate   string
+	initListTempl  bool
 )
 
 func init() {
@@ -89,6 +96,8 @@ func init() {
 	initCmd.Flags().BoolVar(&initKeepAlive, "keep-alive", false, "Enable always-on billing (skips billing prompt)")
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite an existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
+	initCmd.Flags().StringVar(&initTemplate, "template", "", "Create the new agent from a starter project (see --list-templates): its files are written, then aetherfy.yaml for it")
+	initCmd.Flags().BoolVar(&initListTempl, "list-templates", false, "List the starter projects --template can write, and exit")
 	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
 }
 
@@ -118,6 +127,13 @@ func slugify(s string) string {
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	// The list needs no account: it is read from the binary.
+	if initListTempl {
+		return printStarters()
+	}
+	if initTemplate != "" && cmd.Flags().Changed("agent") {
+		return refuse("--template writes a starter project for a NEW agent; --agent links an existing one. Use one or the other")
+	}
 	if err := checkAuth(); err != nil {
 		return err
 	}
@@ -236,11 +252,34 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 	}
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
-	if proceed, err := confirmOverwrite(p, configPath); err != nil || !proceed {
-		if err == nil {
-			return output.Result(map[string]interface{}{"created": false, "aborted": true})
-		}
+
+	// A starter is CHECKED here and WRITTEN only once the agent exists, so a
+	// refused create (a name already taken, a plan limit) leaves the folder as
+	// it was and the same command can be run again. Its check covers
+	// aetherfy.yaml too, so the overwrite question is not asked a second time.
+	starter, err := planStarter(absDir, configPath)
+	if err != nil {
 		return err
+	}
+	if starter == nil {
+		if proceed, err := confirmOverwrite(p, configPath); err != nil || !proceed {
+			if err == nil {
+				return output.Result(map[string]interface{}{"created": false, "aborted": true})
+			}
+			return err
+		}
+	} else {
+		// The files are written for one runtime and one entrypoint, and the
+		// starter is a service: preset all three unless a flag says otherwise.
+		if initRuntime == "" {
+			initRuntime = starter.def.Runtime
+		}
+		if initEntrypoint == "" {
+			initEntrypoint = starter.def.Entrypoint
+		}
+		if initType == "" {
+			initType = "service"
+		}
 	}
 
 	// -y / --yes disables the interactive path entirely, reusing the
@@ -285,6 +324,15 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 	}
 	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
 
+	files := []string{"aetherfy.yaml", link.RelPath()}
+	if starter != nil {
+		if err := starter.write(absDir); err != nil {
+			output.PrintError("The agent was created, but the %s starter could not be written (%v). "+
+				"Link the folder with 'afy init --agent %s'.", starter.def.Name, err, agent.Name)
+			return shown(err)
+		}
+		files = append(append([]string{}, starter.paths...), files...)
+	}
 	if err := os.WriteFile(configPath, []byte(gen.content), 0o644); err != nil {
 		output.PrintError("The agent was created, but aetherfy.yaml could not be written (%v). "+
 			"Link the folder with 'afy init --agent %s'.", err, agent.Name)
@@ -299,10 +347,14 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 	output.Println("")
 	printConfigSummary(agent.Name, ws.Name, gen.runtime, gen.agentType, gen.region, gen.memoryMB, gen.keepAlive, gen.schedule)
 	printLinkNextSteps(initTarget)
-	return output.Result(map[string]interface{}{
+	result := map[string]interface{}{
 		"agent": agent, "workspace": ws, "target": initTarget, "created": true,
-		"files": []string{"aetherfy.yaml", link.RelPath()},
-	})
+		"files": files,
+	}
+	if starter != nil {
+		result["template"] = starter.def.Name
+	}
+	return output.Result(result)
 }
 
 // confirmOverwrite applies init's rule for an existing aetherfy.yaml: --force
@@ -369,8 +421,19 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 			output.PrintWarning("Could not detect entrypoint — add 'entrypoint:' to aetherfy.yaml before deploying")
 		}
 	}
-	if hints.HasMastra {
-		output.PrintSuccess("Detected 'mastra' in dependencies")
+	// ONE LINE PER DETECTED FRAMEWORK, worded by its class in the table
+	// (internal/detect/frameworks.go): served as it is, a library that needs
+	// an app around it, or a shape that needs one change first.
+	for _, f := range hints.Frameworks {
+		line := fmt.Sprintf("Detected '%s' in dependencies — %s", f.Key, f.Advice())
+		switch f.Class {
+		case detect.Served:
+			output.PrintSuccess("%s", line)
+		case detect.NeedsServer:
+			output.PrintInfo("%s", line)
+		default:
+			output.PrintWarning("%s", line)
+		}
 	}
 	if hints.HasUvLock {
 		output.PrintSuccess("Detected uv.lock — will use 'uv sync --frozen' for reproducible installs")
@@ -672,4 +735,86 @@ func buildAetherfyYAML(runtime, agentType, region string, memoryMB int, keepAliv
 	sb.WriteString("#     - sub-agent-1\n")
 
 	return sb.String()
+}
+
+// printStarters is --list-templates: one line per starter, name first; with
+// --json, the same list as {"templates": [...]}.
+func printStarters() error {
+	width := 0
+	for _, s := range starters.All {
+		if len(s.Name) > width {
+			width = len(s.Name)
+		}
+	}
+	output.Println("Starter projects for 'afy init --template <name>':")
+	for _, s := range starters.All {
+		output.Println(fmt.Sprintf("  %-*s  %s (%s)", width, s.Name, s.Description, s.Runtime))
+	}
+	list := make([]map[string]string, 0, len(starters.All))
+	for _, s := range starters.All {
+		list = append(list, map[string]string{
+			"name": s.Name, "description": s.Description, "runtime": s.Runtime, "entrypoint": s.Entrypoint,
+		})
+	}
+	return output.Result(map[string]interface{}{"templates": list})
+}
+
+// plannedStarter is a --template starter that has been checked and not yet
+// written.
+type plannedStarter struct {
+	def   starters.Starter
+	files map[string][]byte
+	paths []string // sorted
+}
+
+// planStarter checks the --template starter for dir, or returns nil when no
+// template was asked for. It writes nothing.
+//
+// NOTHING IS OVERWRITTEN WITHOUT --force: every path the starter would write,
+// and aetherfy.yaml, is checked before anything is created, so a refusal
+// leaves the directory exactly as it was.
+func planStarter(dir, configPath string) (*plannedStarter, error) {
+	if initTemplate == "" {
+		return nil, nil
+	}
+	def, ok := starters.Find(initTemplate)
+	if !ok {
+		return nil, refuse("unknown template %q. Available: %s (see 'afy init --list-templates')",
+			initTemplate, strings.Join(starters.Names(), ", "))
+	}
+	files, err := def.Files()
+	if err != nil {
+		return nil, err
+	}
+	paths := starters.SortedPaths(files)
+
+	if !initForce {
+		var conflicts []string
+		for _, p := range append(append([]string{}, paths...), filepath.Base(configPath)) {
+			if fileExists(filepath.Join(dir, p)) {
+				conflicts = append(conflicts, p)
+			}
+		}
+		if len(conflicts) > 0 {
+			output.PrintError("The %s template would overwrite: %s", def.Name, strings.Join(conflicts, ", "))
+			return nil, shown(fmt.Errorf("refusing to overwrite %s; use --force to replace them, or pick an empty directory",
+				strings.Join(conflicts, ", ")))
+		}
+	}
+	return &plannedStarter{def: def, files: files, paths: paths}, nil
+}
+
+// write creates the starter's files in dir.
+func (s *plannedStarter) write(dir string) error {
+	for _, p := range s.paths {
+		target := filepath.Join(dir, p)
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			return fmt.Errorf("creating %s: %w", filepath.Dir(target), err)
+		}
+		if err := os.WriteFile(target, s.files[p], 0o644); err != nil {
+			return fmt.Errorf("writing %s: %w", p, err)
+		}
+	}
+	output.PrintSuccess("Wrote the %s starter: %s", s.def.Name, strings.Join(s.paths, ", "))
+	return nil
 }
