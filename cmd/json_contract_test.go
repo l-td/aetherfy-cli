@@ -110,6 +110,9 @@ func jsonCases() []jsonCase {
 			refuse: []string{"GET /workspaces/acme/agents"}},
 		{class: "list", args: []string{"github", "repos"}, ok: []route{{"GET", "/auth/github/repositories", 200, `{"repositories":[]}`}}, refuse: []string{"GET /auth/github/repositories"}},
 
+		{class: "list", args: []string{"connections", "providers"}, ok: []route{{"GET", "/connections/providers", 200, `[]`}}, refuse: []string{"GET /connections/providers"}},
+		{class: "list", args: []string{"connections", "list"}, ok: []route{{"GET", "/connections", 200, `[]`}}, refuse: []string{"GET /connections"}},
+
 		// --- show ---
 		{class: "show", args: []string{"status", "bot"}, ok: []route{{"GET", "/agents/bot", 200, agentRow}, {"GET", "/agents/bot/deployments", 200, `[]`}}, refuse: []string{"GET /agents/bot"}},
 		{class: "show", args: []string{"workspaces", "info", "acme"}, ok: []route{{"GET", "/workspaces/acme", 200, wsRow}}, refuse: []string{"GET /workspaces/acme"}},
@@ -139,6 +142,7 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"workspaces", "delete", "acme", "--force"}, ok: []route{{"DELETE", "/workspaces/acme", 200, `{"secrets_deleted":0}`}}, refuse: []string{"DELETE /workspaces/acme"}},
 		{class: "mutate", args: []string{"github", "unlink", "bot"}, ok: []route{{"DELETE", "/agents/bot/github", 200, `{}`}}, refuse: []string{"DELETE /agents/bot/github"}},
 		{class: "mutate", args: []string{"github", "disconnect"}, ok: []route{{"DELETE", "/auth/github", 200, `{}`}}, refuse: []string{"DELETE /auth/github"}},
+		{class: "mutate", args: []string{"connections", "disconnect", "google", "--agent", "bot"}, ok: []route{{"DELETE", "/agents/bot/connections/google", 200, `{"name":"google","provider_revoked":true}`}}, refuse: []string{"DELETE /agents/bot/connections/google"}},
 		{class: "mutate", args: []string{"logout"}},
 
 		// --- deploy ---
@@ -489,7 +493,7 @@ func TestEveryLeafCommandHasAJSONContract(t *testing.T) {
 		covered[leafPath(c.args)] = true
 	}
 	for _, p := range []string{
-		"deploy", "init", "upgrade", "redeploy", "login", "diff", "access", "github connect", "github link",
+		"deploy", "init", "upgrade", "redeploy", "login", "diff", "access", "github connect", "github link", "connections connect",
 	} {
 		covered[p] = true
 	}

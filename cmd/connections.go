@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -54,14 +53,14 @@ var (
 
 // connectionTarget turns the --agent/--workspace pair into a target. Cobra
 // already refuses both at once; required says whether neither is an error.
-func connectionTarget(required bool) (api.ConnectionTarget, bool) {
+func connectionTarget(required bool) (api.ConnectionTarget, bool, error) {
 	if connAgent == "" && connWorkspace == "" {
 		if required {
-			output.PrintError("Say where the connection lives: --agent <name> or --workspace <name>")
+			return api.ConnectionTarget{}, false, refuse("Say where the connection lives: --agent <name> or --workspace <name>")
 		}
-		return api.ConnectionTarget{}, false
+		return api.ConnectionTarget{}, false, nil
 	}
-	return api.ConnectionTarget{Agent: connAgent, Workspace: connWorkspace}, true
+	return api.ConnectionTarget{Agent: connAgent, Workspace: connWorkspace}, true, nil
 }
 
 // connectionTargetLabel names a target the way a person would say it.
@@ -104,10 +103,9 @@ var connectionsProvidersCmd = &cobra.Command{
 		}
 		providers, err := api.NewClient().ConnectionProviders()
 		if err != nil {
-			output.PrintError("Failed to list providers: %v", err)
-			os.Exit(connectFailed)
+			return printRefusal("Failed to list providers", err)
 		}
-		if config.Get().OutputFormat == "json" {
+		if output.IsJSON() {
 			return output.JSON(providers)
 		}
 		table := output.Table([]string{"Provider", "Available", "Always requested", "Optional scopes"})
@@ -162,17 +160,19 @@ code gets a token for.`,
 		}
 		client := api.NewClient()
 		var conns []api.Connection
-		var err error
-		if target, ok := connectionTarget(false); ok {
+		target, ok, err := connectionTarget(false)
+		if err != nil {
+			return err
+		}
+		if ok {
 			conns, err = client.ListTargetConnections(target)
 		} else {
 			conns, err = client.ListConnections()
 		}
 		if err != nil {
-			output.PrintError("Failed to list connections: %v", err)
-			os.Exit(connectFailed)
+			return printRefusal("Failed to list connections", err)
 		}
-		if config.Get().OutputFormat == "json" {
+		if output.IsJSON() {
 			return output.JSON(conns)
 		}
 		if len(conns) == 0 {
@@ -215,9 +215,9 @@ is how a connection marked needs_reauth is fixed.`,
 		if err := checkAuth(); err != nil {
 			return err
 		}
-		target, ok := connectionTarget(true)
-		if !ok {
-			os.Exit(connectFailed)
+		target, _, err := connectionTarget(true)
+		if err != nil {
+			return err
 		}
 		req := api.ConnectionCreateRequest{Provider: args[0], Name: connName, Scopes: connScopes}
 		if code := runConnectionConnect(api.NewClient(), target, req, connNoBrowser, connectionsConnectPollInterval); code != 0 {
@@ -269,7 +269,7 @@ func findConnection(conns []api.Connection, target api.ConnectionTarget, name st
 func runConnectionConnect(client *api.Client, target api.ConnectionTarget, req api.ConnectionCreateRequest, noBrowser bool, tick time.Duration) int {
 	begun, err := client.BeginConnection(target, req)
 	if err != nil {
-		output.PrintError("Failed to start the connection: %v", err)
+		_ = printRefusal("Failed to start the connection", err)
 		return connectFailed
 	}
 	if begun.ConnectURL == "" || begun.ExpiresAt.IsZero() {
@@ -281,7 +281,7 @@ func runConnectionConnect(client *api.Client, target api.ConnectionTarget, req a
 	// browser opens, so nothing the user does can land before it.
 	before, err := client.ListTargetConnections(target)
 	if err != nil {
-		output.PrintError("Failed to read the current connections: %v", err)
+		_ = printRefusal("Failed to read the current connections", err)
 		return connectFailed
 	}
 	var baseline *time.Time
@@ -356,6 +356,10 @@ func waitForConnection(ctx context.Context, client *api.Client, target api.Conne
 				output.KeyValue("Scopes", strings.Join(c.Scopes, " "))
 				output.Println("")
 				output.Printf("Agent code fetches a token with POST $AETHERFY_API_URL/connections/%s/token.\n", c.Name)
+				if err := output.Result(c); err != nil {
+					output.PrintError("%v", err)
+					return connectFailed
+				}
 				return connectOK
 			}
 		}
@@ -379,9 +383,9 @@ Aetherfy in your account settings at the provider.`,
 		if err := checkAuth(); err != nil {
 			return err
 		}
-		target, ok := connectionTarget(true)
-		if !ok {
-			os.Exit(connectFailed)
+		target, _, err := connectionTarget(true)
+		if err != nil {
+			return err
 		}
 		if code := runConnectionDisconnect(api.NewClient(), target, args[0]); code != 0 {
 			os.Exit(code)
@@ -393,7 +397,7 @@ Aetherfy in your account settings at the provider.`,
 func runConnectionDisconnect(client *api.Client, target api.ConnectionTarget, name string) int {
 	deleted, err := client.DeleteConnection(target, name)
 	if err != nil {
-		output.PrintError("Failed to disconnect %s: %v", name, err)
+		_ = printRefusal("Failed to disconnect "+name, err)
 		return connectFailed
 	}
 	output.PrintSuccess("Disconnected %s from %s", deleted.Name, connectionTargetLabel(target))
@@ -401,6 +405,10 @@ func runConnectionDisconnect(client *api.Client, target api.ConnectionTarget, na
 		output.Println("The provider confirmed the access is revoked.")
 	} else {
 		output.PrintWarning("The provider did not confirm a revoke, so Aetherfy may still be listed in your account settings there. Remove it there to be sure.")
+	}
+	if err := output.Result(deleted); err != nil {
+		output.PrintError("%v", err)
+		return connectFailed
 	}
 	return connectOK
 }

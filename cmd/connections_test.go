@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
+	"github.com/l-td/aetherfy-cli/internal/output"
 )
 
 // These drive `afy connections connect` and `disconnect` through their run
@@ -254,5 +255,38 @@ func TestOptionalScopesAreTheAllowListMinusTheDefaults(t *testing.T) {
 	})
 	if strings.Join(got, ",") != "drive.file,calendar.readonly" {
 		t.Errorf("optional scopes: %v", got)
+	}
+}
+
+// With --json, stdout carries only the connection that was made; the consent
+// URL and the progress text go to stderr with the rest of what is for a person.
+func TestConnectWithJSONWritesOnlyTheConnectionToStdout(t *testing.T) {
+	s := &connServer{
+		listings:  []interface{}{list(), list(conn("google", "agent", "2026-09-28T12:00:00Z"))},
+		expiresAt: time.Now().Add(5 * time.Second),
+	}
+	srv := httptest.NewServer(s.handler(t))
+	defer srv.Close()
+	stubConnectionsBrowser(t)
+	output.SetJSON(true)
+	t.Cleanup(func() { output.SetJSON(false) })
+
+	var code int
+	out := captureStdout(t, func() {
+		code = runConnectionConnect(api.NewClientWithURL(srv.URL, "k"), api.ConnectionTarget{Agent: "reporter"},
+			api.ConnectionCreateRequest{Provider: "google"}, true, time.Millisecond)
+	})
+	if code != connectOK {
+		t.Fatalf("exit code %d", code)
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("stdout is not one JSON document: %v\n%s", err, out)
+	}
+	if got["name"] != "google" || got["status"] != "connected" {
+		t.Errorf("stdout is not the connection: %v", got)
+	}
+	if _, leaked := got["access_token"]; leaked {
+		t.Errorf("a token reached stdout: %v", got)
 	}
 }
