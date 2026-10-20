@@ -212,6 +212,7 @@ func TestGetAgentLogs_DeploymentIDParam(t *testing.T) {
 	var got string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		got = r.URL.Query().Get("deployment_id")
+		w.Header().Set("X-Log-Retention-Days", "7")
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte("[]"))
 	}))

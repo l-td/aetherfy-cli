@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"net/url"
 	"sort"
+	"strconv"
 )
 
 // Deploy uploads code and triggers a deployment. confirmOverage=true accepts a
@@ -143,7 +144,11 @@ func (c *Client) Rollback(agentID string, version int) (*RollbackResponse, error
 // GetDeploymentLogs returns logs for a deployment. Results are DESC by id
 // (newest first). Pass tail=0 to omit the tail parameter.
 func (c *Client) GetDeploymentLogs(agentID string, tail int) ([]LogEntry, error) {
-	return c.GetAgentLogs(agentID, LogQuery{Tail: tail})
+	page, err := c.GetAgentLogs(agentID, LogQuery{Tail: tail})
+	if err != nil {
+		return nil, err
+	}
+	return page.Entries, nil
 }
 
 // LogQuery bundles the query parameters the server understands.
@@ -157,9 +162,44 @@ type LogQuery struct {
 	DeploymentID string // scope to one run's logs (deployment_id query param)
 }
 
+// The response headers of a logs read: the plan's retention, and whether the
+// request's `since` reached past it.
+const (
+	headerLogRetentionDays = "X-Log-Retention-Days"
+	headerLogSinceClamped  = "X-Log-Since-Clamped"
+	logRetentionUnlimited  = "unlimited"
+)
+
+// LogPage is one read of an agent's logs: the entries, and how far back the
+// caller's plan keeps them. The server never returns a log older than the plan's
+// retention, even before it deletes it.
+type LogPage struct {
+	Entries []LogEntry
+	// RetentionDays is the plan's log retention in days; nil = the plan keeps
+	// logs without limit.
+	RetentionDays *int
+	// SinceClamped is true when the request's `since` reached back past the
+	// retention and the server cut it to it.
+	SinceClamped bool
+}
+
+// parseLogRetention reads X-Log-Retention-Days: a number of days, or
+// "unlimited" (nil). The control plane always sends it, so an absent or
+// unreadable value is an error rather than a guess at the plan.
+func parseLogRetention(header string) (*int, error) {
+	if header == logRetentionUnlimited {
+		return nil, nil
+	}
+	days, err := strconv.Atoi(header)
+	if err != nil || days < 1 {
+		return nil, fmt.Errorf("the control plane did not state the plan's log retention (%s: %q)", headerLogRetentionDays, header)
+	}
+	return &days, nil
+}
+
 // GetAgentLogs is the filter-aware variant. When AfterID is set, the server
 // returns logs in ASC order so a follower can page forward without gaps.
-func (c *Client) GetAgentLogs(agentID string, q LogQuery) ([]LogEntry, error) {
+func (c *Client) GetAgentLogs(agentID string, q LogQuery) (*LogPage, error) {
 	path := fmt.Sprintf("/agents/%s/logs", agentID)
 	params := url.Values{}
 	if q.Tail > 0 {
@@ -188,8 +228,20 @@ func (c *Client) GetAgentLogs(agentID string, q LogQuery) ([]LogEntry, error) {
 	}
 
 	var logs []LogEntry
-	if err := c.Get(path, &logs); err != nil {
+	resp, err := c.http.R().SetResult(&logs).Get(c.url(path))
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	if err := c.handleResponse(resp); err != nil {
 		return nil, err
 	}
-	return logs, nil
+	retention, err := parseLogRetention(resp.Header().Get(headerLogRetentionDays))
+	if err != nil {
+		return nil, err
+	}
+	return &LogPage{
+		Entries:       logs,
+		RetentionDays: retention,
+		SinceClamped:  resp.Header().Get(headerLogSinceClamped) == "true",
+	}, nil
 }

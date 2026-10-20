@@ -18,6 +18,7 @@ func logsTestServer(t *testing.T, fixture []api.LogEntry) (*httptest.Server, *[]
 	var paths []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.RequestURI())
+		w.Header().Set("X-Log-Retention-Days", "30")
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(fixture)
 	}))
@@ -70,8 +71,9 @@ func TestGetAgentLogs_ParsesLogEntry(t *testing.T) {
 	srv, _ := logsTestServer(t, fixture)
 	client := api.NewClientWithURL(srv.URL, "test-key")
 
-	logs, err := client.GetAgentLogs("agent-1", api.LogQuery{Tail: 10})
+	page, err := client.GetAgentLogs("agent-1", api.LogQuery{Tail: 10})
 	require.NoError(t, err)
+	logs := page.Entries
 	require.Len(t, logs, 2)
 	assert.Equal(t, int64(7), logs[0].ID)
 	assert.Equal(t, "stdout", logs[0].Stream)
@@ -89,4 +91,57 @@ func TestGetDeploymentLogs_BackwardsCompatible(t *testing.T) {
 	_, err := client.GetDeploymentLogs("agent-1", 25)
 	require.NoError(t, err)
 	assert.Equal(t, "/agents/agent-1/logs?tail=25", (*paths)[0])
+}
+
+// THE PLAN'S LOG WINDOW. The control plane never returns a log older than the
+// plan's retention and says how far back that is in X-Log-Retention-Days (a
+// number of days, or "unlimited"), and in X-Log-Since-Clamped when the request's
+// `since` reached past it.
+func logsWithHeaders(t *testing.T, headers map[string]string) *api.Client {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for k, v := range headers {
+			w.Header().Set(k, v)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte("[]"))
+	}))
+	t.Cleanup(srv.Close)
+	return api.NewClientWithURL(srv.URL, "test-key")
+}
+
+func TestGetAgentLogs_ReadsThePlansRetention(t *testing.T) {
+	page, err := logsWithHeaders(t, map[string]string{"X-Log-Retention-Days": "90"}).GetAgentLogs("agent-1", api.LogQuery{})
+	require.NoError(t, err)
+	require.NotNil(t, page.RetentionDays)
+	assert.Equal(t, 90, *page.RetentionDays)
+	assert.False(t, page.SinceClamped)
+}
+
+func TestGetAgentLogs_UnlimitedIsNoRetention(t *testing.T) {
+	page, err := logsWithHeaders(t, map[string]string{"X-Log-Retention-Days": "unlimited"}).GetAgentLogs("agent-1", api.LogQuery{})
+	require.NoError(t, err)
+	assert.Nil(t, page.RetentionDays)
+}
+
+func TestGetAgentLogs_ReadsWhetherSinceWasCut(t *testing.T) {
+	page, err := logsWithHeaders(t, map[string]string{"X-Log-Retention-Days": "7", "X-Log-Since-Clamped": "true"}).
+		GetAgentLogs("agent-1", api.LogQuery{Since: "30d"})
+	require.NoError(t, err)
+	assert.True(t, page.SinceClamped)
+}
+
+func TestGetAgentLogs_ARetentionTheControlPlaneDidNotStateIsAnError(t *testing.T) {
+	for name, headers := range map[string]map[string]string{
+		"absent":   {},
+		"garbage":  {"X-Log-Retention-Days": "a week"},
+		"zero":     {"X-Log-Retention-Days": "0"},
+		"negative": {"X-Log-Retention-Days": "-3"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := logsWithHeaders(t, headers).GetAgentLogs("agent-1", api.LogQuery{})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "X-Log-Retention-Days")
+		})
+	}
 }

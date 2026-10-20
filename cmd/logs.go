@@ -70,7 +70,7 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	sp := output.NewSpinner("Fetching logs...")
 	sp.Start()
 
-	logs, err := client.GetAgentLogs(agentID, api.LogQuery{
+	page, err := client.GetAgentLogs(agentID, api.LogQuery{
 		Tail:         logsTail,
 		Since:        logsSince,
 		Level:        logsLevel,
@@ -83,11 +83,24 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		return printRefusal("Failed to get logs", err)
 	}
 
-	// --json: the array, empty or not (a script reads the same shape).
-	if output.IsJSON() {
-		return output.JSON(logs)
+	// A --since past the plan's retention is not an error: what is kept is
+	// shown, and this says why it starts where it does.
+	if page.SinceClamped {
+		output.PrintNote("--since %s reaches past your plan's log retention (%s); showing what is kept.",
+			logsSince, retentionPhrase(page.RetentionDays))
 	}
 
+	// --json: the logs, empty or not, and the plan's retention in days (null =
+	// unlimited), so a script reads the same shape every time.
+	if output.IsJSON() {
+		logs := page.Entries
+		if logs == nil {
+			logs = []api.LogEntry{}
+		}
+		return output.JSON(logsDocument{RetentionDays: page.RetentionDays, SinceClamped: page.SinceClamped, Logs: logs})
+	}
+
+	logs := page.Entries
 	if len(logs) == 0 {
 		output.PrintInfo("No logs found for agent '%s'", agentID)
 		return nil
@@ -101,6 +114,28 @@ func runLogs(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// logsDocument is `afy logs --json`: the logs and the plan's window on them.
+type logsDocument struct {
+	// RetentionDays is the plan's log retention; null = the plan keeps logs
+	// without limit.
+	RetentionDays *int `json:"retention_days"`
+	// SinceClamped is true when --since reached past the retention and was cut to it.
+	SinceClamped bool           `json:"since_clamped"`
+	Logs         []api.LogEntry `json:"logs"`
+}
+
+// retentionPhrase is the retention as a sentence part: "7 days", "1 day".
+func retentionPhrase(days *int) string {
+	switch {
+	case days == nil:
+		return "unlimited"
+	case *days == 1:
+		return "1 day"
+	default:
+		return fmt.Sprintf("%d days", *days)
+	}
+}
+
 func streamLogs(client *api.Client, agentID string) error {
 	output.PrintInfo("Streaming logs for '%s' (Ctrl+C to stop)...", agentID)
 	output.Println("")
@@ -108,8 +143,8 @@ func streamLogs(client *api.Client, agentID string) error {
 	// Seed the cursor from the most recent batch so we don't replay history.
 	var afterID int64
 	seed, err := client.GetAgentLogs(agentID, api.LogQuery{Tail: 1, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
-	if err == nil && len(seed) > 0 {
-		afterID = seed[0].ID
+	if err == nil && len(seed.Entries) > 0 {
+		afterID = seed.Entries[0].ID
 	}
 
 	ticker := time.NewTicker(2 * time.Second)
@@ -118,12 +153,12 @@ func streamLogs(client *api.Client, agentID string) error {
 	for range ticker.C {
 		// When AfterID > 0, the server returns ASC — iterating in order prints
 		// lines as they were emitted and lets us advance the cursor exactly.
-		logs, err := client.GetAgentLogs(agentID, api.LogQuery{AfterID: afterID, Tail: 500, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
+		page, err := client.GetAgentLogs(agentID, api.LogQuery{AfterID: afterID, Tail: 500, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
 		if err != nil {
 			output.PrintWarning("Failed to fetch logs: %v", err)
 			continue
 		}
-		for _, log := range logs {
+		for _, log := range page.Entries {
 			printLogLine(log, "15:04:05")
 			if log.ID > afterID {
 				afterID = log.ID

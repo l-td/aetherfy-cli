@@ -45,6 +45,8 @@ type fakeCP struct {
 type cpAnswer struct {
 	status int
 	body   string
+	// headers are sent with the answer.
+	headers map[string]string
 }
 
 func newFakeCP(t *testing.T) *fakeCP {
@@ -60,7 +62,16 @@ func newFakeCP(t *testing.T) *fakeCP {
 		a, ok := f.routes[r.Method+" "+path]
 		f.mu.Unlock()
 		if !ok {
-			a = cpAnswer{599, `{"detail":{"code":"stand-in-unrouted","message":"the stand-in has no answer for ` + r.Method + " " + path + `"}}`}
+			a = cpAnswer{status: 599, body: `{"detail":{"code":"stand-in-unrouted","message":"the stand-in has no answer for ` + r.Method + " " + path + `"}}`}
+		}
+		// THE CONTROL PLANE PUTS THE PLAN'S LOG WINDOW ON EVERY LOGS READ
+		// (X-Log-Retention-Days), so the stand-in does too, unless a test sets the
+		// header itself (onWithHeaders) -- the client refuses a read without it.
+		if _, set := a.headers["X-Log-Retention-Days"]; r.Method == http.MethodGet && strings.HasSuffix(path, "/logs") && !set {
+			w.Header().Set("X-Log-Retention-Days", "7")
+		}
+		for k, v := range a.headers {
+			w.Header().Set(k, v)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(a.status)
@@ -73,7 +84,14 @@ func newFakeCP(t *testing.T) *fakeCP {
 func (f *fakeCP) on(method, path string, status int, body string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.routes[method+" "+path] = cpAnswer{status, body}
+	f.routes[method+" "+path] = cpAnswer{status: status, body: body}
+}
+
+// onWithHeaders is on with response headers.
+func (f *fakeCP) onWithHeaders(method, path string, status int, body string, headers map[string]string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.routes[method+" "+path] = cpAnswer{status: status, body: body, headers: headers}
 }
 
 // all returns every request received, in order, under the lock (the server

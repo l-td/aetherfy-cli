@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/olekukonko/tablewriter"
@@ -38,6 +39,12 @@ func PrintError(format string, args ...interface{}) {
 // PrintWarning outputs a warning message
 func PrintWarning(format string, args ...interface{}) {
 	Warning.Printf("Warning: "+format+"\n", args...)
+}
+
+// PrintNote writes a note to stderr, in text and in JSON mode alike: something a
+// person should know that is neither part of the result nor an error.
+func PrintNote(format string, args ...interface{}) {
+	Info.Fprintf(os.Stderr, "Note: "+format+"\n", args...)
 }
 
 // PrintInfo outputs an info message
