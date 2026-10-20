@@ -96,7 +96,7 @@ const (
 )
 
 func jsonCases() []jsonCase {
-	return []jsonCase{
+	cases := []jsonCase{
 		// --- list ---
 		{class: "list", args: []string{"list"}, ok: []route{{"GET", "/agents", 200, `[` + agentRow + `]`}}, refuse: []string{"GET /agents"}},
 		{class: "list", args: []string{"deployments", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[` + deploymentRw + `]`}}, refuse: []string{"GET /agents/bot/deployments"}},
@@ -146,6 +146,8 @@ func jsonCases() []jsonCase {
 		{class: "deploy", args: []string{"rollback", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/rollback", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/rollback"}},
 		{class: "deploy", args: []string{"rollback", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[` + deploymentRw + `]`}}, refuse: []string{"GET /agents/bot/deployments"}},
 	}
+	// The evals commands' rows live beside their tests (evals_json_contract_test.go).
+	return append(cases, evalsJSONCases()...)
 }
 
 func (c jsonCase) routes(refuse bool) []route {
@@ -490,6 +492,7 @@ func TestEveryLeafCommandHasAJSONContract(t *testing.T) {
 	}
 	for _, p := range []string{
 		"deploy", "init", "upgrade", "redeploy", "login", "diff", "access", "github connect", "github link",
+		"datasets push", // reads two files: TestJSONContractDatasetsPush
 	} {
 		covered[p] = true
 	}

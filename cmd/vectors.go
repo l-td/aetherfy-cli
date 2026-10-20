@@ -30,6 +30,12 @@ import (
 const (
 	exitRequestFailed = 1
 	exitInputRefused  = 2
+	// A check ran and failed: an eval that completed but missed --fail-under or
+	// --max-drop (cmd/eval.go). A STABLE INTERFACE: CI pipelines gate on it, and
+	// red-team scans (evals M2) reuse it. Returned as a typed error, never
+	// os.Exit(5). Exit 4 is not this: it is `afy start --wait` still pending
+	// (exitStillPending, cmd/agents.go).
+	exitCheckFailed = 5
 )
 
 // The four flags every vector command takes, declared once per group as
@@ -103,7 +109,8 @@ func refuseFlag(_ *cobra.Command, err error) error { return &inputError{msg: err
 
 // ExitCode is the process exit code for an error Execute returned: 2 for
 // input refused before any request, 4 for `afy start --wait` reaching the
-// server's bound with the start still pending, 1 for anything else.
+// server's bound with the start still pending, 5 for a check that ran and
+// failed (`afy eval run` missing a threshold), 1 for anything else.
 func ExitCode(err error) int {
 	var in *inputError
 	if errors.As(err, &in) {
@@ -112,6 +119,10 @@ func ExitCode(err error) int {
 	var pending *stillPendingError
 	if errors.As(err, &pending) {
 		return exitStillPending
+	}
+	var breached *thresholdBreached
+	if errors.As(err, &breached) {
+		return exitCheckFailed
 	}
 	return exitRequestFailed
 }

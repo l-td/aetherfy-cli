@@ -333,6 +333,28 @@ Secrets can be scoped to an agent or to a workspace. Agent-scoped values overrid
 
 Keys starting with `AETHERFY_` are reserved.
 
+### Evals
+
+Run a dataset of test cases against an agent's current release and grade every result. Each case is an ordinary run of the agent, billed as a run.
+
+| Command | Description |
+|---------|-------------|
+| `afy datasets push <agent> <name> --cases cases.jsonl [--graders graders.yaml]` | Push a new version of a dataset (creates it when missing) |
+| `afy datasets list <agent>` | List an agent's datasets |
+| `afy datasets show <agent> <name> [--version N] [--cases]` | Show a dataset's versions, or one version's graders and cases |
+| `afy datasets delete <agent> <name> [--yes]` | Delete a dataset with its versions, evals and results |
+| `afy eval run <agent> --dataset <name> [--fail-under RATE] [--max-drop DELTA --baseline-release N]` | Evaluate the current release, wait, and print the scorecard |
+| `afy eval list <agent>` | List an agent's evals, newest first |
+| `afy eval show <agent> <eval-id> [--cases all\|fail\|errored]` | Show an eval's progress and scorecard |
+| `afy eval compare <agent> <base-eval-id> <head-eval-id>` | Compare two evals of the same dataset version, case by case |
+| `afy eval cancel <agent> <eval-id>` | Stop an eval: pending cases are skipped, runs in flight finish |
+
+`afy eval run` exits 5 when a threshold is breached, so a CI step can gate on it:
+
+```bash
+afy eval run my-agent --dataset qa --fail-under 0.9
+```
+
 ### Multi-Agent (Spawn)
 
 | Command | Description |
@@ -489,6 +511,8 @@ with no alias.) With `--json`:
 | `1` | A refused or failed operation (the server said no, a request failed, a deployment failed) |
 | `2` | Input refused before anything was sent: a usage error (an unknown flag or command, a flag without its value, too few or too many arguments, a required flag not set), and bad input to any command (`collections`, `index`, `points`, `secrets`, `spawn`, `run`, `login`, `update`, ...) |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
+| `4` | `afy start --wait`: the server's bound was reached with the start still pending |
+| `5` | A check ran and failed: `afy eval run` completed but missed `--fail-under` or `--max-drop` |
 
 ## Project Structure
 

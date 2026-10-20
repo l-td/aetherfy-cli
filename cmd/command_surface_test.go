@@ -91,7 +91,7 @@ func TestTheAgentVerbsAreAllAtTheRoot(t *testing.T) {
 	for _, name := range []string{
 		"list", "create", "delete", "stop", "start", "archive", "restore",
 		"cancel", "status", "update", "diff", "run", "runs",
-		"schedule", "access",
+		"schedule", "access", "eval",
 		// already flat before the flatten; here so the list reads as the whole
 		// agent surface rather than as "the ones that moved"
 		"deploy", "logs", "rollback", "redeploy", "deployments", "spawn",
@@ -225,7 +225,7 @@ func TestEveryTopLevelCommandIsRegisteredWithALiteralAddCommand(t *testing.T) {
 func TestTheNonDefaultNounsKeepTheirGroups(t *testing.T) {
 	// The other half of the rule. If these ever flatten too, `afy list` becomes
 	// ambiguous and the whole design falls over.
-	for _, name := range []string{"secrets", "workspaces", "github", "collections", "index", "points"} {
+	for _, name := range []string{"secrets", "workspaces", "github", "collections", "index", "points", "datasets"} {
 		c := rootByName(t, name)
 		if c == nil {
 			t.Errorf("`afy %s` is not registered", name)
@@ -344,5 +344,39 @@ func TestEveryVectorCommandTakesTheSharedFlags(t *testing.T) {
 		if g.GroupID != groupResources {
 			t.Errorf("`%s` is in help group %q, want %q beside the other nouns", g.CommandPath(), g.GroupID, groupResources)
 		}
+	}
+}
+
+func TestTheEvalCommands(t *testing.T) {
+	// `afy eval` is an AGENT verb group, like `afy schedule`: its subcommands
+	// take the agent first. It is never `afy eval <agent>` -- an agent may be
+	// named `list`. `afy datasets` is a noun group beside secrets.
+	groups := map[*cobra.Command][]string{
+		evalCmd:     {"afy eval cancel", "afy eval compare", "afy eval list", "afy eval run", "afy eval show"},
+		datasetsCmd: {"afy datasets delete", "afy datasets list", "afy datasets push", "afy datasets show"},
+	}
+	for group, want := range groups {
+		// A group refuses a word that is none of its subcommands (exit 2):
+		// `afy eval my-agent` is never an eval of my-agent.
+		if _, _, code := runAfyProcess(t, nil, nil, strings.TrimPrefix(group.CommandPath(), "afy "), "my-agent"); code != exitInputRefused {
+			t.Errorf("`%s my-agent` exits %d, want %d: a group takes no agent", group.CommandPath(), code, exitInputRefused)
+		}
+		var got []string
+		for _, c := range group.Commands() {
+			got = append(got, c.CommandPath())
+			if !c.SilenceErrors {
+				t.Errorf("`%s` would print its error twice (once itself, once through cobra)", c.CommandPath())
+			}
+		}
+		sort.Strings(got)
+		if strings.Join(got, ",") != strings.Join(want, ",") {
+			t.Errorf("%s commands = %v\nwant %v", group.CommandPath(), got, want)
+		}
+	}
+	if evalCmd.GroupID != groupAgentOps {
+		t.Errorf("`afy eval` is in help group %q, want %q", evalCmd.GroupID, groupAgentOps)
+	}
+	if datasetsCmd.GroupID != groupResources {
+		t.Errorf("`afy datasets` is in help group %q, want %q", datasetsCmd.GroupID, groupResources)
 	}
 }
