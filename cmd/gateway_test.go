@@ -18,25 +18,25 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/gateway"
+	"github.com/l-td/aetherfy-cli/internal/output"
 )
 
-// cpCall is one request the stand-in control plane saw.
-type cpCall struct {
+// gwCall is one request the gateway tests' stand-in control plane saw.
+type gwCall struct {
 	Method, Path, RawQuery string
 	Body                   map[string]json.RawMessage
 }
 
 // gatewayCP answers the /gateway/* routes with fixed bodies and records every
 // call, so a test can assert both the rendering and the wire.
-func gatewayCP(t *testing.T) (*api.Client, func() []cpCall) {
+func gatewayCP(t *testing.T) (*api.Client, func() []gwCall) {
 	t.Helper()
 	var mu sync.Mutex
-	var calls []cpCall
+	var calls []gwCall
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
-		c := cpCall{Method: r.Method, Path: r.URL.Path, RawQuery: r.URL.RawQuery}
+		c := gwCall{Method: r.Method, Path: r.URL.Path, RawQuery: r.URL.RawQuery}
 		if len(raw) > 0 {
 			if err := json.Unmarshal(raw, &c.Body); err != nil {
 				t.Errorf("request body is not a JSON object: %s", raw)
@@ -73,18 +73,19 @@ func gatewayCP(t *testing.T) (*api.Client, func() []cpCall) {
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return api.NewClientWithURL(srv.URL, "afy_test_key"), func() []cpCall {
+	return api.NewClientWithURL(srv.URL, "afy_test_key"), func() []gwCall {
 		mu.Lock()
 		defer mu.Unlock()
-		return append([]cpCall(nil), calls...)
+		return append([]gwCall(nil), calls...)
 	}
 }
 
+// withOutputFormat puts the run in --json mode ("json") or text mode, for one
+// test; the mode is process-wide (internal/output), so it is put back.
 func withOutputFormat(t *testing.T, format string) {
 	t.Helper()
-	previous := config.Get().OutputFormat
-	config.SetOutputFormat(format)
-	t.Cleanup(func() { config.SetOutputFormat(previous) })
+	output.SetJSON(format == "json")
+	t.Cleanup(func() { output.SetJSON(false) })
 }
 
 // setFlags sets the package-level `set` flag values for one test.
@@ -426,4 +427,39 @@ func TestUSDNeverRoundsASpendAway(t *testing.T) {
 			t.Errorf("usd(%v) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// --- the --json contract of `afy gateway models` --------------------------------
+
+// models reads the GATEWAY's public catalogue, not the control plane, so the
+// shared case table (which stands in for the control plane) cannot drive it:
+// this runs the shipped command as a process against a stand-in gateway, the
+// way a script sees it (see json_contract_test.go).
+func TestJSONContractGatewayModels(t *testing.T) {
+	ok := newCasesCP(t, []route{{"GET", "/v1/catalogue", 200, catalogueJSON}})
+	stdout, stderr, code := runAfyProcess(t, nil, []string{gateway.EnvGatewayURL + "=" + ok.srv.URL}, "gateway", "models", "--json")
+	if code != 0 {
+		t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
+	}
+	doc, _ := oneJSONDocument(t, "gateway models", stdout).(map[string]interface{})
+	if doc["endpoint"] != ok.srv.URL || doc["endpoint_source"] != gateway.SourceEnv || doc["catalogue"] == nil {
+		t.Errorf("gateway models --json = %v", doc)
+	}
+
+	// The control: the same command without --json is a table, not JSON.
+	text, _, code := runAfyProcess(t, nil, []string{gateway.EnvGatewayURL + "=" + ok.srv.URL}, "gateway", "models")
+	if code != 0 || json.Valid([]byte(strings.TrimSpace(text))) || !strings.Contains(text, "gpt-4o-mini") {
+		t.Errorf("text mode (exit %d) must print the table:\n%s", code, text)
+	}
+
+	// A refusal: nothing on stdout, one JSON error object on stderr, exit 1.
+	refused := newCasesCP(t, []route{{"GET", "/v1/catalogue", 500, `{"error":"the stand-in refuses this"}`}})
+	stdout, stderr, code = runAfyProcess(t, nil, []string{gateway.EnvGatewayURL + "=" + refused.srv.URL}, "gateway", "models", "--json")
+	if code != 1 {
+		t.Errorf("a refused catalogue exits %d, want 1", code)
+	}
+	if strings.TrimSpace(stdout) != "" {
+		t.Errorf("a refusal wrote to stdout:\n%s", stdout)
+	}
+	jsonErrorOnStderr(t, "gateway models", stderr)
 }

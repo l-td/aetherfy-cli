@@ -11,7 +11,6 @@ import (
 type Config struct {
 	APIURL        string `mapstructure:"api_url" yaml:"api_url"`
 	DefaultRegion string `mapstructure:"default_region" yaml:"default_region"`
-	OutputFormat  string `mapstructure:"output_format" yaml:"output_format"`
 	NoColor       bool   `mapstructure:"no_color" yaml:"no_color"`
 	Verbose       bool   `mapstructure:"verbose" yaml:"verbose"`
 }
@@ -21,7 +20,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		APIURL:        "https://agents.aetherfy.com/api/v1",
 		DefaultRegion: "us-east-1",
-		OutputFormat:  "text",
 		NoColor:       false,
 		Verbose:       false,
 	}
@@ -88,7 +86,6 @@ func (c *Config) Save() error {
 	v := viper.New()
 	v.Set("api_url", c.APIURL)
 	v.Set("default_region", c.DefaultRegion)
-	v.Set("output_format", c.OutputFormat)
 	v.Set("no_color", c.NoColor)
 
 	return v.WriteConfigAs(ConfigPath())
@@ -107,9 +104,4 @@ func SetVerbose(verbose bool) {
 // SetNoColor sets no-color mode
 func SetNoColor(noColor bool) {
 	Get().NoColor = noColor
-}
-
-// SetOutputFormat sets the output format
-func SetOutputFormat(format string) {
-	Get().OutputFormat = format
 }

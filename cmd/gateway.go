@@ -23,7 +23,6 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/gateway"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
@@ -59,7 +58,7 @@ var gatewayStatusCmd = &cobra.Command{
 	Long: `Show the account's AI Gateway budget and spend this month, and every
 agent's budget, allowed models and spend. With an agent, show only that agent.`,
 	Example: `  afy gateway status
-  afy gateway status my-bot -o json`,
+  afy gateway status my-bot --json`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
@@ -72,29 +71,25 @@ agent's budget, allowed models and spend. With an agent, show only that agent.`,
 func runGatewayStatus(client *api.Client, args []string) error {
 	account, err := client.GatewaySettings()
 	if err != nil {
-		output.PrintError("Failed to read the AI Gateway settings: %v", err)
-		return err
+		return printRefusal("Failed to read the AI Gateway settings", err)
 	}
 	list, err := client.GatewayAgents()
 	if err != nil {
-		output.PrintError("Failed to read the agents' AI Gateway settings: %v", err)
-		return err
+		return printRefusal("Failed to read the agents' AI Gateway settings", err)
 	}
 	if len(args) == 1 {
 		for _, a := range list.Agents {
 			if a.Name == args[0] || a.AgentID == args[0] {
-				if config.Get().OutputFormat == "json" {
+				if output.IsJSON() {
 					return output.JSON(a)
 				}
 				printGatewayAgent(a)
 				return nil
 			}
 		}
-		err := fmt.Errorf("agent '%s' not found", args[0])
-		output.PrintError("%v", err)
-		return err
+		return printRefusal("", fmt.Errorf("agent '%s' not found", args[0]))
 	}
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(map[string]interface{}{"account": account, "agents": list.Agents})
 	}
 	output.Header("AI Gateway")
@@ -216,30 +211,22 @@ func runGatewaySet(client *api.Client, args []string, budgetSet, modelsSet bool)
 		}
 		account, err := client.PutGatewaySettings(budget)
 		if err != nil {
-			output.PrintError("Failed to set the account's AI Gateway budget: %v", err)
-			return err
-		}
-		if config.Get().OutputFormat == "json" {
-			return output.JSON(account)
+			return printRefusal("Failed to set the account's AI Gateway budget", err)
 		}
 		output.PrintSuccess("Account AI Gateway budget: %s", budgetText(account.MonthlyBudgetUSD))
 		output.KeyValue("Spent this month", usd(account.MonthToDateUSD)+" (list-price estimate)")
-		return nil
+		return output.Result(account)
 	}
 
 	agent, err := client.PutGatewayAgent(args[0], api.GatewayAgentUpdate{
 		Budget: budget, BudgetSet: budgetSet, AllowedModels: models, ModelsSet: modelsSet,
 	})
 	if err != nil {
-		output.PrintError("Failed to set the AI Gateway settings of '%s': %v", args[0], err)
-		return err
-	}
-	if config.Get().OutputFormat == "json" {
-		return output.JSON(agent)
+		return printRefusal(fmt.Sprintf("Failed to set the AI Gateway settings of '%s'", args[0]), err)
 	}
 	output.PrintSuccess("AI Gateway settings of '%s' updated.", agent.Name)
 	printGatewayAgent(*agent)
-	return nil
+	return output.Result(agent)
 }
 
 // --- usage --------------------------------------------------------------------
@@ -260,7 +247,7 @@ grouped by model, agent or UTC day, with totals.
 or an RFC 3339 time. The window is at most 366 days.`,
 	Example: `  afy gateway usage
   afy gateway usage --by agent --since 7d
-  afy gateway usage --by day --agent my-bot -o json`,
+  afy gateway usage --by day --agent my-bot --json`,
 	Args: refuseArgs(cobra.NoArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if err := checkAuth(); err != nil {
@@ -300,10 +287,9 @@ func runGatewayUsage(client *api.Client, now time.Time) error {
 	}
 	report, err := client.GatewayUsage(api.GatewayUsageQuery{Since: since, GroupBy: gatewayUsageBy, Agent: gatewayUsageAgent})
 	if err != nil {
-		output.PrintError("Failed to read AI Gateway usage: %v", err)
-		return err
+		return printRefusal("Failed to read AI Gateway usage", err)
 	}
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(report)
 	}
 	if report.Totals.Requests == 0 {
@@ -360,7 +346,7 @@ The catalogue is read from the gateway itself: --gateway-url, else
 A model not listed here still works through the gateway; its calls are
 recorded, unpriced.`,
 	Example: `  afy gateway models
-  afy gateway models -o json`,
+  afy gateway models --json`,
 	Args: refuseArgs(cobra.NoArgs),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runGatewayModels(&http.Client{}, os.Getenv)
@@ -371,10 +357,9 @@ func runGatewayModels(client *http.Client, getenv func(string) string) error {
 	endpoint, source := gateway.Resolve(gatewayURL, getenv)
 	cat, err := gateway.Fetch(context.Background(), client, endpoint)
 	if err != nil {
-		output.PrintError("%v", err)
-		return err
+		return printRefusal("", err)
 	}
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(map[string]interface{}{"endpoint": endpoint, "endpoint_source": source, "catalogue": cat})
 	}
 	table := output.Table([]string{"Model", "Provider", "Format", "Input $/1M", "Output $/1M", "Cached input $/1M", "Context"})

@@ -1,15 +1,40 @@
 package api
 
-import "fmt"
+import (
+	"fmt"
+	"net/url"
+	"time"
+)
 
-// ListWorkspaceAgents returns all agents in a workspace
+// ListWorkspaceAgents returns the agents that LIVE in a workspace.
 func (c *Client) ListWorkspaceAgents(workspaceName string) ([]Agent, error) {
 	var agents []Agent
-	err := c.Get(fmt.Sprintf("/workspaces/%s/agents", workspaceName), &agents)
+	err := c.Get("/workspaces/"+url.PathEscape(workspaceName)+"/agents", &agents)
 	if err != nil {
 		return nil, err
 	}
 	return agents, nil
+}
+
+// GrantedAgent is an agent of another workspace of the account that has been
+// granted access to this one (contract sheet 2.12). A grant gives access; it
+// does not move the agent.
+type GrantedAgent struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	GrantedAt time.Time `json:"granted_at"`
+}
+
+// ListWorkspaceGrantedAgents returns the agents granted access to a workspace,
+// ordered by name (GET /workspaces/{workspace_name}/granted-agents). An unknown
+// workspace is 404 WORKSPACE_NOT_FOUND, like the living list.
+func (c *Client) ListWorkspaceGrantedAgents(workspaceName string) ([]GrantedAgent, error) {
+	var granted []GrantedAgent
+	err := c.Get("/workspaces/"+url.PathEscape(workspaceName)+"/granted-agents", &granted)
+	if err != nil {
+		return nil, err
+	}
+	return granted, nil
 }
 
 // CreateWorkspace creates a new workspace

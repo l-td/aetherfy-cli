@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -114,7 +113,7 @@ var githubOpenBrowser = openBrowser
 func runGitHubConnect(client *api.Client, tick time.Duration) int {
 	baseline, err := client.GitHubStatus()
 	if err != nil {
-		output.PrintError("Failed to get GitHub status: %v", err)
+		_ = printRefusal("Failed to get GitHub status", err)
 		return githubConnectFailed
 	}
 
@@ -134,7 +133,7 @@ func runGitHubConnect(client *api.Client, tick time.Duration) int {
 
 	url, expiresAt, err := client.GitHubConnectURL()
 	if err != nil {
-		output.PrintError("Failed to begin the GitHub connection: %v", err)
+		_ = printRefusal("Failed to begin the GitHub connection", err)
 		return githubConnectFailed
 	}
 
@@ -249,6 +248,10 @@ func waitForGitHubConnection(ctx context.Context, client *api.Client, expiresAt 
 			// second account is added.
 			if len(status.Installations) > baselineCount {
 				printGitHubConnection(status, "GitHub connected")
+				if err := output.Result(status); err != nil {
+					output.PrintError("%v", err)
+					return githubConnectFailed
+				}
 				return githubConnectOK
 			}
 		}
@@ -352,11 +355,11 @@ The no-argument form is idempotent: it succeeds even if you are not connected.`,
 
 		if len(args) == 0 {
 			if err := client.GitHubDisconnect(); err != nil {
-				output.PrintError("Failed to disconnect GitHub: %v", err)
+				_ = printRefusal("Failed to disconnect GitHub", err)
 				os.Exit(1)
 			}
 			output.PrintSuccess("GitHub disconnected.")
-			return nil
+			return output.Result(map[string]interface{}{"disconnected": "all"})
 		}
 
 		// AN ACCOUNT NAME, NOT AN INSTALLATION ID. The id is a number nobody
@@ -366,7 +369,7 @@ The no-argument form is idempotent: it succeeds even if you are not connected.`,
 		account := args[0]
 		status, err := client.GitHubStatus()
 		if err != nil {
-			output.PrintError("Failed to get GitHub status: %v", err)
+			_ = printRefusal("Failed to get GitHub status", err)
 			os.Exit(1)
 		}
 		target := findGitHubInstallation(status.Installations, account)
@@ -383,11 +386,11 @@ The no-argument form is idempotent: it succeeds even if you are not connected.`,
 		}
 
 		if err := client.GitHubDisconnectInstallation(target.InstallationID); err != nil {
-			output.PrintError("Failed to disconnect %s: %v", target.AccountLogin, err)
+			_ = printRefusal("Failed to disconnect "+target.AccountLogin, err)
 			os.Exit(1)
 		}
 		output.PrintSuccess("Disconnected %s. Your other GitHub accounts are unaffected.", target.AccountLogin)
-		return nil
+		return output.Result(map[string]interface{}{"disconnected": target.AccountLogin})
 	},
 }
 
@@ -406,7 +409,7 @@ var githubStatusCmd = &cobra.Command{
 		client := api.NewClient()
 		status, err := client.GitHubStatus()
 		if err != nil {
-			output.PrintError("Failed to get GitHub status: %v", err)
+			_ = printRefusal("Failed to get GitHub status", err)
 			os.Exit(1)
 		}
 
@@ -414,14 +417,14 @@ var githubStatusCmd = &cobra.Command{
 			output.PrintWarning("GitHub not connected.")
 			output.Println("")
 			output.Println("Run 'afy github connect' to link your GitHub account.")
-			return nil
+			return output.Result(status)
 		}
 
 		// The manage URL is per account and prints inside each block — an
 		// account holds several, and one trailing line could only ever offer
 		// the way in to one of them.
 		printGitHubConnection(status, "GitHub connected")
-		return nil
+		return output.Result(status)
 	},
 }
 
@@ -501,7 +504,7 @@ the new link is live.`,
 		sp.Stop()
 
 		if err != nil {
-			output.PrintError("Failed to link agent: %v", err)
+			_ = printRefusal("Failed to link agent", err)
 			// 422 has two causes now: GitHub not connected, and a rejected
 			// --root-dir. Gate the connect hint on the code, or a user who
 			// typed a bad path gets told to reconnect an account that is
@@ -557,7 +560,7 @@ the new link is live.`,
 		} else {
 			output.Println("Pushes to " + resp.Branch + " will now trigger automatic deployments.")
 		}
-		return nil
+		return output.Result(resp)
 	},
 }
 
@@ -593,7 +596,7 @@ Change which repositories the App can see from the URL in 'afy github status'.`,
 		client := api.NewClient()
 		list, err := client.GitHubRepositories()
 		if err != nil {
-			output.PrintError("Failed to list repositories: %v", err)
+			_ = printRefusal("Failed to list repositories", err)
 			if apiErr, ok := err.(*api.APIError); ok && apiErr.Code == "GITHUB_NOT_CONNECTED" {
 				output.Println("")
 				output.Println("Connect your GitHub account first:")
@@ -602,7 +605,7 @@ Change which repositories the App can see from the URL in 'afy github status'.`,
 			os.Exit(1)
 		}
 
-		if config.Get().OutputFormat == "json" {
+		if output.IsJSON() {
 			return output.JSON(list)
 		}
 
@@ -670,12 +673,12 @@ is not currently linked.`,
 		sp.Stop()
 
 		if err != nil {
-			output.PrintError("Failed to unlink agent: %v", err)
+			_ = printRefusal("Failed to unlink agent", err)
 			os.Exit(1)
 		}
 
 		output.PrintSuccess("Agent unlinked from GitHub.")
-		return nil
+		return output.Result(map[string]interface{}{"agent": agentID, "linked": false})
 	},
 }
 

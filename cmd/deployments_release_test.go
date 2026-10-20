@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 )
 
 // A RUN READ ON ITS OWN SAYS WHICH RELEASE IT RAN (benchmark run 4, N3).
@@ -60,13 +59,11 @@ func TestDeploymentsNameTheReleaseARunExecuted(t *testing.T) {
 }
 
 func TestDeploymentsJSONCarriesReleaseVersionNullIncluded(t *testing.T) {
-	previous := config.Get().OutputFormat
-	config.SetOutputFormat("json")
-	t.Cleanup(func() { config.SetOutputFormat(previous) })
+	jsonRun(t, true)
 
 	var rows []map[string]any
 	if err := json.Unmarshal([]byte(deploymentsOutput(t)), &rows); err != nil {
-		t.Fatalf("afy deployments -o json printed no JSON: %v", err)
+		t.Fatalf("afy deployments --json printed no JSON: %v", err)
 	}
 	if rows[0]["release_version"] != float64(1) {
 		t.Errorf("the run's release_version is missing: %v", rows[0])

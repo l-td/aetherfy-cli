@@ -27,6 +27,17 @@ const realShape = "UNKNOWN_FIELD_MESSAGE = \"unknown field `{path}`\"\r\n" +
 	"UNKNOWN_FIELD_SUGGESTION = \", did you mean `{suggestion}`?\"\r\n" +
 	"UNKNOWN_FIELD_SUGGESTION_CUTOFF = 0.6\r\n" +
 	"\r\n" +
+	"# The keys that left aetherfy.yaml.\r\n" +
+	"PLATFORM_FIELDS = {\r\n" +
+	"    \"name\": \"the agent's name is set on the platform: rename it with \"\r\n" +
+	"            \"`afy update <agent> --name <new>`\",\r\n" +
+	"    \"workspace\": \"moved with afy update\",\r\n" +
+	"    # a comment inside\r\n" +
+	"    \"description\": (\r\n" +
+	"        \"set on the platform\"\r\n" +
+	"    ),\r\n" +
+	"}\r\n" +
+	"\r\n" +
 	"class SpawnConfig(BaseModel):\r\n" +
 	"    \"\"\"Spawn configuration section.\"\"\"\r\n" +
 	"    model_config = ConfigDict(extra=\"forbid\")\r\n" +
@@ -75,6 +86,49 @@ func TestExtractReadsTheModelsTheirNestingAndTheWording(t *testing.T) {
 	assert.Equal(t, "unknown field `{path}`", src.Message)
 	assert.Equal(t, ", did you mean `{suggestion}`?", src.Suggestion)
 	assert.Equal(t, 0.6, src.SuggestionCutoff)
+	assert.Equal(t, []string{"description", "name", "workspace"}, src.PlatformFields,
+		"PLATFORM_FIELDS' keys, continuation lines and comments not read as keys")
+}
+
+func TestDefaultsReadsEachFieldsDefaultAcrossLines(t *testing.T) {
+	defaults, required, err := Defaults(fakeCP(t, realShape))
+	require.NoError(t, err)
+	assert.Equal(t, map[string]interface{}{"description": nil, "spawn": nil, "memory_mb": 256}, defaults,
+		"a multi-line Field(...) default, a nested model's None and an int, as yaml.v3 decodes them")
+	assert.Equal(t, []string{"name"}, required, "Field(...) is required: no default")
+}
+
+func TestDefaultsRefusesADefaultItCannotRead(t *testing.T) {
+	for _, decl := range []string{
+		"    memory_mb: Optional[int] = Field(default=DEFAULT_MB, gt=0)\r\n",
+		"    memory_mb: Optional[int] = Field(default_factory=make_it)\r\n",
+		"    memory_mb: Optional[int] = compute()\r\n",
+	} {
+		_, _, err := Defaults(fakeCP(t, replaceOnce(t, realShape,
+			"    memory_mb: Optional[int] = Field(default=256, gt=0)\r\n", decl)))
+		assert.Error(t, err, "%q must be refused, not left out", decl)
+	}
+}
+
+func TestMissingConfigMessageJoinsItsLiterals(t *testing.T) {
+	body := "MISSING_CONFIG_MESSAGE = (\r\n    \"Missing required aetherfy.yaml. Add it \"\r\n    \"beside your code.\"\r\n)\r\n"
+	got, err := MissingConfigMessage(fakeCP(t, body))
+	require.NoError(t, err)
+	assert.Equal(t, "Missing required aetherfy.yaml. Add it beside your code.", got)
+
+	_, err = MissingConfigMessage(fakeCP(t, "MISSING_CONFIG_MESSAGE = (\r\n    PREFIX + \"x\"\r\n)\r\n"))
+	assert.Error(t, err, "a line that is not a string literal is refused, not skipped")
+}
+
+func TestAMissingOrUnreadablePlatformFieldsIsRefused(t *testing.T) {
+	start := strings.Index(realShape, "PLATFORM_FIELDS = {")
+	end := strings.Index(realShape, "}\r\n\r\nclass SpawnConfig") + len("}\r\n")
+	src, err := Extract(fakeCP(t, realShape[:start]+realShape[end:]))
+	require.NoError(t, err)
+	assert.Error(t, Validate(src), "no PLATFORM_FIELDS: an empty pass-through set must not read as agreement")
+
+	_, err = Extract(fakeCP(t, replaceOnce(t, realShape, "    \"workspace\": ", "    WORKSPACE_KEY: ")))
+	assert.Error(t, err, "an entry that is not a quoted key is refused, not skipped")
 }
 
 // The mutation the pair exists for, at the extractor: a field added to the

@@ -61,6 +61,31 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
+  # THE DARWIN HALF. goreleaser publishes darwin/amd64 and darwin/arm64, and
+  # until this job no test had ever run on a Mac: the code that branches on
+  # runtime.GOOS == "darwin" (the config directory, which skips Linux's
+  # XDG_CONFIG_HOME, and `open` for the browser) and everything else ran only
+  # on Linux and Windows. macos-latest is Apple Silicon, the arm64 build most
+  # Mac users install. Free: this repository is public.
+  #
+  # -race HERE: the macOS runner ships clang, so cgo works, and the race
+  # detector on a second OS costs nothing extra.
+  test-macos:
+    name: Test (macOS)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.24'
+          cache: true
+
+      - name: Run tests
+        run: go test -v -race ./...
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -83,7 +108,7 @@ jobs:
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [test, lint]
+    needs: [test, test-macos, lint]
     strategy:
       matrix:
         goos: [linux, darwin, windows]

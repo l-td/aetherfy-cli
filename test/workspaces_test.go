@@ -54,13 +54,9 @@ func TestMultipleAgentsInSameWorkspace(t *testing.T) {
 func TestAgentsInDifferentWorkspaces(t *testing.T) {
 	a1 := &api.Agent{ID: "1", Name: "agent-a", WorkspaceName: "workspace-a"}
 	a2 := &api.Agent{ID: "2", Name: "agent-b", WorkspaceName: "workspace-b"}
-	a3 := &api.Agent{ID: "3", Name: "agent-c"} // No workspace
 
 	if a1.WorkspaceName == a2.WorkspaceName {
 		t.Error("Agents in different workspaces should have different workspace names")
-	}
-	if a3.WorkspaceName != "" {
-		t.Error("Agent without workspace should have empty WorkspaceName")
 	}
 }
 
@@ -347,8 +343,9 @@ func TestUpdateWorkspaceCallsCorrectEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := api.NewClientWithURL(server.URL, "test-key")
+	desc := "refined"
 	ws, err := client.UpdateWorkspace("my-workspace", &api.WorkspaceUpdateRequest{
-		Description: "refined",
+		Description: &desc,
 	})
 
 	if err != nil {
@@ -363,11 +360,10 @@ func TestUpdateWorkspaceCallsCorrectEndpoint(t *testing.T) {
 	if capturedBody["description"] != "refined" {
 		t.Errorf("Expected description 'refined' in body, got %v", capturedBody["description"])
 	}
-	// WorkspaceUpdateRequest deliberately has no `name` field — the API
-	// rejects rename attempts (400 WORKSPACE_NAME_IMMUTABLE), and the
-	// struct shape is what guarantees we never accidentally send one.
+	// A description-only update must not send a name: an omitted field is
+	// left unchanged.
 	if _, present := capturedBody["name"]; present {
-		t.Errorf("Body must not include `name` (would trigger 400 WORKSPACE_NAME_IMMUTABLE), got %v", capturedBody)
+		t.Errorf("a description-only update must not send `name`, got %v", capturedBody)
 	}
 	if ws == nil || ws.Description != "refined" {
 		t.Errorf("Expected workspace with Description 'refined', got %v", ws)
@@ -388,7 +384,8 @@ func TestUpdateWorkspaceClearDescription(t *testing.T) {
 	defer server.Close()
 
 	client := api.NewClientWithURL(server.URL, "test-key")
-	_, err := client.UpdateWorkspace("my-workspace", &api.WorkspaceUpdateRequest{Description: ""})
+	empty := ""
+	_, err := client.UpdateWorkspace("my-workspace", &api.WorkspaceUpdateRequest{Description: &empty})
 	if err != nil {
 		t.Fatalf("Unexpected error: %v", err)
 	}

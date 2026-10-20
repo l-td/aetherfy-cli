@@ -12,6 +12,7 @@ package cmd
 // and 3 when not logged in. The human output is secondary.
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/config"
+	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 	"github.com/spf13/cobra"
 )
@@ -37,18 +39,21 @@ const (
 // the way cobra does), so a loop or a helper would hide them from the docs
 // guard.
 var (
-	vecJSON       bool
 	vecVectorsURL string
 	vecAPIRegion  string
 	vecWorkspace  string
 )
 
 const (
-	vecJSONHelp       = "Print one JSON object with stable field names (same as --output json)"
 	vecVectorsURLHelp = "Vectors API endpoint (overrides " + vectors.EnvVectorsURL + " and --api-region)"
-	vecAPIRegionHelp  = "API region to connect to: us-east-1, eu-central-1 or ap-southeast-1, resolved by region discovery (or " + vectors.EnvAPIRegion + ")"
-	vecWorkspaceHelp  = "Workspace the collection belongs to (default " + vectors.EnvWorkspace + ", else none; --workspace \"\" forces none, written --workspace= on Windows PowerShell 5.1)"
+	vecAPIRegionHelp  = "API region to connect to, resolved by region discovery, which lists the regions it serves (or " + vectors.EnvAPIRegion + ")"
+	vecWorkspaceHelp  = "Workspace the collection belongs to (the account's only one when it has one; asked, or required without a terminal, when it has several)"
 )
+
+// usageErrorCode is the code --json gives an error the CLI raised itself for
+// input it refused before sending anything (exit 2): no server wrote it, so it
+// is not one of the control plane's codes.
+const usageErrorCode = "CLI_USAGE_ERROR"
 
 // inputError is input refused before any request was sent: exit 2.
 type inputError struct{ msg string }
@@ -61,15 +66,13 @@ func refuse(format string, args ...interface{}) error {
 
 // refuseFlagLikeValue refuses a workspace flag's value that starts with "-".
 // No workspace is named so (the control plane's rule starts a name with a
-// letter or a digit), and the usual cause is a shell that dropped an empty
-// argument: Windows PowerShell 5.1 turns `--add "" --yes` into `--add --yes`,
-// and the flag takes "--yes" as its value. Called before anything is sent.
+// letter or a digit), and the usual cause is a value left out: `--to --wait`
+// gives --to the value "--wait". Called before anything is sent.
 func refuseFlagLikeValue(flag string, values ...string) error {
 	for _, v := range values {
 		if strings.HasPrefix(v, "-") {
-			return refuse("--%s got %q as its value, and no workspace name starts with \"-\": the shell "+
-				"probably dropped an empty argument (Windows PowerShell 5.1 drops \"\"). For no workspace, "+
-				"write --%s= instead. Nothing was sent.", flag, v, flag)
+			return refuse("--%s got %q as its value, and no workspace name starts with \"-\": "+
+				"name the workspace after --%s. Nothing was sent.", flag, v, flag)
 		}
 	}
 	return nil
@@ -165,17 +168,15 @@ func (r *vecRun) controlPlane() *api.Client {
 // newVecRun builds the context from the command's flags and the environment.
 func newVecRun(cmd *cobra.Command) *vecRun {
 	r := &vecRun{
-		json:   vecJSON || config.Get().OutputFormat == "json",
+		json:   output.IsJSON(),
 		stdout: os.Stdout,
 		stderr: os.Stderr,
 	}
 	r.connect = func() (*vectors.Client, error) {
 		apiKey := config.GetCredentials().APIKey
 		res, err := vectors.NewResolver(os.Getenv, apiKey).Resolve(vectors.Options{
-			Endpoint:     vecVectorsURL,
-			APIRegion:    vecAPIRegion,
-			Workspace:    vecWorkspace,
-			WorkspaceSet: cmd.Flags().Changed("workspace"),
+			Endpoint:  vecVectorsURL,
+			APIRegion: vecAPIRegion,
 		})
 		if err != nil {
 			return nil, err
@@ -183,9 +184,33 @@ func newVecRun(cmd *cobra.Command) *vecRun {
 		if res.Warning != "" {
 			fmt.Fprintln(r.stderr, "Warning: "+res.Warning)
 		}
-		return vectors.New(res.Endpoint, apiKey, res.Workspace), nil
+		ws, err := r.workspace(cmd.Flags().Changed("workspace"))
+		if err != nil {
+			return nil, err
+		}
+		return vectors.New(res.Endpoint, apiKey, ws), nil
 	}
 	return r
+}
+
+// workspace is the workspace a vector command acts in. Every collection lives
+// in one, so there is always an answer: --workspace names it (sent as typed;
+// the vectors API answers WORKSPACE_NOT_FOUND for a name it does not know),
+// else the account's workspaces answer it (pickWorkspace: the only one, or
+// asked, or refused without a terminal). The question goes to stderr, so
+// --json output stays one object. No environment variable is read.
+func (r *vecRun) workspace(named bool) (string, error) {
+	if named {
+		if vecWorkspace == "" {
+			return "", refuse("--workspace got an empty workspace name: every collection lives in a named workspace. Nothing was sent.")
+		}
+		return vecWorkspace, nil
+	}
+	ws, err := pickWorkspace(r.controlPlane(), "", false, !r.json && isInteractive(), &prompter{in: bufio.NewReader(os.Stdin), out: r.stderr})
+	if err != nil {
+		return "", err
+	}
+	return ws.Name, nil
 }
 
 // open resolves once. A failure has already been reported when it returns a
@@ -202,18 +227,14 @@ func (r *vecRun) open() (*vectors.Client, int) {
 }
 
 // vecEnvelope opens every --json object: where the request went, and the
-// workspace the names were scoped to (null for none).
+// workspace the names were scoped to.
 type vecEnvelope struct {
-	Endpoint  string  `json:"endpoint"`
-	Workspace *string `json:"workspace"`
+	Endpoint  string `json:"endpoint"`
+	Workspace string `json:"workspace"`
 }
 
 func (r *vecRun) envelope() vecEnvelope {
-	env := vecEnvelope{Endpoint: r.client.Endpoint()}
-	if ws := r.client.Workspace(); ws != "" {
-		env.Workspace = &ws
-	}
-	return env
+	return vecEnvelope{Endpoint: r.client.Endpoint(), Workspace: r.client.Workspace()}
 }
 
 func (r *vecRun) printJSON(v interface{}) int {
@@ -244,7 +265,7 @@ type vecErrorJSON struct {
 func (r *vecRun) fail(err error) int {
 	code := exitRequestFailed
 	var in *inputError
-	var region *vectors.InvalidRegionError
+	var region *vectors.UnknownRegionError
 	if errors.As(err, &in) || errors.As(err, &region) {
 		code = exitInputRefused
 	}
@@ -264,6 +285,9 @@ func (r *vecRun) fail(err error) int {
 			out.Error.Status, out.Error.Code, out.Error.Message = apiErr.Status, apiErr.Code, apiErr.Message
 		} else if isCP {
 			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
+		}
+		if out.Error.Code == "" && code == exitInputRefused {
+			out.Error.Code = usageErrorCode
 		}
 		var upsert *upsertFailure
 		if errors.As(err, &upsert) {
@@ -290,17 +314,14 @@ func exitWith(code int) error {
 }
 
 func init() {
-	collectionsCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	collectionsCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	collectionsCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
 	collectionsCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
-	indexCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	indexCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	indexCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
 	indexCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
 
-	pointsCmd.PersistentFlags().BoolVar(&vecJSON, "json", false, vecJSONHelp)
 	pointsCmd.PersistentFlags().StringVar(&vecVectorsURL, "vectors-url", "", vecVectorsURLHelp)
 	pointsCmd.PersistentFlags().StringVar(&vecAPIRegion, "api-region", "", vecAPIRegionHelp)
 	pointsCmd.PersistentFlags().StringVar(&vecWorkspace, "workspace", "", vecWorkspaceHelp)
