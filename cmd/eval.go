@@ -14,8 +14,8 @@ package cmd
 //	2  the input was refused before any request (a bad flag or file)
 //	3  not logged in
 //
-// With `-o json` stdout holds exactly one JSON value and nothing else; progress
-// lines and errors go to stderr.
+// With `--json` stdout holds exactly one JSON value and nothing else; progress
+// lines and errors go to stderr (the CLI's one JSON contract, internal/output).
 
 import (
 	"encoding/json"
@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -61,24 +60,35 @@ type evalIO struct {
 	sleep  func(time.Duration)
 }
 
+// processOut is the process's text destination for a person: stdout, or stderr
+// under --json (output.Out). Evaluated at each write.
+type processOut struct{}
+
+func (processOut) Write(p []byte) (int, error) { return output.Out().Write(p) }
+
 func newEvalIO() *evalIO {
 	return &evalIO{
 		client: api.NewClient(),
-		stdout: os.Stdout,
+		stdout: processOut{},
 		stderr: os.Stderr,
 		stdin:  os.Stdin,
-		json:   config.Get().OutputFormat == "json",
+		json:   output.IsJSON(),
 		sleep:  time.Sleep,
 	}
 }
 
+// printJSON writes the command's one result: through output.JSON in the
+// process, to the test's writer when a test built its own evalIO.
 func (e *evalIO) printJSON(v interface{}) error {
+	if _, process := e.stdout.(processOut); process {
+		return output.JSON(v)
+	}
 	enc := json.NewEncoder(e.stdout)
 	enc.SetIndent("", "  ")
 	return enc.Encode(v)
 }
 
-// note is a human line: stdout normally, stderr under -o json.
+// note is a human line: stdout normally, stderr under --json.
 func (e *evalIO) note(format string, args ...interface{}) {
 	w := e.stdout
 	if e.json {
@@ -87,7 +97,7 @@ func (e *evalIO) note(format string, args ...interface{}) {
 	fmt.Fprintf(w, format+"\n", args...)
 }
 
-// evalErrorJSON is what -o json prints on stderr for a failure: the API's
+// evalErrorJSON is what --json prints on stderr for a failure: the API's
 // status, code, message and violations when the API answered.
 type evalErrorJSON struct {
 	Error struct {
@@ -390,7 +400,7 @@ func terminal(status string) bool {
 	return status == "completed" || status == "errored" || status == "cancelled"
 }
 
-// evalRunResult is `afy eval run -o json`'s one object.
+// evalRunResult is `afy eval run --json`'s one object.
 type evalRunResult struct {
 	Eval       *api.EvalRun        `json:"eval"`
 	Comparison *api.EvalComparison `json:"comparison"`

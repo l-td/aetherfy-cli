@@ -62,8 +62,11 @@ func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval,
 	if len(args) == 1 {
 		deployments, err := client.ListDeployments(agentID)
 		if err != nil {
-			output.PrintError("Failed to list deployments: %v", err)
+			_ = printRefusal("Failed to list deployments", err)
 			return 1
+		}
+		if output.IsJSON() {
+			return resultCode(output.JSON(deployments))
 		}
 		if len(deployments) == 0 {
 			output.PrintInfo("No deployments found for agent '%s'", agentID)
@@ -100,7 +103,9 @@ func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval,
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Rollback failed: %v", err)
+		// RELEASE_CONFIG_NOT_ON_RECORD and the frozen-account refusals say what
+		// to do: printed as the server wrote them.
+		_ = printRefusal("Rollback failed", err)
 		return 1
 	}
 
@@ -117,7 +122,7 @@ func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval,
 	if detach {
 		output.PrintSuccess("Rollback to v%d queued.", version)
 		output.Printf("Run 'afy logs %s' to follow progress.\n", agentID)
-		return 0
+		return resultCode(output.Result(map[string]interface{}{"agent_id": agentID, "deployment": resp}))
 	}
 	if watchDeployment(client, agentID, resp.ID, pollInterval, timeout) != nil {
 		return 1

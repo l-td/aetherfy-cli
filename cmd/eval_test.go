@@ -15,9 +15,9 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
-// fakeCP is a control plane for the eval and datasets commands: routes answer
+// evalsCP is a control plane for the eval and datasets commands: routes answer
 // from handlers keyed by "METHOD path", and every request is recorded.
-type fakeCP struct {
+type evalsCP struct {
 	t        *testing.T
 	mu       sync.Mutex
 	routes   map[string]func(r *http.Request, body []byte) (int, interface{})
@@ -25,8 +25,8 @@ type fakeCP struct {
 	bodies   map[string][]byte
 }
 
-func newFakeCP(t *testing.T) (*fakeCP, *httptest.Server) {
-	f := &fakeCP{t: t, routes: map[string]func(*http.Request, []byte) (int, interface{}){}, bodies: map[string][]byte{}}
+func newEvalsCP(t *testing.T) (*evalsCP, *httptest.Server) {
+	f := &evalsCP{t: t, routes: map[string]func(*http.Request, []byte) (int, interface{}){}, bodies: map[string][]byte{}}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		key := r.Method + " " + r.URL.Path
@@ -51,15 +51,15 @@ func newFakeCP(t *testing.T) (*fakeCP, *httptest.Server) {
 	return f, srv
 }
 
-func (f *fakeCP) on(key string, handler func(r *http.Request, body []byte) (int, interface{})) {
+func (f *evalsCP) on(key string, handler func(r *http.Request, body []byte) (int, interface{})) {
 	f.routes[key] = handler
 }
 
-func (f *fakeCP) reply(key string, status int, out interface{}) {
+func (f *evalsCP) reply(key string, status int, out interface{}) {
 	f.on(key, func(*http.Request, []byte) (int, interface{}) { return status, out })
 }
 
-func (f *fakeCP) count(prefix string) int {
+func (f *evalsCP) count(prefix string) int {
 	n := 0
 	for _, r := range f.requests {
 		if strings.HasPrefix(r, prefix) {
@@ -136,7 +136,7 @@ func progress(graded, dispatched int) map[string]interface{} {
 
 // startable wires the dataset lookup and the POST, and serves GET /evals/e1 as
 // the given sequence of bodies (the last one repeats).
-func startable(f *fakeCP, polls ...map[string]interface{}) {
+func startable(f *evalsCP, polls ...map[string]interface{}) {
 	f.reply("GET "+A+"/eval-datasets/qa", 200, map[string]interface{}{
 		"id": "d1", "name": "qa", "description": nil, "latest_version": 2, "case_count": 10,
 		"created_at": "2026-09-29T10:00:00Z", "updated_at": "2026-09-29T10:00:00Z", "versions": []interface{}{},
@@ -169,7 +169,7 @@ func runFlags(overrides func(*evalRunFlags)) evalRunFlags {
 // ---------------------------------------------------------------------------
 
 func TestEvalRunPollsPrintsEachChangeOnceAndThePassingScorecard(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	running := evalBody("e1", "running", 2, 7, map[string]interface{}{"progress": progress(3, 2)})
 	startable(f, evalBody("e1", "queued", 2, 7, map[string]interface{}{"progress": progress(0, 0)}), running, running, completed(0.9))
 	h := harness(srv, false, "")
@@ -213,7 +213,7 @@ func TestEvalRunExitCodeMatrix(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			f, srv := newFakeCP(t)
+			f, srv := newEvalsCP(t)
 			startable(f, tc.final)
 			h := harness(srv, false, "")
 			err := evalRun(h.io, "bot", runFlags(tc.flags))
@@ -225,7 +225,7 @@ func TestEvalRunExitCodeMatrix(t *testing.T) {
 }
 
 func TestEvalRunErroredNamesTheReason(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	startable(f, evalBody("e1", "errored", 2, 7, map[string]interface{}{"status_reason": "SOFT_CAP_EXCEEDED"}))
 	h := harness(srv, false, "")
 	_ = evalRun(h.io, "bot", runFlags(nil))
@@ -240,7 +240,7 @@ func TestEvalRunMaxDropAgainstABaselineRelease(t *testing.T) {
 		want  int
 	}{{-0.05, 0}, {-0.2, exitThresholdBreached}, {0.1, 0}} {
 		t.Run(fmt.Sprint(tc.delta), func(t *testing.T) {
-			f, srv := newFakeCP(t)
+			f, srv := newEvalsCP(t)
 			startable(f, completed(0.8))
 			f.on("GET "+A+"/evals", func(r *http.Request, _ []byte) (int, interface{}) {
 				q := r.URL.Query()
@@ -276,7 +276,7 @@ func TestEvalRunMaxDropAgainstABaselineRelease(t *testing.T) {
 }
 
 func TestEvalRunRefusesAMissingBaselineBeforeStartingAnything(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	startable(f, completed(1))
 	f.reply("GET "+A+"/evals", 200, []interface{}{evalBody("other", "completed", 1, 5, nil)})
 	h := harness(srv, false, "")
@@ -293,7 +293,7 @@ func TestEvalRunRefusesAMissingBaselineBeforeStartingAnything(t *testing.T) {
 }
 
 func TestEvalRunChecksAnExplicitBaseline(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	startable(f, completed(1))
 	f.reply("GET "+A+"/evals/base", 200, evalBody("base", "running", 2, 5, nil))
 	h := harness(srv, false, "")
@@ -313,7 +313,7 @@ func TestEvalRunFlagRefusals(t *testing.T) {
 		"detach with a threshold":   func(r *evalRunFlags) { r.detach = true; r.failUnder = 0.5 },
 	} {
 		t.Run(name, func(t *testing.T) {
-			f, srv := newFakeCP(t)
+			f, srv := newEvalsCP(t)
 			h := harness(srv, false, "")
 			if got := exitOf(evalRun(h.io, "bot", runFlags(flags))); got != exitInputRefused {
 				t.Errorf("exit %d, want 2", got)
@@ -326,7 +326,7 @@ func TestEvalRunFlagRefusals(t *testing.T) {
 }
 
 func TestEvalRunDetach(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	startable(f, completed(1))
 	h := harness(srv, false, "")
 	err := evalRun(h.io, "bot", runFlags(func(r *evalRunFlags) { r.detach = true; r.datasetVersion = 2 }))
@@ -339,7 +339,7 @@ func TestEvalRunDetach(t *testing.T) {
 }
 
 func TestEvalRunJSONPutsOnlyOneObjectOnStdout(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	startable(f, evalBody("e1", "running", 2, 7, map[string]interface{}{"progress": progress(1, 1)}), completed(0.7))
 	h := harness(srv, true, "")
 	err := evalRun(h.io, "bot", runFlags(func(r *evalRunFlags) { r.failUnder = 0.8 }))
@@ -386,7 +386,7 @@ func TestEvalRunReportsEveryEnvelope(t *testing.T) {
 	for code, status := range codes {
 		for _, jsonOut := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s json=%v", code, jsonOut), func(t *testing.T) {
-				f, srv := newFakeCP(t)
+				f, srv := newEvalsCP(t)
 				f.reply("POST "+A+"/evals", status, apiError(code, "refused: "+code, nil))
 				h := harness(srv, jsonOut, "")
 				err := evalRun(h.io, "bot", runFlags(func(r *evalRunFlags) { r.datasetVersion = 2 }))
@@ -414,7 +414,7 @@ func TestEvalRunReportsEveryEnvelope(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestEvalListAndItsFilters(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.on("GET "+A+"/evals", func(r *http.Request, _ []byte) (int, interface{}) {
 		if got := r.URL.RawQuery; got != "dataset=qa&limit=20&release_version=7&status=completed" {
 			t.Errorf("query %q", got)
@@ -431,7 +431,7 @@ func TestEvalListAndItsFilters(t *testing.T) {
 }
 
 func TestEvalShowPagesThroughTheCases(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("GET "+A+"/evals/e1", 200, completed(0.5))
 	f.on("GET "+A+"/evals/e1/cases", func(r *http.Request, _ []byte) (int, interface{}) {
 		if r.URL.Query().Get("verdict") != "fail" {
@@ -462,7 +462,7 @@ func TestEvalShowPagesThroughTheCases(t *testing.T) {
 }
 
 func TestEvalCompareAndCancel(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("GET "+A+"/eval-comparisons", 409, apiError("EVAL_COMPARE_INCOMPATIBLE", "The base eval is running", nil))
 	f.reply("POST "+A+"/evals/e1/cancel", 202, evalBody("e1", "running", 2, 7, map[string]interface{}{"cancel_requested": true}))
 	f.reply("POST "+A+"/evals/e2/cancel", 409, apiError("EVAL_NOT_CANCELLABLE", "already completed", nil))

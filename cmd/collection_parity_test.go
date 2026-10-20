@@ -146,9 +146,9 @@ func TestRegionLimitsJSONIsTheControlPlanesAnswer(t *testing.T) {
 func TestAccessJSONCarriesTheWorkspacePairs(t *testing.T) {
 	withRefs := `{"agent":"bot","own_workspace":"alpha","own_workspace_ref":{"id":"w-a","name":"alpha"},` +
 		`"granted_workspaces":["beta"],"granted_workspace_refs":[{"id":"w-b","name":"beta"}],` +
-		`"workspaceless_granted":false,"allowed_workspaces":["alpha","beta"],` +
+		`"allowed_workspaces":["alpha","beta"],` +
 		`"allowed_workspace_refs":[{"id":"w-a","name":"alpha"},{"id":"w-b","name":"beta"}],` +
-		`"workspaceless_allowed":false,"changed":null}`
+		`"changed":null}`
 	cp := cpFake(t, map[string]func(vecRequest) (int, string){
 		"GET " + accessPath: func(vecRequest) (int, string) { return 200, withRefs },
 	})

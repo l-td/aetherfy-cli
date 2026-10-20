@@ -18,12 +18,12 @@ func init() {
 // buildAetherfyYAML emits `schedule:` (quoted) when set, and omits it entirely
 // when empty — schedule-less agents keep the original file shape.
 func TestBuildAetherfyYAMLSchedule(t *testing.T) {
-	with := buildAetherfyYAML("nightly", "python3.11", "job", "us-east-1", 256, false, false, "main.py", "0 3 * * *")
+	with := buildAetherfyYAML("python3.11", "job", "us-east-1", 256, false, "main.py", "0 3 * * *")
 	if !strings.Contains(with, `schedule: "0 3 * * *"`) {
 		t.Errorf("expected quoted schedule line, got:\n%s", with)
 	}
 
-	without := buildAetherfyYAML("web", "python3.11", "service", "us-east-1", 256, false, false, "main.py", "")
+	without := buildAetherfyYAML("python3.11", "service", "us-east-1", 256, false, "main.py", "")
 	if strings.Contains(without, "schedule:") {
 		t.Errorf("no schedule expected when empty, got:\n%s", without)
 	}

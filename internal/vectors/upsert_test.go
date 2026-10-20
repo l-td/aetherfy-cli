@@ -107,7 +107,7 @@ func TestUpsertWaitsLongerThanVectordbMayTakeOverARequest(t *testing.T) {
 			t.Errorf("request %d waited %s, want %s", i+1, got, UpsertTimeout)
 		}
 	}
-	if New("http://x", "k", "").timeout != DefaultTimeout {
+	if New("http://x", "k", "default").timeout != DefaultTimeout {
 		t.Error("the other calls' timeout changed")
 	}
 }
@@ -132,7 +132,7 @@ func (f *fakeUpsert) send(method, url string, body []byte, _ http.Header, timeou
 }
 
 func clientWith(f *fakeUpsert) *Client {
-	c := New("http://vectors.test", "k", "")
+	c := New("http://vectors.test", "k", "default")
 	c.send = f.send
 	return c
 }
@@ -201,8 +201,13 @@ func TestUpsertTimeoutOnTheSecondRequestIsUnconfirmed(t *testing.T) {
 	}))
 	defer srv.Close()
 	defer close(release)
-	c := New(srv.URL, "k", "")
-	c.upsertTimeout = 200 * time.Millisecond
+	c := New(srv.URL, "k", "default")
+	// The budget is per request, and the FIRST request carries
+	// UpsertPointsMax points: it must fit easily even on a loaded runner (200ms
+	// did not, under the full suite: the first upload timed out too). Only the
+	// second request is held, until its context ends, so the test still takes
+	// one budget, not a guess at how long a server takes.
+	c.upsertTimeout = 2 * time.Second
 	progress, err := c.Upsert("articles", manyPoints(UpsertPointsMax+5, 1))
 	var te *TimeoutError
 	if !errors.As(err, &te) {

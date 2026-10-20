@@ -57,6 +57,12 @@ type APIError struct {
 	// [{grader, field, message}]). `afy datasets push` prints each one, so a
 	// customer fixes a file in one round trip. nil when the envelope has none.
 	Violations []map[string]interface{} `json:"-"`
+
+	// RegionsInUse carries the `regions_in_use` extra of a narrow refused with
+	// 422 WORKSPACE_NARROW_BLOCKED_BY_RESOURCES: the regions a resource of the
+	// workspace still uses. nil for every other error, and for a server that
+	// does not send it.
+	RegionsInUse []string `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -128,6 +134,13 @@ func parseAPIError(resp *resty.Response) error {
 					for _, item := range list {
 						if violation, ok := item.(map[string]interface{}); ok {
 							apiErr.Violations = append(apiErr.Violations, violation)
+						}
+					}
+				}
+				if list, ok := v["regions_in_use"].([]interface{}); ok {
+					for _, r := range list {
+						if code, ok := r.(string); ok && code != "" {
+							apiErr.RegionsInUse = append(apiErr.RegionsInUse, code)
 						}
 					}
 				}

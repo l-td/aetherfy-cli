@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"time"
 )
 
@@ -14,6 +13,7 @@ type Agent struct {
 	Status        string `json:"status"`
 	AgentType     string `json:"agent_type"`
 	Runtime       string `json:"runtime,omitempty"`
+	WorkspaceID   string `json:"workspace_id,omitempty"`
 	WorkspaceName string `json:"workspace_name,omitempty"`
 	SpawnEnabled  bool   `json:"spawn_enabled"`
 	// TWO FIELDS, TWO QUESTIONS (server AgentResponse).
@@ -34,7 +34,7 @@ type Agent struct {
 	URL      string `json:"url,omitempty"`
 	// Resume: a start asked for while the agent's previous stop was still
 	// finishing (server AgentResponse.resume) -- pending, queued, or dropped
-	// with a reason. nil when there is none. No omitempty: `-o json` readers
+	// with a reason. nil when there is none. No omitempty: `--json` readers
 	// see an explicit null.
 	Resume *ResumeState `json:"resume"`
 	// MachinesRecreated: how many of the agent's machines its latest start
@@ -54,7 +54,7 @@ type Agent struct {
 	// stored status. IsDegraded = a partial multi-region deploy still
 	// converging; DegradedReason is a human summary. Surfaced on
 	// `afy list` / `afy status`. No omitempty on IsDegraded:
-	// health must serialize explicitly so `-o json` health-check scripts can
+	// health must serialize explicitly so `--json` health-check scripts can
 	// read it. (No is_serving — agent.Status answers "is it up"; the server
 	// keeps is_serving on the deployment, where it's well-defined.)
 	IsDegraded     bool   `json:"is_degraded"`
@@ -88,7 +88,7 @@ type Agent struct {
 	// A POINTER, AND OMITEMPTY ON THE POINTER ONLY. A control plane that predates
 	// the nested object leaves it nil, and nil must stay distinguishable from a
 	// link that says `linked: false`: decoded as a value it would be all zeros,
-	// and `-o json` would claim an unlinked, disconnected agent the server said
+	// and `--json` would claim an unlinked, disconnected agent the server said
 	// nothing about. Nothing INSIDE the object may take omitempty.
 	GitHub *GitHubLinkStatus `json:"github,omitempty"`
 	// Cron scheduling (CP-4). Carried on the agent list + detail responses.
@@ -120,32 +120,38 @@ type LastRun struct {
 
 // AgentCreateRequest is the request body for creating an agent
 type AgentCreateRequest struct {
-	Name         string `json:"name"`
-	Description  string `json:"description,omitempty"`
-	AgentType    string `json:"agent_type,omitempty"`
-	Runtime      string `json:"runtime,omitempty"`
-	SpawnEnabled bool   `json:"spawn_enabled,omitempty"`
-	// The agents it may spawn, or ["*"] for any. Required by the control plane
-	// when SpawnEnabled is true (422 AGENT_SPAWN_WORKERS_REQUIRED).
-	AllowedWorkers []string `json:"allowed_workers,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	// The workspace the agent lives in, by id (the control plane takes
+	// exactly one of workspace_id or workspace_name, and refuses a create
+	// without one). How the agent runs is aetherfy.yaml's, set by a deploy.
+	WorkspaceID string `json:"workspace_id"`
 }
 
 // AgentUpdateRequest is the request body for updating an agent
 type AgentUpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
-	MemoryMB    *int    `json:"memory_mb,omitempty"`
-	KeepAlive   *bool   `json:"keep_alive,omitempty"`
-	// WorkspaceName is tri-state to match the backend PATCH /agents
-	// three-way semantic (omitted / null / string):
-	//   - nil (unset)                  → field omitted → no change
-	//   - json.RawMessage("null")      → "workspace_name": null → clear
-	//   - json.RawMessage(`"my-ws"`)   → "workspace_name": "my-ws" → set
-	// json.RawMessage (not *string) is required: *string+omitempty cannot
-	// emit an explicit JSON null while still omitting when unset, and a
-	// non-omitempty *string would make every other update (e.g. rename)
-	// send "workspace_name": null and silently clear the workspace.
-	WorkspaceName json.RawMessage `json:"workspace_name,omitempty"`
+}
+
+// AgentMoveRequest is the body of POST /agents/{agent}/move: the workspace the
+// agent moves to, by name (a person types names). The control plane takes
+// exactly one of workspace_name or workspace_id.
+type AgentMoveRequest struct {
+	WorkspaceName string `json:"workspace_name"`
+}
+
+// AgentMove is POST /agents/{agent}/move's answer. A move REDEPLOYS the agent:
+// Deployment is that redeploy, nil when nothing was serving. Changed is false
+// when the agent already lived in the workspace.
+type AgentMove struct {
+	AgentID           string       `json:"agent_id"`
+	Agent             string       `json:"agent"`
+	Workspace         WorkspaceRef `json:"workspace"`
+	PreviousWorkspace WorkspaceRef `json:"previous_workspace"`
+	Changed           bool         `json:"changed"`
+	Redeployed        bool         `json:"redeployed"`
+	Deployment        *Deployment  `json:"deployment"`
 }
 
 // Deployment represents a deployment
@@ -154,7 +160,7 @@ type Deployment struct {
 	AgentID string `json:"agent_id"`
 	Version int    `json:"version"`
 	// On a run, the release it executed; Version is the run's own place in the
-	// sequence. Nil on a release. No omitempty: `-o json` says null rather than
+	// sequence. Nil on a release. No omitempty: `--json` says null rather than
 	// dropping the key, as AgentRun.ReleaseVersion does.
 	ReleaseVersion *int     `json:"release_version"`
 	Status         string   `json:"state"`
@@ -183,7 +189,7 @@ type Deployment struct {
 	// Partial-deploy contract (server DeploymentResponse; REVIEW_FAQ §63). A
 	// degraded deployment stays state=ACTIVE and converges in the background;
 	// RegionsReady/RegionsTotal is the N/M progress. No omitempty on IsDegraded:
-	// it must serialize explicitly for `-o json` scripting. (is_serving exists
+	// it must serialize explicitly for `--json` scripting. (is_serving exists
 	// on the API but isn't modeled here — the State field already conveys
 	// active; we only surface the degraded delta.)
 	IsDegraded              bool   `json:"is_degraded"`
@@ -195,7 +201,7 @@ type Deployment struct {
 	// internal S3 URI the API never returns, and the archive is deleted when a
 	// build fails and reaped past the 10 most recent successful deployments — so
 	// this cannot be inferred from State. No omitempty: `false` must serialize
-	// explicitly for `-o json` scripting, same reason as IsDegraded.
+	// explicitly for `--json` scripting, same reason as IsDegraded.
 	CanRedeploy bool `json:"can_redeploy"`
 	// Whether `afy rollback` can target this version (server
 	// Deployment.can_rollback): its image or its stored code archive still
@@ -288,7 +294,7 @@ type AgentRun struct {
 	State         string    `json:"state"`
 	CreatedAt     time.Time `json:"created_at"`
 	ErrorMessage  string    `json:"error_message,omitempty"`
-	// The release the run executed. No omitempty: `afy runs -o json` says
+	// The release the run executed. No omitempty: `afy runs --json` says
 	// null for a run the server recorded none for, rather than dropping the key.
 	ReleaseVersion   *int       `json:"release_version"`
 	MachineStartedAt *time.Time `json:"machine_started_at,omitempty"`
@@ -345,14 +351,18 @@ type Workspace struct {
 type WorkspaceCreateRequest struct {
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
+	// Regions are the regions the workspace owns, 1..plan.max_regions, chosen
+	// at create.
+	Regions []string `json:"regions"`
 }
 
-// WorkspaceUpdateRequest is the request body for PATCH /workspaces/{name}.
-// Only description is mutable; name is intentionally not included here —
-// the API rejects rename attempts with 400 WORKSPACE_NAME_IMMUTABLE
-// (see docs/REVIEW_FAQ.md §53 in the control-plane repo).
+// WorkspaceUpdateRequest is the request body for PATCH /workspaces/{name}: a
+// new name, a new description, or both. A nil field is left out and left
+// unchanged; a pointer to "" clears the description. Every internal reference
+// to a workspace is by id, so a rename moves nothing and redeploys no agent.
 type WorkspaceUpdateRequest struct {
-	Description string `json:"description"`
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
 }
 
 // WorkspaceDeleteResponse is the response from deleting a workspace
@@ -481,7 +491,7 @@ type GitHubLinkResponse struct {
 //
 // NOTHING IS OMITEMPTY. `linked: false` and `account_connected: false` are the
 // values a reader most needs to see, and omitempty is exactly the tag that
-// would drop them from `afy status -o json`. The nullable fields mirror the
+// would drop them from `afy status --json`. The nullable fields mirror the
 // server's own nullability so a null stays a null rather than becoming "".
 type GitHubLinkStatus struct {
 	Linked    bool    `json:"linked"`
@@ -500,7 +510,7 @@ type GitHubLinkStatus struct {
 	AccountLogin *string `json:"account_login"`
 	// The GitHub App installation behind AccountLogin. Nothing here renders it
 	// -- it is a numeric internal id -- but it is decoded because
-	// `afy status -o json` re-encodes this struct, and a field decoded nowhere
+	// `afy status --json` re-encodes this struct, and a field decoded nowhere
 	// is a field that output silently drops.
 	InstallationID *int64 `json:"installation_id"`
 	// When the tracked branch was last seen deleted, or null. A TIMESTAMP

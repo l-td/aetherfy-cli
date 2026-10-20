@@ -38,8 +38,7 @@ type CollectionInfo struct {
 	UpdatedAt   string   `json:"updated_at"`
 }
 
-// ListCollections lists the collections in the client's workspace, or the
-// workspaceless ones when it has none. The two are separate address spaces.
+// ListCollections lists the collections in the client's workspace.
 func (c *Client) ListCollections() ([]CollectionInfo, error) {
 	var out struct {
 		Collections []CollectionInfo `json:"collections"`
@@ -80,6 +79,36 @@ func (c *Client) CreateCollection(req CreateCollectionRequest) ([]string, error)
 		return nil, err
 	}
 	return out.Regions, nil
+}
+
+// UpdateCollectionRequest is the body of PATCH …/collections/{name}: a new
+// name (bare, in the same workspace), a new description, or both. A nil field
+// is not sent. An empty description is sent as null, which clears it.
+type UpdateCollectionRequest struct {
+	Name        *string
+	Description *string
+}
+
+// UpdateCollection renames a collection or changes its description, and
+// returns it as the server answers: the new name, its description, config and
+// status. Its id, data, aliases, schema and regions are untouched.
+func (c *Client) UpdateCollection(name string, req UpdateCollectionRequest) (*CollectionInfo, error) {
+	body := map[string]interface{}{}
+	if req.Name != nil {
+		body["name"] = *req.Name
+	}
+	if req.Description != nil {
+		if *req.Description == "" {
+			body["description"] = nil
+		} else {
+			body["description"] = *req.Description
+		}
+	}
+	var out CollectionInfo
+	if err := c.do(http.MethodPatch, c.collectionPath(name, ""), body, c.timeout, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
 }
 
 // DeleteCollection deletes a collection and its points.
@@ -227,4 +256,3 @@ func (c *Client) DeletePoints(collection string, ids []json.RawMessage, filter j
 	}
 	return c.do(http.MethodPost, c.collectionPath(collection, "/points/delete"), body, c.timeout, nil)
 }
-

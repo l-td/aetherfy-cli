@@ -89,7 +89,8 @@ self-updater was renamed when agents became the default noun: every agent verb
 moved to the top level, so `afy agents update <name>` became `afy update <name>`
 and the self-updater had to move out of the way. Run `afy update` once on an
 older binary to reach this version; after that it is `afy upgrade`, and
-`afy update <name>` changes an agent's workspace or description. This is the
+`afy update <name>` renames an agent, moves it to another workspace or sets its
+description. This is the
 only command whose name changed rather than shortening, and the only upgrade
 step that is not automatic.
 
@@ -129,10 +130,11 @@ removed on the next update if Windows still had it open at the end of this one.
 # Authenticate with your API key
 afy login
 
-# Scaffold an aetherfy.yaml in your project
+# Create an agent for this folder: writes aetherfy.yaml and the link
+# (.aetherfy/agent.json -- commit it)
 afy init
 
-# Deploy from the current directory
+# Deploy the folder to its agent
 afy deploy
 
 # Follow logs in real-time
@@ -161,13 +163,21 @@ afy runs my-job
 
 | Command | Description |
 |---------|-------------|
-| `afy init [path]` | Scaffold an `aetherfy.yaml` by auto-detecting runtime and entrypoint |
+| `afy init [path]` | Create an agent for the folder: asks its workspace, scans for runtime and entrypoint, writes `aetherfy.yaml` and links the folder |
+| `afy init --agent <name>` | Link the folder to an existing agent; when the folder has no `aetherfy.yaml`, writes the agent's live release as one, or, for an agent with no release yet, generates one from the folder |
+| `afy init --agent <name> --target <t>` | Add another target (e.g. `staging`) beside the folder's others |
 
-Flags: `--name`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--workspace`, `--schedule`, `--force`, `--yes`.
+Flags: `--name`, `--agent`, `--target`, `--workspace`, `--runtime`, `--entrypoint`, `--type`, `--region`, `--memory`, `--keep-alive`, `--schedule`, `--force`, `--yes`.
+The regions and memory sizes offered are the ones your plan allows, read from the server.
+When `afy init` asks you to choose, type the option's number, its full text, or its first word (for example `service`); an empty line takes the default.
 
 ```bash
-# Scaffold a scheduled job agent non-interactively
-afy init --name nightly-report --type job --schedule "0 3 * * *"
+# Create a scheduled job agent non-interactively
+afy init --name nightly-report --workspace default --type job --schedule "0 3 * * *" --yes
+
+# One codebase, two agents: link a staging agent, then deploy to it
+afy init --agent nightly-report-staging --target staging
+afy deploy --target staging
 ```
 
 `--schedule` writes the `schedule:` field into `aetherfy.yaml`. When you pick
@@ -179,12 +189,15 @@ afy init --name nightly-report --type job --schedule "0 3 * * *"
 | Command | Description |
 |---------|-------------|
 | `afy list` | List all agents |
-| `afy create <name>` | Create a new agent (`--type service\|job`, `--runtime`, `--spawn-enabled`, `--description`) |
+| `afy create <name>` | Create an agent in a workspace (`--workspace`, asked when the account has several; `--description`); link a folder to it with `afy init --agent <name>` |
 | `afy delete <name>` | Delete an agent and all its deployments |
 | `afy status <name>` | Show detailed agent status |
 | `afy stop <name>` | Pause a running agent |
 | `afy start <name>` | Resume a paused agent |
-| `afy rename <current> <new>` | Rename an agent (URL stays the same) |
+| `afy update <name> --name <new>` | Rename an agent (its URL and the folders linked to it stay the same) |
+| `afy update <name> --workspace <ws>` | Move an agent to another workspace; it is redeployed there |
+| `afy update <name> --description <text>` | Set an agent's description |
+| `afy diff [--target <t>]` | Preview what `afy deploy` of this folder would change on its linked agent; an omitted field shows its default; exits 1 on changes |
 
 ### Runs & Schedules
 
@@ -237,24 +250,35 @@ Workspaces group related agents so they can share secrets and vector collections
 
 | Command | Description |
 |---------|-------------|
-| `afy workspaces create <name>` | Create a workspace (3–63 chars, lowercase/hyphens) |
+| `afy workspaces create <name> --regions r1[,r2]` | Create a workspace (3–63 chars, lowercase/hyphens). A workspace owns its regions: 1 up to your plan's limit, from the regions your plan allows, repeated or comma-separated, validated before anything is sent. Omitted: a terminal is asked to pick; a script or `--json` is refused (exit 2) with the allowed regions listed |
+| `afy workspaces regions <name> --regions r1[,r2]` | Set the regions a workspace owns (the full new set, to add or to remove). Removing a region an agent or collection still uses is refused (422 `WORKSPACE_NARROW_BLOCKED_BY_RESOURCES`), naming the regions in use |
 | `afy workspaces list` | List all workspaces with agent counts |
 | `afy workspaces info <name>` | Show workspace details |
-| `afy workspaces agents <name>` | List agents in a workspace |
-| `afy workspaces delete <name>` | Delete an empty workspace and its secrets |
+| `afy workspaces agents <name>` | List the agents that live in a workspace and, separately, the agents of other workspaces granted access to it (`--json`: `{"living": [...], "granted": [...]}`) |
+| `afy workspaces update <name> --name <new>` | Rename a workspace (its agents keep running; code naming the old name stops finding it) |
+| `afy workspaces update <name> --description <text>` | Change a workspace's description |
+| `afy workspaces delete <name>` | Delete an empty workspace and its secrets (your last workspace cannot be deleted) |
 
 ### Vectors
 
 Read and manage the vector database with the same API key. Loading points is
-the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`, `--workspace` (default
-`AETHERFY_WORKSPACE`, else none), `--vectors-url` and `--api-region`.
+the SDKs' job; deleting them is here, for cleanup. Every command takes `--workspace` (the account's only
+workspace when it has one; asked when it has several, and required without a
+terminal or with `--json`), `--vectors-url` and `--api-region`. Every collection
+lives in a workspace, and a name is unique within it.
 
 | Command | Description |
 |---------|-------------|
 | `afy collections list` | List the collections in a workspace |
 | `afy collections get <name>` | Show one collection |
 | `afy collections create <name> --size N --distance cosine` | Create a collection (`--regions` to pin it) |
+| `afy collections update <name> --name <new>` | Rename a collection in its workspace (data, aliases, schema and regions stay; the old name stops answering) |
+| `afy collections update <name> --description <text>` | Change a collection's description (`""` clears it) |
 | `afy collections delete <name> --yes` | Delete a collection and its points |
+| `afy collections schema get <collection>` | Show a collection's payload schema and its version (`--save <file>` writes both to a JSON file to edit; an existing file is kept unless `--force`) |
+| `afy collections schema set <collection> --file <file>` | Set the schema from a file. A file from `get --save` carries its version: if the schema changed since, nothing is written. A file without one sets a first schema only. The whole schema is replaced: a file without `description` clears it |
+| `afy collections schema delete <collection> --yes` | Delete a collection's schema (its points stay) |
+| `afy collections schema analyze <collection>` | Sample the points and suggest a schema (`--sample-size`) |
 | `afy index create <collection> <field> --type keyword` | Index a payload field; returns once the index is built |
 | `afy index delete <collection> <field>` | Drop a payload index |
 | `afy points count <collection>` | Count points (`--filter` JSON) |
@@ -267,11 +291,10 @@ the SDKs' job; deleting them is here, for cleanup. Every command takes `--json`,
 
 | Command | Description |
 |---------|-------------|
-| `afy deploy [path]` | Build and deploy the project (watches by default) |
+| `afy deploy [path]` | Build and deploy the folder to the agent it is linked to (watches by default) |
+| `afy deploy --target <t>` | Deploy to another of the folder's linked agents (default: `default`) |
 | `afy deploy --detach` | Upload and return immediately without streaming |
-| `afy deploy --agent <name>` | Override agent target (otherwise read from `aetherfy.yaml`) |
-| `afy deploy --create` | Create the agent from `aetherfy.yaml`'s `type` and `runtime` if it does not exist |
-| `afy deploy --from-github <owner/repo[@ref]>` | Deploy directly from a public GitHub repo |
+| `afy deploy --from-github <owner/repo[@ref]>` | Deploy a public GitHub repo's code to the agent this folder is linked to |
 | `afy deployments <agent>` | Show deployment history (newest first) |
 | `afy rollback <agent> [version]` | Roll back to a previously deployed version (skips the build step) |
 
@@ -440,7 +463,6 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 | `XDG_CONFIG_HOME` | Used on Linux if set |
 | `AETHERFY_VECTORS_URL` | Vectors endpoint for the vector commands |
 | `AETHERFY_VECTORS_API_REGION` | Vectors API region, resolved by region discovery |
-| `AETHERFY_WORKSPACE` | Workspace the vector commands scope names to |
 
 ### Global Flags
 
@@ -448,55 +470,100 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 |------|-------------|
 | `--config` | Config file path |
 | `--api-url` | API base URL |
-| `--output, -o` | Output format: `text`, `json`, `table` |
+| `--json` | Print the result as JSON (see [JSON output](#json-output)) |
 | `--verbose, -v` | Verbose output |
 | `--no-color` | Disable colors |
+
+### JSON output
+
+One switch, on every command: `--json`. (`-o json` and `--output json` are gone,
+with no alias.) With `--json`:
+
+- **stdout carries only JSON** — the command's result, on success. Hints,
+  progress, warnings and prompts go to **stderr**, so `afy list --json | jq`
+  never has to filter anything. A command that waits (`afy deploy`, `afy
+  redeploy`, `afy rollback`) prints one document, the deployment as it
+  settled; `afy logs --follow` prints one compact JSON object per line.
+- **An error is one JSON object on stderr**, in the shape the vector commands
+  already used, and stdout stays empty:
+
+  ```json
+  {"error": {"status": 409, "code": "AGENT_PAUSED_CANNOT_MOVE", "message": "Agent 'bot' is paused; resume it before moving it."}}
+  ```
+
+  `status` and `code` are the server's when it sent them (act on `code`, not on
+  the sentence); input the CLI itself refuses before sending anything (exit 2:
+  an unknown flag or command, a missing or extra argument, a required flag not
+  set, `afy update bot` with nothing to change) carries the CLI's own code,
+  `CLI_USAGE_ERROR`, and no `status`; any other error the CLI raises has only a
+  `message`.
+  Without `--json`, errors are the text `Error: ...`.
+- **Exit codes are the same with and without `--json`** (table below).
+- A command that reports per-item results (`afy secrets set A=1 B=2`) writes
+  them as its one document and exits `1` when any item was refused.
+- `afy completion` prints a shell script, so it refuses `--json` (exit 2).
 
 ### Exit Codes
 
 | Code | Meaning |
 |------|---------|
 | `0` | Success |
-| `1` | Error — usage errors and failed operations |
-| `2` | A vector command (`collections`, `index`, `points`), or an `eval` or `datasets` subcommand, refused its input before sending anything, including a command line it could not parse |
+| `1` | A refused or failed operation (the server said no, a request failed, a deployment failed) |
+| `2` | Input refused before anything was sent: a usage error (an unknown flag or command, a flag without its value, too few or too many arguments, a required flag not set), and bad input to any command (`collections`, `index`, `points`, `secrets`, `spawn`, `run`, `login`, `update`, ...) |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
 | `4` | `afy eval run`: the eval completed but missed `--fail-under` or `--max-drop`. `afy start --wait`: the server's bound was reached with the start still pending |
 
 ## Project Structure
 
-Your agent project must include an `aetherfy.yaml` at the root:
+Your agent project has an `aetherfy.yaml` at the root, saying how the agent
+runs, and a `.aetherfy/agent.json` saying which agent it deploys to:
 
 ```yaml
-name: my-agent
-runtime: python3.11         # python3.11, python3.12, python3.13, node20, node22, node20-ts, node22-ts, bun, dockerfile
+# yaml-language-server: $schema=https://docs.aetherfy.com/aetherfy-yaml.schema.json
+runtime: python3.11         # a runtime the platform accepts; `afy init` lists them
 type: service               # service or job
 entrypoint: main.py         # optional — auto-detected by `afy init`
-regions:                    # optional — us-east-1, eu-central-1, ap-southeast-1
+regions:                    # optional — within your workspace's regions
   - us-east-1
-memory_mb: 512              # 256, 512, or 1024
+memory_mb: 512              # the sizes your plan allows
 keep_alive: false           # always-on billing
 
 # Optional: cron schedule — job agents only
 schedule: "0 3 * * *"
 
-# Optional: attach to a workspace to share secrets and vector collections
-workspace: invoice-pipeline
-
 # Optional: enable multi-agent spawning
 spawn:
   enabled: true
-  workspace: invoice-pipeline
   workers:
     - classifier
     - summarizer
 ```
 
-Required fields: `name`, `runtime`. Run `afy init` to scaffold a valid file.
+Required field: `runtime`. Run `afy init` to scaffold a valid file. The first
+line lets an editor validate the file against the published schema.
+
+The agent's name, description and workspace are NOT in the file: they belong to
+the platform, and change with `afy update <agent> --name / --description /
+--workspace` (or the dashboard). A file declaring `name:`, `description:` or
+`workspace:` is refused at deploy, with the command to use instead.
+
+`.aetherfy/agent.json` links the folder to its agent by id, per target:
+
+```json
+{ "targets": { "default": "<agent id>", "staging": "<agent id>" } }
+```
+
+`afy init` writes it. **Commit `.aetherfy/`** so every clone and CI job deploys
+to the same agent; `afy deploy` warns when git would not carry it. A deploy
+never creates an agent: with no link, no such target, or a link to an agent the
+account does not have, it is refused and names `afy init --agent <name>
+[--target <t>]`. Renaming or moving the agent does not unlink the folder.
 
 `schedule` is a 5-field cron expression, evaluated in **UTC**, with a minimum
-interval of every 5 minutes, and is valid only for `type: job` agents. Omit
-the field on a re-deploy to keep the existing schedule; set `schedule: null`
-to clear it.
+interval of every 5 minutes, and is valid on an agent of either type. A deploy
+applies the file whole: a field it leaves out takes its default, so a deploy
+without `schedule:` removes the agent's schedule. `afy diff` shows what a
+deploy of the file would change, defaults included.
 
 ### .afyignore
 

@@ -46,7 +46,7 @@ func versionReply(version int, graders int) map[string]interface{} {
 }
 
 func TestDatasetsPushCreatesAMissingDatasetAndSaysSo(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("GET "+A+"/eval-datasets/qa", 404, apiError("EVAL_DATASET_NOT_FOUND", "no dataset", nil))
 	f.reply("POST "+A+"/eval-datasets", 201, map[string]interface{}{"id": "d1", "name": "qa"})
 	f.reply("POST "+A+"/eval-datasets/qa/versions", 201, versionReply(1, 2))
@@ -82,7 +82,7 @@ func TestDatasetsPushCreatesAMissingDatasetAndSaysSo(t *testing.T) {
 }
 
 func TestDatasetsPushToAnExistingDatasetKeepsItsGraders(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("GET "+A+"/eval-datasets/qa", 200, map[string]interface{}{"id": "d1", "name": "qa", "latest_version": 1})
 	f.reply("POST "+A+"/eval-datasets/qa/versions", 201, versionReply(2, 1))
 	h := harness(srv, true, "")
@@ -112,7 +112,7 @@ func TestDatasetsPushNamesTheBadLineAndSendsNothing(t *testing.T) {
 		"graders ext":      {"{\"input\": {}}\n", "[]", "must be a .yaml, .yml or .json file"},
 	} {
 		t.Run(name, func(t *testing.T) {
-			f, srv := newFakeCP(t)
+			f, srv := newEvalsCP(t)
 			h := harness(srv, false, "")
 			flags := datasetsPushFlags{cases: datasetFile(t, "c.jsonl", tc.cases)}
 			if tc.graders != "" {
@@ -136,7 +136,7 @@ func TestDatasetsPushNamesTheBadLineAndSendsNothing(t *testing.T) {
 }
 
 func TestDatasetsPushPrintsEveryViolation(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("GET "+A+"/eval-datasets/qa", 200, map[string]interface{}{"id": "d1", "name": "qa"})
 	f.reply("POST "+A+"/eval-datasets/qa/versions", 422, apiError("EVAL_DATASET_INVALID", "The dataset version has 2 problem(s).",
 		map[string]interface{}{"violations": []interface{}{
@@ -170,7 +170,7 @@ func TestDatasetsPushReportsTheOtherEnvelopes(t *testing.T) {
 		"EVAL_DATASET_TOO_LARGE": 413, "EVAL_GRADER_INVALID": 422, "EVAL_JUDGE_HOST_NOT_ALLOWED": 422,
 		"EVAL_DATASET_EXISTS": 409, "EVALS_NOT_ENABLED": 503,
 	} {
-		f, srv := newFakeCP(t)
+		f, srv := newEvalsCP(t)
 		f.reply("GET "+A+"/eval-datasets/qa", 404, apiError("EVAL_DATASET_NOT_FOUND", "no", nil))
 		f.reply("POST "+A+"/eval-datasets", 201, map[string]interface{}{"id": "d1", "name": "qa"})
 		f.reply("POST "+A+"/eval-datasets/qa/versions", status, apiError(code, "refused", nil))
@@ -186,7 +186,7 @@ func TestDatasetsPushReportsTheOtherEnvelopes(t *testing.T) {
 }
 
 func TestDatasetsDeleteConfirms(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("DELETE "+A+"/eval-datasets/qa", 204, nil)
 
 	h := harness(srv, false, "qb\n")
@@ -212,7 +212,7 @@ func TestDatasetsDeleteConfirms(t *testing.T) {
 }
 
 func TestDatasetsListAndShow(t *testing.T) {
-	f, srv := newFakeCP(t)
+	f, srv := newEvalsCP(t)
 	f.reply("GET "+A+"/eval-datasets", 200, []interface{}{map[string]interface{}{
 		"id": "d1", "name": "qa", "latest_version": 3, "case_count": 40,
 		"created_at": "2026-09-29T10:00:00Z", "updated_at": "2026-09-29T11:00:00Z",

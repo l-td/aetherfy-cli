@@ -6,27 +6,42 @@ import (
 	"github.com/fatih/color"
 )
 
-// ColorPrinter is an alias for color.Color for external use
-type ColorPrinter = color.Color
+// Printer is a colour that prints where text for a person goes: stdout, or
+// stderr in JSON mode (see mode.go). Everything else of color.Color (Sprintf,
+// SprintFunc, Fprintf to a writer of your own) is unchanged.
+type Printer struct{ *color.Color }
+
+func newPrinter(attrs ...color.Attribute) *Printer { return &Printer{color.New(attrs...)} }
+
+// Print writes like color.Color.Print, to the run's text destination.
+func (p *Printer) Print(a ...interface{}) (int, error) { return p.Fprint(colorOut(), a...) }
+
+// Printf writes like color.Color.Printf, to the run's text destination.
+func (p *Printer) Printf(format string, a ...interface{}) (int, error) {
+	return p.Fprintf(colorOut(), format, a...)
+}
+
+// Println writes like color.Color.Println, to the run's text destination.
+func (p *Printer) Println(a ...interface{}) (int, error) { return p.Fprintln(colorOut(), a...) }
 
 var (
 	// Primary colors
-	Green   = color.New(color.FgGreen)
-	Red     = color.New(color.FgRed)
-	Yellow  = color.New(color.FgYellow)
-	Blue    = color.New(color.FgBlue)
-	Cyan    = color.New(color.FgCyan)
-	Magenta = color.New(color.FgMagenta)
-	White   = color.New(color.FgWhite)
-	Gray    = color.New(color.FgHiBlack)
+	Green   = newPrinter(color.FgGreen)
+	Red     = newPrinter(color.FgRed)
+	Yellow  = newPrinter(color.FgYellow)
+	Blue    = newPrinter(color.FgBlue)
+	Cyan    = newPrinter(color.FgCyan)
+	Magenta = newPrinter(color.FgMagenta)
+	White   = newPrinter(color.FgWhite)
+	Gray    = newPrinter(color.FgHiBlack)
 
 	// Bold variants
-	BoldGreen  = color.New(color.FgGreen, color.Bold)
-	BoldRed    = color.New(color.FgRed, color.Bold)
-	BoldYellow = color.New(color.FgYellow, color.Bold)
-	BoldBlue   = color.New(color.FgBlue, color.Bold)
-	BoldCyan   = color.New(color.FgCyan, color.Bold)
-	BoldWhite  = color.New(color.FgWhite, color.Bold)
+	BoldGreen  = newPrinter(color.FgGreen, color.Bold)
+	BoldRed    = newPrinter(color.FgRed, color.Bold)
+	BoldYellow = newPrinter(color.FgYellow, color.Bold)
+	BoldBlue   = newPrinter(color.FgBlue, color.Bold)
+	BoldCyan   = newPrinter(color.FgCyan, color.Bold)
+	BoldWhite  = newPrinter(color.FgWhite, color.Bold)
 
 	// Semantic colors
 	Success = Green
@@ -34,7 +49,7 @@ var (
 	Warning = Yellow
 	Info    = Cyan
 	Dim     = Gray
-	Bold    = color.New(color.Bold)
+	Bold    = newPrinter(color.Bold)
 )
 
 // DisableColors turns off all color output

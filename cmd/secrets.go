@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
-	"github.com/l-td/aetherfy-cli/internal/config"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -59,8 +58,7 @@ func runSecretsList(cmd *cobra.Command, args []string) error {
 	} else {
 		// Agent mode (require agent arg)
 		if len(args) == 0 {
-			output.PrintError("Provide agent name or use --workspace flag")
-			return nil
+			return refuse("Provide agent name or use --workspace flag")
 		}
 		agentIDOrName := args[0]
 		target = agentIDOrName
@@ -72,12 +70,11 @@ func runSecretsList(cmd *cobra.Command, args []string) error {
 	}
 
 	if err != nil {
-		output.PrintError("Failed to list secrets: %v", err)
-		return nil
+		return printRefusal("Failed to list secrets", err)
 	}
 
 	// JSON mode: always emit valid JSON, even for empty results
-	if config.Get().OutputFormat == "json" {
+	if output.IsJSON() {
 		return output.JSON(secrets)
 	}
 
@@ -161,8 +158,7 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 	} else {
 		// Agent mode: first arg is agent, rest are pairs
 		if len(args) == 0 {
-			output.PrintError("Provide agent name or use --workspace flag")
-			return nil
+			return refuse("Provide agent name or use --workspace flag")
 		}
 		target = args[0]
 		pairs = args[1:]
@@ -171,8 +167,7 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 	// Handle stdin mode
 	if secretsStdin {
 		if len(pairs) != 1 {
-			output.PrintError("With --stdin, provide exactly one key name")
-			return nil
+			return refuse("With --stdin, provide exactly one key name")
 		}
 		key := pairs[0]
 		// Remove any = and value part if present
@@ -181,16 +176,14 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		}
 
 		if isReservedSecretKey(key) {
-			output.PrintError("Key '%s' is reserved for platform use. Names starting with AETHERFY_ are not allowed.", key)
-			return nil
+			return refuse("Key '%s' is reserved for platform use. Names starting with AETHERFY_ are not allowed.", key)
 		}
 
 		// Read value from stdin
 		reader := bufio.NewReader(os.Stdin)
 		value, err := reader.ReadString('\n')
 		if err != nil && err.Error() != "EOF" {
-			output.PrintError("Failed to read from stdin: %v", err)
-			return nil
+			return printRefusal("Failed to read from stdin", err)
 		}
 		value = strings.TrimSpace(value)
 
@@ -202,29 +195,30 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		}
 
 		if err != nil {
-			output.PrintError("Failed to set secret: %v", err)
-			return nil
+			return printRefusal("Failed to set secret", err)
 		}
 
 		output.PrintSuccess("Secret '%s' set successfully", key)
 		printSecretEffectNote(target, workspaceFlag != "")
-		return nil
+		return output.Result(secretsSetJSON(target, workspaceFlag != "", []secretSetOutcome{{Key: key, Set: true}}))
 	}
 
 	// Parse KEY=value pairs
 	if len(pairs) == 0 {
-		output.PrintError("Provide at least one KEY=value pair")
-		return nil
+		return refuse("Provide at least one KEY=value pair")
 	}
 
 	// Whether any pair actually landed, so the effect note is printed once and
 	// only when something was stored.
 	anySet := false
+	var outcomes []secretSetOutcome
 
 	for _, pair := range pairs {
 		idx := strings.Index(pair, "=")
 		if idx == -1 {
-			output.PrintError("Invalid format '%s'. Use KEY=value", pair)
+			msg := fmt.Sprintf("Invalid format '%s'. Use KEY=value", pair)
+			output.PrintError("%s", msg)
+			outcomes = append(outcomes, secretSetOutcome{Key: pair, Error: msg})
 			continue
 		}
 
@@ -232,12 +226,16 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		value := pair[idx+1:]
 
 		if key == "" {
-			output.PrintError("Key cannot be empty in '%s'", pair)
+			msg := fmt.Sprintf("Key cannot be empty in '%s'", pair)
+			output.PrintError("%s", msg)
+			outcomes = append(outcomes, secretSetOutcome{Key: pair, Error: msg})
 			continue
 		}
 
 		if isReservedSecretKey(key) {
-			output.PrintError("Key '%s' is reserved for platform use. Names starting with AETHERFY_ are not allowed.", key)
+			msg := fmt.Sprintf("Key '%s' is reserved for platform use. Names starting with AETHERFY_ are not allowed.", key)
+			output.PrintError("%s", msg)
+			outcomes = append(outcomes, secretSetOutcome{Key: key, Error: msg})
 			continue
 		}
 
@@ -250,11 +248,17 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		}
 
 		if err != nil {
-			output.PrintError("Failed to set '%s': %v", key, err)
+			_ = printRefusal(fmt.Sprintf("Failed to set '%s'", key), err)
+			_, code, msg, _ := serverRefusal(err)
+			if msg == "" {
+				msg = err.Error()
+			}
+			outcomes = append(outcomes, secretSetOutcome{Key: key, Code: code, Error: msg})
 			continue
 		}
 
 		output.PrintSuccess("Secret '%s' set", key)
+		outcomes = append(outcomes, secretSetOutcome{Key: key, Set: true})
 		anySet = true
 	}
 
@@ -262,7 +266,37 @@ func runSecretsSet(cmd *cobra.Command, args []string) error {
 		printSecretEffectNote(target, workspaceFlag != "")
 	}
 
+	// A pair that was not stored is a failed command: the results are still
+	// written (which keys landed), and the exit code says some did not.
+	if err := output.Result(secretsSetJSON(target, workspaceFlag != "", outcomes)); err != nil {
+		return err
+	}
+	for _, o := range outcomes {
+		if !o.Set {
+			return shown(fmt.Errorf("not every secret was set"))
+		}
+	}
 	return nil
+}
+
+// secretSetOutcome is one KEY=value of `afy secrets set`: stored, or why not.
+type secretSetOutcome struct {
+	Key   string `json:"key"`
+	Set   bool   `json:"set"`
+	Code  string `json:"code,omitempty"`
+	Error string `json:"error,omitempty"`
+}
+
+// secretsSetJSON is `afy secrets set --json`.
+func secretsSetJSON(target string, workspace bool, outcomes []secretSetOutcome) map[string]interface{} {
+	scope := "agent"
+	if workspace {
+		scope = "workspace"
+	}
+	if outcomes == nil {
+		outcomes = []secretSetOutcome{}
+	}
+	return map[string]interface{}{"scope": scope, "target": target, "secrets": outcomes}
 }
 
 // printSecretEffectNote says WHEN the write the user just made reaches their
@@ -319,16 +353,14 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	if workspaceFlag != "" {
 		// Workspace mode: only one arg (the key)
 		if len(args) != 1 {
-			output.PrintError("With --workspace, provide the key name")
-			return nil
+			return refuse("With --workspace, provide the key name")
 		}
 		target = workspaceFlag
 		key = args[0]
 	} else {
 		// Agent mode: two args (agent and key)
 		if len(args) != 2 {
-			output.PrintError("Provide agent name and key, or use --workspace flag")
-			return nil
+			return refuse("Provide agent name and key, or use --workspace flag")
 		}
 		target = args[0]
 		key = args[1]
@@ -345,7 +377,7 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	_, _ = fmt.Scanln(&confirm)
 	if strings.ToLower(confirm) != "y" {
 		output.PrintInfo("Cancelled")
-		return nil
+		return output.Result(map[string]interface{}{"key": key, "deleted": false})
 	}
 
 	sp := output.NewSpinner("Deleting secret...")
@@ -361,13 +393,12 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	sp.Stop()
 
 	if err != nil {
-		output.PrintError("Failed to delete secret: %v", err)
-		return nil
+		return printRefusal("Failed to delete secret", err)
 	}
 
 	output.PrintSuccess("Secret '%s' deleted", key)
 	printSecretEffectNote(target, workspaceFlag != "")
-	return nil
+	return output.Result(map[string]interface{}{"key": key, "deleted": true})
 }
 
 func init() {

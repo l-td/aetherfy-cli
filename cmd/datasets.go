@@ -217,7 +217,7 @@ func readGraders(path string) ([]interface{}, error) {
 	return list, nil
 }
 
-// pushResult is `afy datasets push -o json`'s object.
+// pushResult is `afy datasets push --json`'s object.
 type pushResult struct {
 	DatasetCreated bool                    `json:"dataset_created"`
 	Version        *api.EvalDatasetVersion `json:"version"`

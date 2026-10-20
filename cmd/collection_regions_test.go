@@ -35,7 +35,7 @@ func cpFake(t *testing.T, routes map[string]func(vecRequest) (int, string)) *vec
 }
 
 func runWithCP(vec *vecServer, cp *vecServer, asJSON bool) (*vecRun, *strings.Builder, *strings.Builder) {
-	r, stdout, stderr, _ := vec.run("", asJSON)
+	r, stdout, stderr, _ := vec.run("default", asJSON)
 	r.cp = api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key")
 	out, errOut := &strings.Builder{}, &strings.Builder{}
 	r.stdout, r.stderr = out, errOut
@@ -105,7 +105,7 @@ func TestCollectionsRegionsShowsThePreviewAndAsksBeforeChanging(t *testing.T) {
 		t.Errorf("PATCH body = %v", reqs[0].Body)
 	}
 	// The collection was found by name through the vectors API.
-	if req := only(t, vec.got()); req.Path != "/api/v1/collections/articles" {
+	if req := only(t, vec.got()); req.Path != "/api/v1/workspaces/default/collections/articles" {
 		t.Errorf("lookup = %s", req.Path)
 	}
 }
@@ -301,15 +301,18 @@ func TestCollectionsMoveAsksNothingAndSendsTheTargetsID(t *testing.T) {
 			t.Errorf("stdout %q", stdout.String())
 		}
 	})
-	t.Run(`--to "" moves out of any workspace: workspace_id null`, func(t *testing.T) {
-		cp := cpFake(t, map[string]func(vecRequest) (int, string){"PATCH " + changePath: moved})
-		r, _, stderr := runWithCP(vecWithArticles(t), cp, true)
-		if code := collectionsMove(r, "articles", "", true, false); code != 0 {
-			t.Fatalf("exit %d: %s", code, stderr.String())
+	t.Run(`--to "": refused before any request (every collection lives in a workspace)`, func(t *testing.T) {
+		vec := vecWithArticles(t)
+		cp := cpFake(t, nil)
+		r, _, stderr := runWithCP(vec, cp, false)
+		if code := collectionsMove(r, "articles", "", true, false); code != exitInputRefused {
+			t.Errorf("exit %d", code)
 		}
-		reqs := requestsTo(cp, "PATCH", changePath)
-		if v, ok := reqs[0].Body["workspace_id"]; !ok || v != nil {
-			t.Errorf("PATCH body = %v, want workspace_id null", reqs[0].Body)
+		if len(vec.got())+len(cp.got()) != 0 {
+			t.Error("sent requests before refusing")
+		}
+		if !strings.Contains(stderr.String(), "empty workspace name") {
+			t.Errorf("stderr %q", stderr.String())
 		}
 	})
 	t.Run("--to missing: refused before any request", func(t *testing.T) {
