@@ -31,11 +31,13 @@ type CollectionInfo struct {
 			Vectors VectorParams `json:"vectors"`
 		} `json:"params"`
 	} `json:"config"`
-	Status      string   `json:"status"`
-	PointsCount int64    `json:"points_count"`
-	Regions     []string `json:"regions"`
-	CreatedAt   string   `json:"created_at"`
-	UpdatedAt   string   `json:"updated_at"`
+	Status      string `json:"status"`
+	PointsCount int64  `json:"points_count"`
+	// Protected: no agent's key removes data from it (afy collections protect).
+	Protected bool     `json:"protected"`
+	Regions   []string `json:"regions"`
+	CreatedAt string   `json:"created_at"`
+	UpdatedAt string   `json:"updated_at"`
 }
 
 // ListCollections lists the collections in the client's workspace.

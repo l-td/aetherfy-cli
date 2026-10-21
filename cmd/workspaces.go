@@ -509,30 +509,29 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 
 // confirmRaisedDefault asks before a workspace's default level goes UP: every
 // agent living there that is not set otherwise can then do more. Lowering it,
-// or setting what it is, asks nothing. Without a terminal or with --json, a
-// raise needs --yes.
+// or setting what it is, asks nothing. The question goes through the shared
+// confirmation (cmd/confirm.go): --yes skips it; without a terminal a raise
+// needs --yes (exit 2, before anything is sent); a "no" exits 1.
 func confirmRaisedDefault(client *api.Client, name, level string, yes, interactive bool, stdin io.Reader, stderr io.Writer) error {
 	current, err := client.GetWorkspace(name)
 	if err != nil {
 		return printRefusal("Failed to read workspace", err)
 	}
-	if yes || levelRank(level) <= levelRank(current.AgentAccessLevel) {
+	if levelRank(level) <= levelRank(current.AgentAccessLevel) {
 		return nil
 	}
-	if output.IsJSON() || !interactive {
-		return refuse("not changing workspace '%s': raising its agents' level from %s to %s needs a "+
-			"confirmation nobody can give here. Pass --yes to change it without the question.",
-			name, current.AgentAccessLevel, level)
-	}
-	output.Printf("Every agent living in workspace '%s' that is not set otherwise will hold %s instead of %s "+
-		"there, within 60 seconds.\n", name, level, current.AgentAccessLevel)
-	fmt.Fprint(stderr, "Proceed? [y/N] ")
-	line, _ := bufio.NewReader(stdin).ReadString('\n')
-	answer := strings.ToLower(strings.TrimSpace(line))
-	if answer != "y" && answer != "yes" {
-		return refuse("workspace '%s' not changed: the change was not confirmed", name)
-	}
-	return nil
+	return confirmDestructiveOn(yes, destructiveAsk{
+		action: fmt.Sprintf("raises the access of every agent living in workspace '%s' that is not set otherwise, "+
+			"from %s to %s", name, wordsOf(current.AgentAccessLevel), wordsOf(level)),
+		warn: []string{
+			fmt.Sprintf("Every agent living in workspace '%s' that is not set otherwise will hold %s instead of %s, "+
+				"within %s.", name, wordsOf(level), wordsOf(current.AgentAccessLevel), accessChangeWindow),
+			raisedSentence(fmt.Sprintf("'%s'", name), level),
+		},
+		prompt:   "Proceed? [y/N] ",
+		accept:   yesAnswer,
+		mismatch: fmt.Sprintf("workspace '%s' was not changed", name),
+	}, interactive, &prompter{in: bufio.NewReader(stdin), out: stderr})
 }
 
 // --- AGENTS ---

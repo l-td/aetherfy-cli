@@ -83,7 +83,10 @@ func TestLevelANewGrantAtALevelSaysWhatItReachesAndSendsIt(t *testing.T) {
 	if code := agentsAccess(r, "bot", change, strings.NewReader("y\n"), true); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "Adds workspace 'gamma' at read_write") || !strings.Contains(out.String(), "its points writable") {
+	// The canonical sentences, word for word (cmd/access_words.go; the design doc).
+	if !strings.Contains(out.String(), "Adds workspace 'gamma' at read and write access") ||
+		!strings.Contains(out.String(), "This lets the agent's code do more in gamma. Read and write access: everything read "+
+			"access can do, plus add, change and delete points, and create collections.") {
 		t.Errorf("preview:\n%s", out.String())
 	}
 	reqs := requestsTo(cp, "POST", accessWsPath)
@@ -109,22 +112,28 @@ func TestLevelRaisingAGrantAsksAndLoweringOneDoesNot(t *testing.T) {
 		strings.NewReader("y\n"), true); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "Changes its level in workspace 'beta' from read to full") || !strings.Contains(errOut.String(), "Proceed?") {
+	if !strings.Contains(out.String(), "Changes its level in workspace 'beta' from read access to full access") ||
+		!strings.Contains(out.String(), "Full access: everything read and write access can do, plus delete collections and "+
+			"change their structure (schema, indexes, aliases), which changes them for everyone who uses them.") ||
+		!strings.Contains(errOut.String(), "Proceed?") {
 		t.Errorf("out:\n%s\nerr: %s", out.String(), errOut.String())
 	}
 	if reqs := requestsTo(cp, "POST", accessWsPath); len(reqs) != 1 || reqs[0].Body["level"] != "full" {
 		t.Fatalf("grant = %v", reqs)
 	}
 
-	// Lowering it, from a script without --yes: --add needs --yes up front
-	// whatever it does, so the lowering path is the own level's (below).
-	r2, cp2, _, errOut2 := runLevels(t, botAccess("", "full", "full", false), botAccess("", "full", "read", false), false)
+	// Lowering it, from a script without --yes: a narrowing asks nothing, and
+	// says when it takes effect.
+	r2, cp2, out2, errOut2 := runLevels(t, botAccess("", "full", "full", false), botAccess("", "full", "read", false), false)
 	if code := agentsAccess(r2, "bot", accessChange{add: []string{"beta"}, level: "read", levelSet: true},
 		strings.NewReader(""), true); code != 0 {
 		t.Fatalf("lowering: exit %d: %s", code, errOut2.String())
 	}
 	if strings.Contains(errOut2.String(), "Proceed?") {
 		t.Error("lowering a grant asked")
+	}
+	if !strings.Contains(out2.String(), "Takes effect within 60 seconds; requests above the new level are refused.") {
+		t.Errorf("the note under a lowered level is missing:\n%s", out2.String())
 	}
 	if reqs := requestsTo(cp2, "POST", accessWsPath); len(reqs) != 1 || reqs[0].Body["level"] != "read" {
 		t.Fatalf("lowering grant = %v", reqs)
@@ -151,7 +160,8 @@ func TestLevelLoweringItsOwnLevelAsksNothingEvenFromAScript(t *testing.T) {
 	if len(reqs) != 1 || reqs[0].Body["level"] != "read" {
 		t.Fatalf("own level = %v", reqs)
 	}
-	if !strings.Contains(out.String(), "Sets its level in its own workspace 'alpha' to read (set for this agent)") {
+	if !strings.Contains(out.String(), "Sets its level where it lives, workspace 'alpha', to read access (set for this agent)") ||
+		!strings.Contains(out.String(), "Takes effect within 60 seconds; requests above the new level are refused.") {
 		t.Errorf("out:\n%s", out.String())
 	}
 }
@@ -163,7 +173,7 @@ func TestLevelDefaultSendsNullAndRaisingToItNeedsAYes(t *testing.T) {
 	if code := agentsAccess(r, "bot", accessChange{ownLevel: followDefault, ownLevelSet: true}, strings.NewReader(""), false); code != exitInputRefused {
 		t.Fatalf("exit %d, want %d", code, exitInputRefused)
 	}
-	if !strings.Contains(errOut.String(), "raises its level") {
+	if !strings.Contains(errOut.String(), "This grants access to agent 'bot'; pass --yes to confirm without a prompt.") {
 		t.Errorf("stderr %q", errOut.String())
 	}
 	if n := len(requestsTo(cp, "PUT", accessOwnPath)); n != 0 {
@@ -208,7 +218,11 @@ func TestSecretsOnAsksFirstAndSendsTheSwitch(t *testing.T) {
 	if code := agentsAccessSecrets(r, "bot", "on", false, strings.NewReader("y\n"), true); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	if !strings.Contains(errOut.String(), "Proceed?") || !strings.Contains(out.String(), "its own workspace 'alpha''s secrets") {
+	// Its OWN secrets only: never its workspace's, never another agent's.
+	if !strings.Contains(errOut.String(), "Proceed?") ||
+		!strings.Contains(errOut.String(), "create, update and delete its own secrets") ||
+		!strings.Contains(errOut.String(), "It never reaches its workspace's secrets or another agent's.") ||
+		strings.Contains(out.String()+errOut.String(), "its own workspace 'alpha''s secrets") {
 		t.Errorf("out:\n%s\nerr: %s", out.String(), errOut.String())
 	}
 	if reqs := requestsTo(cp, "PUT", accessSecretsPath); len(reqs) != 1 || reqs[0].Body["enabled"] != true {
@@ -220,20 +234,28 @@ func TestSecretsOnAsksFirstAndSendsTheSwitch(t *testing.T) {
 }
 
 func TestSecretsOnUnconfirmedOrUnaskableSendsNothing(t *testing.T) {
-	r, cp, _, _ := runLevels(t, botAccess("", "full", "read", false), "{}", false)
-	if code := agentsAccessSecrets(r, "bot", "on", false, strings.NewReader("n\n"), true); code != exitInputRefused {
-		t.Fatalf("not confirmed: exit %d", code)
+	// A "no" is a cancelled change: exit 1 (never read as done), nothing sent.
+	r, cp, _, errOut := runLevels(t, botAccess("", "full", "read", false), "{}", false)
+	if code := agentsAccessSecrets(r, "bot", "on", false, strings.NewReader("n\n"), true); code != exitRequestFailed {
+		t.Fatalf("not confirmed: exit %d, want %d", code, exitRequestFailed)
+	}
+	if !strings.Contains(errOut.String(), "Cancelled: agent 'bot' was not changed") {
+		t.Errorf("stderr %q", errOut.String())
 	}
 	if n := len(requestsTo(cp, "PUT", accessSecretsPath)); n != 0 {
 		t.Errorf("turned on without a yes")
 	}
+	// Nobody can answer: exit 2 before asking; only the read was sent.
 	for _, asJSON := range []bool{true, false} {
-		r2, cp2, _, _ := runLevels(t, botAccess("", "full", "read", false), "{}", asJSON)
+		r2, cp2, _, errOut2 := runLevels(t, botAccess("", "full", "read", false), "{}", asJSON)
 		if code := agentsAccessSecrets(r2, "bot", "on", false, strings.NewReader(""), false); code != exitInputRefused {
 			t.Fatalf("json=%v: exit %d", asJSON, code)
 		}
-		if len(cp2.got()) != 0 {
-			t.Errorf("json=%v: sent %v", asJSON, cp2.got())
+		if n := len(cp2.got()); n != 1 || cp2.got()[0].Method != "GET" {
+			t.Errorf("json=%v: sent %v, want the one read", asJSON, cp2.got())
+		}
+		if !strings.Contains(errOut2.String(), "This turns on secrets access for agent 'bot'; pass --yes to confirm without a prompt.") {
+			t.Errorf("json=%v: stderr %q", asJSON, errOut2.String())
 		}
 	}
 }
@@ -255,13 +277,29 @@ func TestSecretsOffAsksNothingAndAnUnknownStateIsAUsageError(t *testing.T) {
 	}
 }
 
+// A state already set changes nothing, so it asks for nothing: not a --yes under
+// --json, not a terminal.
 func TestSecretsAlreadySoIsNoChange(t *testing.T) {
 	r, cp, out, _ := runLevels(t, botAccess("", "full", "read", true), "{}", false)
-	if code := agentsAccessSecrets(r, "bot", "on", true, strings.NewReader(""), false); code != 0 {
+	if code := agentsAccessSecrets(r, "bot", "on", false, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d", code)
 	}
 	if !strings.Contains(out.String(), "No change") || len(cp.got()) != 1 {
 		t.Errorf("out %q, %d requests", out.String(), len(cp.got()))
+	}
+}
+
+func TestSecretsAlreadySoUnderJSONWithoutYesIsNoChange(t *testing.T) {
+	r, cp, out, errOut := runLevels(t, botAccess("", "full", "read", true), "{}", true)
+	if code := agentsAccessSecrets(r, "bot", "on", false, strings.NewReader(""), false); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil || got["changed"] != false {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+	if len(cp.got()) != 1 {
+		t.Errorf("sent %v, want the one read", cp.got())
 	}
 }
 

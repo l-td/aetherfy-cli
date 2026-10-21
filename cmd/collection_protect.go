@@ -1,23 +1,26 @@
 package cmd
 
 // afy collections protect / unprotect: a collection's protection (grants
-// round 1; the design is aetherfy-control-plane docs/AGENT_ACCESS_LEVELS.md).
-// No agent's key may delete a protected collection, nor delete or rewrite its
-// points by filter, whatever its access level; a person still can, with an
-// account key. The collection is found by name through the vectors API, in the
-// workspace the request is scoped to like every collections command, and the
-// change goes to the control plane by its id (PATCH /collections/{id}).
+// rounds 1 and 2; the design is aetherfy-control-plane
+// docs/AGENT_ACCESS_LEVELS.md). "Protected" means no agent removes data from the
+// collection: at any level, no agent's key may delete it, delete its points,
+// vectors or payload fields (by id or by filter), or delete or repoint an alias
+// that points at it; a person still can, with an account key. Adding, updating
+// and overwriting stay allowed. The collection is found by name through the
+// vectors API, in the workspace the request is scoped to like every collections
+// command, and the change goes to the control plane by its id
+// (PATCH /collections/{id}).
 //
-// Protecting narrows what agents can do, so it asks nothing. Unprotecting
-// widens it, so it asks "Proceed? [y/N]" first; --yes skips the question and is
-// required without a terminal or with --json.
+// Protecting narrows what agents can do, so it asks nothing and takes no
+// confirmation inputs at all. Unprotecting widens it, so it asks
+// "Proceed? [y/N]" through the shared confirmation (cmd/confirm.go): --yes skips
+// the question and is required without a terminal (exit 2, before anything is
+// sent); a "no" exits 1.
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
@@ -25,51 +28,74 @@ import (
 
 var collectionsProtectCmd = &cobra.Command{
 	Use:   "protect <name>",
-	Short: "Protect a collection from agents' deletes",
-	Long: `Protect a collection: no agent's API key may delete it, nor delete or rewrite its
-points by filter, whatever the agent's access level. Changing or deleting
-points by id stays allowed for agents that may write. You can still do all of
-it with your own API key, here or in the dashboard. Nothing is deleted or
-changed by protecting it, and it asks nothing.`,
+	Short: "Protect a collection: no agent removes data from it",
+	Long: `Protect a collection: no agent's API key may delete it, delete its points,
+vectors or payload fields (by id or by filter), or delete or repoint an alias
+that points at it, whatever the agent's access level. Adding and updating points
+stays allowed, and so does overwriting an existing point: protection stops
+removal, not change. You can still do all of it with your own API key, here or
+in the dashboard. Nothing is deleted or changed by protecting it, and it asks
+nothing.`,
 	Example: `  # Protect the knowledge base the agents read
   afy collections protect support-kb --workspace research`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runVec(cmd, func(r *vecRun) int {
-			return collectionsProtect(r, args[0], true, true, os.Stdin, true)
+			return collectionsProtect(r, args[0])
 		})
 	},
 }
 
 var collectionsUnprotectCmd = &cobra.Command{
 	Use:   "unprotect <name>",
-	Short: "Let agents that may delete delete a collection again",
-	Long: `Turn a collection's protection off: agents at full access in its workspace may
-delete it again, and agents that may write may delete or rewrite its points by
-filter. Nothing is deleted now. It asks first; --yes skips the question and is
-required when stdin is not a terminal and with --json.`,
+	Short: "Let agents remove data from a collection again",
+	Long: `Turn a collection's protection off: agents with read and write access in its
+workspace may delete its points again, and agents with full access may delete
+the collection. Nothing is deleted now. It asks first; --yes skips the question
+and is required when stdin is not a terminal. Answering no exits 1 and changes
+nothing.`,
 	Example: `  # Turn protection off, then confirm
   afy collections unprotect support-kb --workspace research`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interactive := term.IsTerminal(int(os.Stdin.Fd()))
 		return runVec(cmd, func(r *vecRun) int {
-			return collectionsProtect(r, args[0], false, collectionUnprotectYes, os.Stdin, interactive)
+			return collectionsUnprotect(r, args[0], collectionUnprotectYes, os.Stdin, interactive)
 		})
 	},
 }
 
 var collectionUnprotectYes bool
 
-func collectionsProtect(r *vecRun, name string, protect, yes bool, stdin io.Reader, interactive bool) int {
-	if !protect && !yes && r.json {
-		return r.fail(refuse("not changing collection '%s': --json cannot answer the confirmation. "+
-			"Pass --yes to turn its protection off without the question.", name))
+// collectionsProtect protects: it widens nothing, so there is nothing to ask.
+func collectionsProtect(r *vecRun, name string) int {
+	return changeProtection(r, name, true, nil)
+}
+
+// collectionsUnprotect turns protection off, after the confirmation.
+func collectionsUnprotect(r *vecRun, name string, yes bool, stdin io.Reader, interactive bool) int {
+	ask := destructiveAsk{
+		action:   fmt.Sprintf("turns protection off for collection '%s'", name),
+		warn:     []string{unprotectSentence(fmt.Sprintf("'%s'", name)), "Nothing is deleted now."},
+		prompt:   "Proceed? [y/N] ",
+		accept:   yesAnswer,
+		mismatch: fmt.Sprintf("collection '%s' was not changed", name),
 	}
-	if !protect && !yes && !interactive {
-		return r.fail(refuse("not changing collection '%s': stdin is not a terminal, so nobody can "+
-			"confirm. Pass --yes to turn its protection off without the question.", name))
+	// Refused before anything is sent when nobody can answer.
+	if err := refuseUnconfirmable(yes, interactive, ask.action, ask.skip()); err != nil {
+		return r.fail(err)
 	}
+	return changeProtection(r, name, false, func() error {
+		if yes {
+			return nil
+		}
+		return askToConfirm(ask, vecPrompter(r, stdin))
+	})
+}
+
+// changeProtection finds the collection, runs confirm (nil: nothing to confirm)
+// and sends the change.
+func changeProtection(r *vecRun, name string, protect bool, confirm func() error) int {
 	client, code := r.open()
 	if code != 0 {
 		return code
@@ -78,15 +104,9 @@ func collectionsProtect(r *vecRun, name string, protect, yes bool, stdin io.Read
 	if err != nil {
 		return r.fail(err)
 	}
-	if !protect && !yes {
-		fmt.Fprintf(r.stdout, "Agents at full access in %s will be able to delete collection '%s', and agents that "+
-			"may write will be able to delete or rewrite its points by filter. Nothing is deleted now.\n",
-			workspaceLabel(r.client.Workspace()), name)
-		fmt.Fprint(r.stderr, "Proceed? [y/N] ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			return r.fail(refuse("collection '%s' not changed: the change was not confirmed", name))
+	if confirm != nil {
+		if err := confirm(); err != nil {
+			return r.fail(err)
 		}
 	}
 	change, err := r.controlPlane().SetCollectionProtected(col.ID, protect)
@@ -107,9 +127,10 @@ func collectionsProtect(r *vecRun, name string, protect, yes bool, stdin io.Read
 	case change.NoOp:
 		fmt.Fprintf(r.stdout, "No change: collection '%s' is not protected.\n", name)
 	case protect:
-		fmt.Fprintf(r.stdout, "Collection '%s' is protected: no agent's key may delete it, nor delete or rewrite its points by filter.\n", name)
+		fmt.Fprintf(r.stdout, "Collection '%s' is protected: no agent's key may delete it or remove data from it. "+
+			"It takes effect within %s.\n", name, accessChangeWindow)
 	default:
-		fmt.Fprintf(r.stdout, "Collection '%s' is no longer protected.\n", name)
+		fmt.Fprintf(r.stdout, "Collection '%s' is no longer protected. It takes effect within %s.\n", name, accessChangeWindow)
 	}
 	return 0
 }

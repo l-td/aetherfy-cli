@@ -55,8 +55,8 @@ func TestAccessListsOwnThenGranted(t *testing.T) {
 	if code := agentsAccess(r, "bot", accessChange{add: nil, remove: nil, yes: false}, strings.NewReader(""), false); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	for _, want := range []string{"Agent 'bot' can use:", "alpha  (its own workspace; full, the workspace's default)",
-		"beta  (granted; read)", "Secrets: off"} {
+	for _, want := range []string{"Agent 'bot':", "Lives in: alpha  (full access, the workspace's default)",
+		"Can access:", "beta  (read access)", "Secrets: off"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("missing %q:\n%s", want, out.String())
 		}
@@ -71,7 +71,9 @@ func TestAccessAddShowsWhatBecomesReachableAndAsks(t *testing.T) {
 	if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader("y\n"), true); code != 0 {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	if !strings.Contains(out.String(), "Adds workspace 'gamma' at read: every collection in workspace 'gamma', including ones added later, becomes searchable and readable") {
+	if !strings.Contains(out.String(), "Adds workspace 'gamma' at read access, every collection in it, including ones added later.") ||
+		!strings.Contains(out.String(), "This lets the agent's code do more in gamma. Read access: can search, query, retrieve "+
+			"and count points, and read a collection's information and schema.") {
 		t.Errorf("preview:\n%s", out.String())
 	}
 	if !strings.Contains(errOut.String(), "Proceed? [y/N]") {
@@ -146,12 +148,39 @@ func TestAccessAddWithNoTerminalNeedsYesAndSendsNothing(t *testing.T) {
 		if code := agentsAccess(r, "bot", accessChange{add: []string{"gamma"}, remove: nil, yes: false}, strings.NewReader("y\n"), tc.interactive); code != exitInputRefused {
 			t.Errorf("%+v: exit %d, want %d", tc, code, exitInputRefused)
 		}
-		if n := len(cp.got()); n != 0 {
-			t.Errorf("%+v: %d requests sent, want none", tc, n)
+		// The current access is read first (a GET changes nothing); nothing is written.
+		for _, call := range cp.got() {
+			if call.Method != "GET" {
+				t.Errorf("%+v: sent %s %s, want no write", tc, call.Method, call.Path)
+			}
 		}
 		if !strings.Contains(errOut.String(), tc.says) {
 			t.Errorf("%+v: stderr %q", tc, errOut.String())
 		}
+	}
+}
+
+// An --add of what is already granted changes nothing, so it needs no --yes: not
+// under --json, not without a terminal. Only a change that would really widen
+// asks (the access is read first).
+func TestAccessAddOfAnAlreadyGrantedWorkspaceNeedsNoYesUnderJSON(t *testing.T) {
+	r, cp, out, errOut := runAccess(t, true)
+	if code := agentsAccess(r, "bot", accessChange{add: []string{"beta"}}, strings.NewReader(""), false); code != 0 {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	var got struct {
+		Added []string `json:"added"`
+	}
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil || len(got.Added) != 0 {
+		t.Errorf("stdout %q (%v)", out.String(), err)
+	}
+	for _, call := range cp.got() {
+		if call.Method != "GET" {
+			t.Errorf("sent %s %s for a no-op", call.Method, call.Path)
+		}
+	}
+	if strings.Contains(errOut.String(), "pass --yes") {
+		t.Errorf("a no-op asked for --yes: %q", errOut.String())
 	}
 }
 

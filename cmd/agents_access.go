@@ -10,13 +10,17 @@ package cmd
 // A CHANGE THAT WIDENS WHAT THE AGENT'S CODE CAN DO -- a grant, a higher level,
 // the secrets switch on -- is a two-step change, as `afy collections regions`
 // is: the command shows what the change would make possible and asks
-// "Proceed? [y/N]". --yes skips the question; without a terminal, or with
-// --json, --yes is required (exit 2): a script must never hang on a question
-// nobody can answer. A change that narrows asks nothing. A change that changes
-// nothing says so and asks nothing.
+// "Proceed? [y/N]" through the shared confirmation (cmd/confirm.go): --yes skips
+// the question; without a terminal --yes is required (exit 2, before anything is
+// asked or sent); a "no" is exit 1. The current access is read FIRST, so only a
+// change that would really widen needs the question: an --add of a workspace
+// already granted, or a state already set, changes nothing and asks nothing,
+// even under --json. A change that narrows asks nothing.
+//
+// The words are the canonical ones (cmd/access_words.go): an agent "Lives in"
+// one workspace and "Can access" others, each at a level said in plain words.
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -45,36 +49,42 @@ var agentsAccessCmd = &cobra.Command{
 	Long: `Show or change the workspaces an agent's key can use on the vector API, and
 what it may do in each.
 
-An agent reaches the collections of its own workspace, and of the workspaces
+An agent lives in one workspace and can access the collections of the others
 you grant it; any other workspace is refused to it. In each it holds a level:
 
-  read        search, query and read; nothing it can change
-  read_write  read, and add, change and delete points
-  full        read and write, and create and delete collections, their
-              schema, indexes and aliases
+  read        search, query, retrieve and count points; read a collection's
+              information and schema
+  read_write  read, plus add, change and delete points, and create collections
+  full        read and write, plus delete collections and change their
+              structure (schema, indexes, aliases)
 
 --add grants a workspace, --remove revokes one; each takes a name, repeats, or
 takes a comma-separated list. A new grant is read; --level sets the level of
 every workspace --add names, and --add of a workspace already granted with
 --level changes its level. --level is only taken with --add. --own-level sets
-its level in its own workspace (read, read_write, full), or "default" to follow
+its level where it lives (read, read_write, full), or "default" to follow
 the level the workspace sets for its agents ('afy workspaces update
---agent-access-level'). Granting gives the agent access; it does not move it
-(moving is 'afy update' with --workspace). An empty value, or one starting with
-"-", is refused, exit 2. Your own key is unaffected.
+--agent-access-level'; a new workspace's default is read_write). A workspace's
+default applies to the agents that live there, never to one that can only access
+it. Granting gives the agent access; it does not move it (moving is 'afy update'
+with --workspace). An empty value, or one starting with "-", is refused, exit 2.
+Your own key is unaffected.
 
 A change that lets the agent's code do more -- a grant, a higher level -- shows
 what becomes possible and asks first. --yes skips the question; it is required
-when stdin is not a terminal and with --json. A change that narrows asks
-nothing. A change takes effect within ` + accessChangeWindow + `.
+when stdin is not a terminal (exit 2, before anything is asked or sent). Answering
+no exits 1 and changes nothing. A change that changes nothing asks nothing, and a
+change that narrows asks nothing. A change takes effect within ` + accessChangeWindow + `.
 
 --secrets on|off turns on or off whether the agent's own API key may create,
-update and delete the secrets of that agent and of its own workspace -- never
-those of a workspace it was granted. Off by default. A secret it writes is
-stored at once and read once per deployment: a service sees it after its next
-deployment, a task on its next run. Turning it on asks first (like a grant);
-turning it off asks nothing and takes effect on the agent's next request. It is
-a command of its own: do not combine it with --add, --remove or --own-level.`,
+update and delete its OWN secrets. It never reaches its workspace's secrets (those
+are shared by every agent living there and are written by people) or another
+agent's. Off by default, and a move turns it off. A secret it writes is stored at
+once and read when the agent starts: a service sees it after its next deployment,
+a task on its next run, which is why it suits tasks that rotate a credential for
+their next run. Turning it on asks first (like a grant); turning it off asks
+nothing and takes effect on the agent's next request. It is a command of its own:
+do not combine it with --add, --remove or --own-level.`,
 	Example: `  # What can the agent reach, and at which level?
   afy access support-bot
 
@@ -264,19 +274,10 @@ func changeAgentAccess(r *vecRun, agent string, c accessChange, stdin io.Reader,
 		}
 	}
 	changing := len(adds) > 0 || len(removes) > 0 || c.ownLevelSet
-	// An --add widens (a new grant) or changes a level, so without a way to
-	// confirm it is refused before anything is sent. Whether an --own-level
-	// widens is known only from the current access, read first.
-	mayWiden := len(adds) > 0
-	if mayWiden && !c.yes && r.json {
-		return r.fail(refuse("not changing agent '%s': --json cannot answer the confirmation. "+
-			"Pass --yes to change its access without the question.", agent))
-	}
-	if mayWiden && !c.yes && !interactive {
-		return r.fail(refuse("not changing agent '%s': stdin is not a terminal, so nobody can "+
-			"confirm. Pass --yes to change its access without the question.", agent))
-	}
 
+	// The current access is read FIRST: whether the change widens anything is
+	// known only from it. An --add of a workspace already granted changes
+	// nothing and must not need a --yes under --json.
 	cp := r.controlPlane()
 	current, err := cp.GetAgentAccess(agent)
 	if err != nil {
@@ -350,20 +351,30 @@ func changeAgentAccess(r *vecRun, agent string, c accessChange, stdin io.Reader,
 			widening = true
 		}
 	}
-	if widening && !c.yes && (r.json || !interactive) {
-		why := "--json cannot answer the confirmation"
-		if !r.json {
-			why = "stdin is not a terminal, so nobody can confirm"
+	// One confirmation for every widening: exit 2 before anything is asked when
+	// nobody can answer, exit 1 on a "no" (cmd/confirm.go).
+	ask := destructiveAsk{
+		action:   fmt.Sprintf("grants access to agent '%s'", agent),
+		prompt:   "Proceed? [y/N] ",
+		accept:   yesAnswer,
+		mismatch: fmt.Sprintf("agent '%s' was not changed", agent),
+	}
+	if widening {
+		if err := refuseUnconfirmable(c.yes, interactive, ask.action, ask.skip()); err != nil {
+			return r.fail(err)
 		}
-		return r.fail(refuse("not changing agent '%s': the change raises its level, and %s. "+
-			"Pass --yes to change its access without the question.", agent, why))
+	}
+	preview := accessPreview{
+		toAdd: toAdd, addLevel: addLevel, toRemove: toRemove, levels: levels,
+		ownChange: ownChange, ownTo: ownTo, ownFollows: c.ownLevelSet && ownSetting == nil,
+		adds: adds, removes: removes,
 	}
 	if !r.json {
-		printAccessPreview(r.stdout, current, accessPreview{
-			toAdd: toAdd, addLevel: addLevel, toRemove: toRemove, levels: levels,
-			ownChange: ownChange, ownTo: ownTo, ownFollows: c.ownLevelSet && ownSetting == nil,
-			adds: adds, removes: removes,
-		})
+		printAccessPreview(r.stdout, current, preview)
+	} else if widening && !c.yes {
+		// --json keeps stdout to one object; the person at the terminal still
+		// sees what they are asked to confirm.
+		printAccessPreview(r.stderr, current, preview)
 	}
 	if len(toAdd) == 0 && len(toRemove) == 0 && len(levels) == 0 && !ownChange {
 		if r.json {
@@ -372,11 +383,8 @@ func changeAgentAccess(r *vecRun, agent string, c accessChange, stdin io.Reader,
 		return 0
 	}
 	if widening && !c.yes {
-		fmt.Fprint(r.stderr, "Proceed? [y/N] ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			return r.fail(refuse("agent '%s' not changed: the change was not confirmed", agent))
+		if err := askToConfirm(ask, vecPrompter(r, stdin)); err != nil {
+			return r.fail(err)
 		}
 	}
 
@@ -470,36 +478,33 @@ func labels(scopes []string) string {
 	return orNone(out)
 }
 
-// levelReach is what a level lets the agent do with a workspace's
-// collections, as the preview says it.
-var levelReach = map[string]string{
-	"read":       "searchable and readable",
-	"read_write": "readable, and its points writable",
-	"full":       "readable and writable, and its collections creatable and deletable",
-}
-
-// ownLevelNote says where the agent's level at home comes from.
+// ownLevelNote says where the agent's level where it lives comes from.
 func ownLevelNote(a *api.AgentAccess) string {
 	if a.OwnWorkspaceLevelSetting == nil {
-		return fmt.Sprintf("%s, the workspace's default", a.OwnWorkspaceLevel)
+		return fmt.Sprintf("%s, the workspace's default", wordsOf(a.OwnWorkspaceLevel))
 	}
-	return fmt.Sprintf("%s, set for this agent", a.OwnWorkspaceLevel)
+	return fmt.Sprintf("%s, set for this agent", wordsOf(a.OwnWorkspaceLevel))
 }
 
-// printAccess lists what the agent reaches and its level in each, its own
-// scope first, then whether it may write secrets.
+// printAccess says where the agent lives and which workspaces it can access,
+// each at its level in plain words, then whether it may write its own secrets.
 func printAccess(w io.Writer, a *api.AgentAccess) {
-	fmt.Fprintf(w, "Agent '%s' can use:\n", a.Agent)
-	fmt.Fprintf(w, "  %s  (its own workspace; %s)\n", a.OwnWorkspace, ownLevelNote(a))
+	fmt.Fprintf(w, "Agent '%s':\n", a.Agent)
+	fmt.Fprintf(w, "  Lives in: %s  (%s)\n", a.OwnWorkspace, ownLevelNote(a))
 	names := append([]string(nil), a.GrantedWorkspaces...)
 	sort.Strings(names)
-	for _, n := range names {
-		fmt.Fprintf(w, "  %s  (granted; %s)\n", n, grantedLevel(a, n))
+	if len(names) == 0 {
+		fmt.Fprintln(w, "  Can access: no other workspace")
+	} else {
+		fmt.Fprintln(w, "  Can access:")
+		for _, n := range names {
+			fmt.Fprintf(w, "    %s  (%s)\n", n, wordsOf(grantedLevel(a, n)))
+		}
 	}
 	if a.SecretsAccess {
-		fmt.Fprintln(w, "Secrets: on (its own key may write its own and its workspace's secrets)")
+		fmt.Fprintln(w, "  Secrets: on (its own API key may write its own secrets)")
 	} else {
-		fmt.Fprintln(w, "Secrets: off")
+		fmt.Fprintln(w, "  Secrets: off")
 	}
 }
 
@@ -522,24 +527,37 @@ func printAccessPreview(w io.Writer, a *api.AgentAccess, p accessPreview) {
 		return
 	}
 	fmt.Fprintf(w, "Agent '%s':\n", a.Agent)
+	narrows := false
 	for _, s := range p.toAdd {
-		fmt.Fprintf(w, "  Adds %s at %s: every collection in workspace '%s', including ones added later, becomes %s by this agent's code.\n",
-			scopeLabel(s), p.addLevel, s, levelReach[p.addLevel])
+		fmt.Fprintf(w, "  Adds %s at %s, every collection in it, including ones added later.\n    %s\n",
+			scopeLabel(s), wordsOf(p.addLevel), raisedSentence(s, p.addLevel))
 	}
 	for _, l := range p.levels {
-		fmt.Fprintf(w, "  Changes its level in %s from %s to %s: every collection there becomes %s by this agent's code.\n",
-			scopeLabel(l.Workspace), l.From, l.To, levelReach[l.To])
+		fmt.Fprintf(w, "  Changes its level in %s from %s to %s.\n", scopeLabel(l.Workspace), wordsOf(l.From), wordsOf(l.To))
+		if levelRank(l.To) > levelRank(l.From) {
+			fmt.Fprintf(w, "    %s\n", raisedSentence(l.Workspace, l.To))
+		} else {
+			narrows = true
+		}
 	}
 	if p.ownChange {
 		how := "set for this agent"
 		if p.ownFollows {
 			how = "the workspace's default"
 		}
-		fmt.Fprintf(w, "  Sets its level in its own workspace '%s' to %s (%s): every collection there becomes %s by this agent's code.\n",
-			a.OwnWorkspace, p.ownTo, how, levelReach[p.ownTo])
+		fmt.Fprintf(w, "  Sets its level where it lives, workspace '%s', to %s (%s).\n", a.OwnWorkspace, wordsOf(p.ownTo), how)
+		if levelRank(p.ownTo) > levelRank(a.OwnWorkspaceLevel) {
+			fmt.Fprintf(w, "    %s\n", raisedSentence(a.OwnWorkspace, p.ownTo))
+		} else if p.ownTo != a.OwnWorkspaceLevel {
+			narrows = true
+		}
 	}
 	for _, s := range p.toRemove {
 		fmt.Fprintf(w, "  Removes %s: the agent can no longer use it.\n", scopeLabel(s))
+		narrows = true
+	}
+	if narrows {
+		fmt.Fprintf(w, "  %s\n", narrowedNote)
 	}
 	for _, s := range p.adds {
 		if !contains(p.toAdd, s) && !hasLevelChange(p.levels, s) {
@@ -593,14 +611,8 @@ func agentsAccessSecrets(r *vecRun, agent, state string, yes bool, stdin io.Read
 	default:
 		return r.fail(refuse("--secrets is on or off; got '%s'. Nothing was sent.", state))
 	}
-	if on && !yes && r.json {
-		return r.fail(refuse("not changing agent '%s': --json cannot answer the confirmation. "+
-			"Pass --yes to turn it on without the question.", agent))
-	}
-	if on && !yes && !interactive {
-		return r.fail(refuse("not changing agent '%s': stdin is not a terminal, so nobody can "+
-			"confirm. Pass --yes to turn it on without the question.", agent))
-	}
+	// Read FIRST: a state already set changes nothing and asks nothing, even
+	// under --json.
 	cp := r.controlPlane()
 	current, err := cp.GetAgentAccess(agent)
 	if err != nil {
@@ -614,14 +626,17 @@ func agentsAccessSecrets(r *vecRun, agent, state string, yes bool, stdin io.Read
 		return 0
 	}
 	if on && !yes {
-		fmt.Fprintf(r.stdout, "Agent '%s' will be able to create, update and delete its own secrets and its own "+
-			"workspace '%s''s secrets with the API key Aetherfy gives it, including keys other agents of that "+
-			"workspace use.\n", agent, current.OwnWorkspace)
-		fmt.Fprint(r.stderr, "Proceed? [y/N] ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			return r.fail(refuse("agent '%s' not changed: the change was not confirmed", agent))
+		ask := destructiveAsk{
+			action: fmt.Sprintf("turns on secrets access for agent '%s'", agent),
+			warn: []string{fmt.Sprintf("Agent '%s' will be able to create, update and delete its own secrets with the API "+
+				"key Aetherfy gives it. It never reaches its workspace's secrets or another agent's. A new value takes "+
+				"effect at its next run or deploy.", agent)},
+			prompt:   "Proceed? [y/N] ",
+			accept:   yesAnswer,
+			mismatch: fmt.Sprintf("agent '%s' was not changed", agent),
+		}
+		if err := confirmDestructiveOn(yes, ask, interactive, vecPrompter(r, stdin)); err != nil {
+			return r.fail(err)
 		}
 	}
 	final, err := cp.SetSecretsAccess(agent, on)
@@ -631,7 +646,7 @@ func agentsAccessSecrets(r *vecRun, agent, state string, yes bool, stdin io.Read
 	if r.json {
 		return r.printJSON(secretsJSON(final, true))
 	}
-	fmt.Fprintf(r.stdout, "Secrets access of agent '%s' is %s. A secret it writes is read once per deployment: "+
+	fmt.Fprintf(r.stdout, "Secrets access of agent '%s' is %s. A secret it writes is read when the agent starts: "+
 		"a service sees it after its next deployment, a task on its next run.\n", agent, state)
 	return 0
 }
@@ -648,7 +663,7 @@ func init() {
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessAdd, "add", nil, "Grant a workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().StringArrayVar(&agentsAccessRemove, "remove", nil, "Revoke a granted workspace (repeat, or comma-separated)")
 	agentsAccessCmd.Flags().StringVar(&agentsAccessLevel, "level", "", "The level of the --add workspaces: read, read_write or full (a new grant is read)")
-	agentsAccessCmd.Flags().StringVar(&agentsAccessOwnLevel, "own-level", "", "Its level in its own workspace: read, read_write, full, or default")
+	agentsAccessCmd.Flags().StringVar(&agentsAccessOwnLevel, "own-level", "", "Its level where it lives: read, read_write, full, or default (the workspace's default)")
 	agentsAccessCmd.Flags().StringVar(&agentsAccessSecretsState, "secrets", "", "Let the agent's own key write its own secrets: on or off")
 	agentsAccessCmd.Flags().BoolVarP(&agentsAccessYes, "yes", "y", false, "Change access without asking")
 }

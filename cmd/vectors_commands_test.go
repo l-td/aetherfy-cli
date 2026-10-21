@@ -226,26 +226,51 @@ func TestCollectionsCreateRefusesBadInputBeforeAnyRequest(t *testing.T) {
 func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	deleted := func(t *testing.T, s *vecServer) {
 		t.Helper()
-		if req := only(t, s.got()); req.Method != "DELETE" || req.Path != "/api/v1/workspaces/default/collections/articles" {
-			t.Errorf("sent %s %s", req.Method, req.Path)
+		var deletes []vecRequest
+		for _, req := range s.got() {
+			if req.Method == "DELETE" {
+				deletes = append(deletes, req)
+			}
+		}
+		if len(deletes) != 1 || deletes[0].Path != "/api/v1/workspaces/default/collections/articles" {
+			t.Errorf("sent %v", s.got())
 		}
 	}
-	ok := func(vecRequest) (int, string) { return 200, `{"result":true}` }
+	// The vectors API answers the collection (its id: what the warning is asked
+	// by) and the delete.
+	vec := func(t *testing.T) *vecServer {
+		return newVecServer(t, func(r vecRequest) (int, string) {
+			if r.Method == "GET" {
+				return 200, articlesGet
+			}
+			return 200, `{"result":true}`
+		})
+	}
+	recent := func(body string) *vecServer {
+		return cpFake(t, map[string]func(vecRequest) (int, string){
+			"GET /api/v1/collections/c-1/recent-agents": func(vecRequest) (int, string) { return 200, body },
+		})
+	}
+	const nobody = `{"collection_id":"c-1","window_days":7,"agents":[]}`
 
-	t.Run("--yes deletes", func(t *testing.T) {
-		s := newVecServer(t, ok)
-		r, stdout, _, _ := s.run("default", true)
+	t.Run("--yes deletes, and asks nothing else", func(t *testing.T) {
+		s := vec(t)
+		cp := recent(nobody)
+		r, stdout, _ := runWithCP(s, cp, true)
 		if code := collectionsDelete(r, "articles", true, strings.NewReader(""), false); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
 		deleted(t, s)
+		if len(cp.got()) != 0 {
+			t.Errorf("--yes looked up the warning it would not show: %v", cp.got())
+		}
 		out := decode(t, stdout.String())
 		if out["collection"] != "articles" || out["deleted"] != true {
 			t.Errorf("output = %v", out)
 		}
 	})
 	t.Run("no terminal and no --yes deletes nothing", func(t *testing.T) {
-		s := newVecServer(t, ok)
+		s := vec(t)
 		r, _, stderr, connects := s.run("default", false)
 		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), false); code != exitInputRefused {
 			t.Errorf("exit %d, want %d", code, exitInputRefused)
@@ -258,25 +283,61 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 		}
 	})
 	t.Run("typing the name deletes", func(t *testing.T) {
-		s := newVecServer(t, ok)
-		r, _, _, _ := s.run("default", false)
+		s := vec(t)
+		r, _, _ := runWithCP(s, recent(nobody), false)
 		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), true); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
 		deleted(t, s)
 	})
 	t.Run("typing another name deletes nothing", func(t *testing.T) {
-		s := newVecServer(t, ok)
-		r, _, stderr, _ := s.run("default", false)
+		s := vec(t)
+		r, _, stderr := runWithCP(s, recent(nobody), false)
 		if code := collectionsDelete(r, "articles", false, strings.NewReader("article\n"), true); code != exitRequestFailed {
 			t.Errorf("exit %d, want %d: a cancelled delete is a failure, never a success", code, exitRequestFailed)
 		}
-		if len(s.got()) != 0 {
-			t.Error("deleted on a mismatched name")
+		for _, req := range s.got() {
+			if req.Method == "DELETE" {
+				t.Error("deleted on a mismatched name")
+			}
 		}
 		if !strings.Contains(stderr.String(), "Cancelled") {
 			t.Errorf("stderr must say Cancelled: %q", stderr.String())
 		}
+	})
+	// The warning before the question (the dashboard's dialog says the same): who
+	// used the collection in the last 7 days. A warning, never a refusal.
+	t.Run("the agents that used it recently are named before the question", func(t *testing.T) {
+		s := vec(t)
+		cp := recent(`{"collection_id":"c-1","window_days":7,"agents":[` +
+			`{"agent_id":"a-1","name":"invoice-bot","last_seen":"2026-10-20T10:00:00Z"},` +
+			`{"agent_id":"a-2","name":"nightly","last_seen":"2026-10-18T10:00:00Z"}]}`)
+		r, _, stderr := runWithCP(s, cp, false)
+		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), true); code != 0 {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		out := stderr.String()
+		first := strings.Index(out, "Used by agent 'invoice-bot' in the last 7 days.")
+		second := strings.Index(out, "Used by agent 'nightly' in the last 7 days.")
+		question := strings.Index(out, "Type the collection name to confirm: ")
+		if first < 0 || second < first || question < second {
+			t.Errorf("want both agents, newest first, before the question:\n%s", out)
+		}
+		deleted(t, s)
+	})
+	t.Run("a warning that cannot be read is said and does not block the delete", func(t *testing.T) {
+		s := vec(t)
+		cp := cpFake(t, map[string]func(vecRequest) (int, string){
+			"GET /api/v1/collections/c-1/recent-agents": func(vecRequest) (int, string) { return 503, `{"detail":{"code":"x","message":"down"}}` },
+		})
+		r, _, stderr := runWithCP(s, cp, false)
+		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), true); code != 0 {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "Could not check which agents used it recently") {
+			t.Errorf("stderr %q", stderr.String())
+		}
+		deleted(t, s)
 	})
 }
 
@@ -632,10 +693,10 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		"collections move": func(r *vecRun) int { return collectionsMove(r, "articles", "research", true, false) },
 		// protect and unprotect find the collection through the vectors API first, too.
 		"collections protect": func(r *vecRun) int {
-			return collectionsProtect(r, "articles", true, false, strings.NewReader(""), false)
+			return collectionsProtect(r, "articles")
 		},
 		"collections unprotect": func(r *vecRun) int {
-			return collectionsProtect(r, "articles", false, true, strings.NewReader(""), false)
+			return collectionsUnprotect(r, "articles", true, strings.NewReader(""), false)
 		},
 		"collections update": func(r *vecRun) int {
 			n := "articles-v1"

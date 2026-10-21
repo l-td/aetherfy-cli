@@ -169,3 +169,39 @@ func TestAccessJSONCarriesTheWorkspacePairs(t *testing.T) {
 		t.Errorf("allowed_workspace_refs = %v", allowed)
 	}
 }
+
+// afy collections list shows each collection's protected state, as the
+// dashboard's list does with its PROTECTED badge; the JSON carries it as a
+// boolean on every collection (grants round 2).
+func TestCollectionsListShowsWhichCollectionsAreProtected(t *testing.T) {
+	body := `{"collections":[` +
+		`{"name":"kb","config":{"params":{"vectors":{"size":4,"distance":"Cosine"}}},"status":"green","points_count":3,"protected":true},` +
+		`{"name":"scratch","config":{"params":{"vectors":{"size":4,"distance":"Cosine"}}},"status":"green","points_count":0,"protected":false}]}`
+	s := newVecServer(t, func(vecRequest) (int, string) { return 200, body })
+
+	r, stdout, _, _ := s.run("default", false)
+	if code := collectionsList(r); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	var kb, scratch string
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "kb") {
+			kb = line
+		}
+		if strings.HasPrefix(strings.TrimSpace(line), "scratch") {
+			scratch = line
+		}
+	}
+	if !strings.Contains(stdout.String(), "PROTECTED") || !strings.Contains(kb, "PROTECTED") || strings.Contains(scratch, "PROTECTED") {
+		t.Errorf("the table must badge kb and not scratch:\n%s", stdout.String())
+	}
+
+	rj, outj, _, _ := s.run("default", true)
+	if code := collectionsList(rj); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	cols := decode(t, outj.String())["collections"].([]interface{})
+	if cols[0].(map[string]interface{})["protected"] != true || cols[1].(map[string]interface{})["protected"] != false {
+		t.Errorf("json = %v", cols)
+	}
+}

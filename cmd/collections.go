@@ -48,16 +48,18 @@ var collectionsListCmd = &cobra.Command{
 }
 
 type collectionJSON struct {
-	ID          string   `json:"id,omitempty"`
-	Name        string   `json:"name"`
-	Description *string  `json:"description"`
-	Size        int      `json:"size"`
-	Distance    string   `json:"distance"`
-	Status      string   `json:"status"`
-	PointsCount int64    `json:"points_count"`
-	Regions     []string `json:"regions,omitempty"`
-	CreatedAt   string   `json:"created_at,omitempty"`
-	UpdatedAt   string   `json:"updated_at,omitempty"`
+	ID          string  `json:"id,omitempty"`
+	Name        string  `json:"name"`
+	Description *string `json:"description"`
+	Size        int     `json:"size"`
+	Distance    string  `json:"distance"`
+	Status      string  `json:"status"`
+	PointsCount int64   `json:"points_count"`
+	// Protected: no agent's key removes data from it (afy collections protect).
+	Protected bool     `json:"protected"`
+	Regions   []string `json:"regions,omitempty"`
+	CreatedAt string   `json:"created_at,omitempty"`
+	UpdatedAt string   `json:"updated_at,omitempty"`
 }
 
 func toCollectionJSON(c vectors.CollectionInfo) collectionJSON {
@@ -69,6 +71,7 @@ func toCollectionJSON(c vectors.CollectionInfo) collectionJSON {
 		Distance:    c.Config.Params.Vectors.Distance,
 		Status:      c.Status,
 		PointsCount: c.PointsCount,
+		Protected:   c.Protected,
 		Regions:     c.Regions,
 		CreatedAt:   c.CreatedAt,
 		UpdatedAt:   c.UpdatedAt,
@@ -104,15 +107,20 @@ func collectionsList(r *vecRun) int {
 	}
 	rows := make([][]string, 0, len(cols))
 	for _, c := range cols {
+		protected := ""
+		if c.Protected {
+			protected = "PROTECTED"
+		}
 		rows = append(rows, []string{
 			c.Name,
 			fmt.Sprintf("%d", c.Config.Params.Vectors.Size),
 			c.Config.Params.Vectors.Distance,
 			fmt.Sprintf("%d", c.PointsCount),
 			c.Status,
+			protected,
 		})
 	}
-	output.RenderTable(r.stdout, []string{"Name", "Size", "Distance", "Points", "Status"}, rows)
+	output.RenderTable(r.stdout, []string{"Name", "Size", "Distance", "Points", "Status", "Protected"}, rows)
 	fmt.Fprintf(r.stdout, "\n%d collection(s) in %s\n", len(cols), workspaceLabel(client.Workspace()))
 	return 0
 }
@@ -174,6 +182,11 @@ func collectionsGet(r *vecRun, name string) int {
 	kv("Distance", c.Config.Params.Vectors.Distance)
 	kv("Points", fmt.Sprintf("%d", c.PointsCount))
 	kv("Status", c.Status)
+	if c.Protected {
+		kv("Protected", "yes: no agent's key may delete it or remove data from it")
+	} else {
+		kv("Protected", "no")
+	}
 	kv("Regions", strings.Join(c.Regions, ", "))
 	switch {
 	case opErr != nil:
@@ -292,8 +305,11 @@ var collectionsDeleteCmd = &cobra.Command{
 	Short: "Delete a collection and every point in it",
 	Long: `Delete a collection and every point in it.
 
-Asks you to type the collection's name first. --yes skips the question; it is
-required when stdin is not a terminal, so a script cannot delete by accident.`,
+Asks you to type the collection's name first, and names the agents that used it
+in the last 7 days ("Used by agent 'x' in the last 7 days."): a warning, never a
+refusal. --yes skips the question; it is required when stdin is not a terminal,
+so a script cannot delete by accident. A protected collection can be deleted by
+you but never by an agent's key.`,
 	Example: `  # Delete, confirming by name
   afy collections delete articles
 
@@ -311,18 +327,40 @@ required when stdin is not a terminal, so a script cannot delete by accident.`,
 var collectionDeleteYes bool
 
 func collectionsDelete(r *vecRun, name string, yes bool, stdin io.Reader, interactive bool) int {
-	if err := confirmDestructiveOn(yes, destructiveAsk{
+	ask := destructiveAsk{
 		action:   fmt.Sprintf("deletes collection '%s' and every point in it", name),
 		warn:     []string{fmt.Sprintf("This permanently deletes collection '%s' and every point in it.", name)},
 		prompt:   "Type the collection name to confirm: ",
 		accept:   typedName(name),
 		mismatch: "the name typed did not match",
-	}, interactive, vecPrompter(r, stdin)); err != nil {
+	}
+	// Refused before anything is sent when nobody can answer.
+	if err := refuseUnconfirmable(yes, interactive, ask.action, ask.skip()); err != nil {
 		return r.fail(err)
 	}
 	client, code := r.open()
 	if code != 0 {
 		return code
+	}
+	if !yes {
+		// The warning before the question: who used the collection lately, from
+		// the observations (the dashboard's dialog says the same). A warning
+		// only: the delete is the person's call, and a lookup that fails is said
+		// and never blocks it.
+		if col, err := client.GetCollection(name); err != nil {
+			return r.fail(err)
+		} else if recent, err := r.controlPlane().GetCollectionRecentAgents(col.ID); err != nil {
+			ask.warn = append(ask.warn, fmt.Sprintf("Could not check which agents used it recently: %v", err))
+		} else {
+			var used []string
+			for _, a := range recent.Agents {
+				used = append(used, usedByAgent(a.Name, recent.WindowDays))
+			}
+			ask.warn = append(used, ask.warn...)
+		}
+		if err := askToConfirm(ask, vecPrompter(r, stdin)); err != nil {
+			return r.fail(err)
+		}
 	}
 	if err := client.DeleteCollection(name); err != nil {
 		return r.fail(err)

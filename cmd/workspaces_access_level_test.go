@@ -35,7 +35,8 @@ func TestWorkspacesUpdateRaisingTheAgentLevelNeedsYesWhereNobodyCanAnswer(t *tes
 	cp := newFakeCP(t)
 	cp.on("GET", "/workspaces/invoices", 200, workspaceAt("read"))
 	_, stderr, err := runAfy(t, cp, "workspaces", "update", "invoices", "--agent-access-level", "full")
-	if err == nil || !strings.Contains(stderr, "raising its agents' level from read to full") {
+	if err == nil || !strings.Contains(stderr, "raises the access of every agent living in workspace 'invoices' that is not set "+
+		"otherwise, from read access to full access; pass --yes to confirm without a prompt.") {
 		t.Fatalf("want the refusal, got %v\n%s", err, stderr)
 	}
 	if n := len(cp.called("PATCH", "/workspaces/invoices")); n != 0 {
