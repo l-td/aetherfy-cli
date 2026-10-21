@@ -24,9 +24,12 @@ func (e *cancelledError) Error() string {
 
 // destructiveAsk is what a destructive command asks before it acts.
 type destructiveAsk struct {
-	// what is the thing being destroyed, in the sentence the refusal uses:
-	// "This deletes <what>; pass --yes to confirm without a prompt."
-	what string
+	// action is what the command does, as a verb phrase, in the sentence the
+	// refusal uses: "This <action>; pass --yes to confirm without a prompt."
+	action string
+	// flag skips the question ("--yes" when empty; afy init's overwrite is
+	// skipped by its own --force).
+	flag string
 	// warn are extra lines shown before the question.
 	warn []string
 	// prompt is the question; accept says whether the typed line confirms.
@@ -36,15 +39,23 @@ type destructiveAsk struct {
 	mismatch string
 }
 
-// refuseUnconfirmable is the refusal of a destructive command that cannot be
-// answered: no terminal and no --yes. A usage error (exit 2, CLI_USAGE_ERROR),
-// raised BEFORE anything is asked or sent, because nobody can answer and
-// asking would read nothing, which a script would take for an answer.
-func refuseUnconfirmable(yes, interactive bool, what string) error {
+// skip is the flag that skips the question.
+func (a destructiveAsk) skip() string {
+	if a.flag == "" {
+		return "--yes"
+	}
+	return a.flag
+}
+
+// refuseUnconfirmable is the refusal of a command that asks before it acts and
+// cannot be answered: no terminal and no skip flag. A usage error (exit 2,
+// CLI_USAGE_ERROR), raised BEFORE anything is asked or sent, because nobody can
+// answer and asking would read nothing, which a script would take for an answer.
+func refuseUnconfirmable(yes, interactive bool, action, flag string) error {
 	if yes || interactive {
 		return nil
 	}
-	return refuse("This deletes %s; pass --yes to confirm without a prompt.", what)
+	return refuse("This %s; pass %s to confirm without a prompt.", action, flag)
 }
 
 // askToConfirm asks the question and reads the answer from p.
@@ -73,20 +84,23 @@ func confirmDestructiveOn(yes bool, ask destructiveAsk, interactive bool, p *pro
 	if yes {
 		return nil
 	}
-	if err := refuseUnconfirmable(yes, interactive, ask.what); err != nil {
+	if err := refuseUnconfirmable(yes, interactive, ask.action, ask.skip()); err != nil {
 		return err
 	}
 	return askToConfirm(ask, p)
 }
 
-// confirmDestructive is the confirmation every destructive command makes
-// (afy delete, afy secrets delete, afy workspaces delete), asking on the
-// process's terminal.
+// confirmDestructive is the confirmation of every command that asks, run on the
+// process's terminal (afy delete, afy secrets delete, afy workspaces delete,
+// the deploy's overage question). The commands that run through a vecRun use
+// confirmDestructiveOn with their own stdin; afy init asks through its one
+// prompter. ONE RULE for all of them: no terminal and no skip flag is exit 2
+// before asking, a "no" is exit 1 (cancelledError), never 0.
 func confirmDestructive(yes bool, ask destructiveAsk) error {
 	if yes {
 		return nil
 	}
-	if err := refuseUnconfirmable(yes, stdinIsTerminal(), ask.what); err != nil {
+	if err := refuseUnconfirmable(yes, stdinIsTerminal(), ask.action, ask.skip()); err != nil {
 		return err
 	}
 	return askToConfirm(ask, newPrompter())

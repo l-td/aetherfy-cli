@@ -482,8 +482,7 @@ func pointsDelete(r *vecRun, collection string, rawIDs []string, filterRaw strin
 		return r.fail(refuse("not deleting: an empty --filter matches every point in '%s'. "+
 			"To delete the whole collection, run afy collections delete %s.", collection, collection))
 	}
-	pointsWhat := fmt.Sprintf("points from collection '%s'", collection)
-	if err := refuseUnconfirmable(yes, interactive, pointsWhat); err != nil {
+	if err := refuseUnconfirmable(yes, interactive, fmt.Sprintf("deletes points from collection '%s'", collection), "--yes"); err != nil {
 		return r.fail(err)
 	}
 	client, code := r.open()

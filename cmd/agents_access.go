@@ -14,7 +14,6 @@ package cmd
 // nothing.
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -151,13 +150,11 @@ func changeAgentAccess(r *vecRun, agent string, add, remove []string, yes bool, 
 		}
 	}
 	changing := len(adds) > 0 || len(removes) > 0
-	if len(adds) > 0 && !yes && r.json {
-		return r.fail(refuse("not changing agent '%s': --json cannot answer the confirmation. "+
-			"Pass --yes to grant access without the question.", agent))
-	}
-	if len(adds) > 0 && !yes && !interactive {
-		return r.fail(refuse("not changing agent '%s': stdin is not a terminal, so nobody can "+
-			"confirm. Pass --yes to grant access without the question.", agent))
+	// Granting asks first; a removal narrows access and asks nothing.
+	if len(adds) > 0 {
+		if err := refuseUnconfirmable(yes, interactive, fmt.Sprintf("grants access to agent '%s'", agent), "--yes"); err != nil {
+			return r.fail(err)
+		}
 	}
 
 	cp := r.controlPlane()
@@ -205,11 +202,12 @@ func changeAgentAccess(r *vecRun, agent string, add, remove []string, yes bool, 
 		return 0
 	}
 	if len(toAdd) > 0 && !yes {
-		fmt.Fprint(r.stderr, "Proceed? [y/N] ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			return r.fail(refuse("agent '%s' not changed: the change was not confirmed", agent))
+		if err := askToConfirm(destructiveAsk{
+			prompt:   "Proceed? [y/N] ",
+			accept:   yesAnswer,
+			mismatch: fmt.Sprintf("agent '%s' was not changed", agent),
+		}, vecPrompter(r, stdin)); err != nil {
+			return r.fail(err)
 		}
 	}
 

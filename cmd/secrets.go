@@ -380,7 +380,7 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 		owner = fmt.Sprintf("workspace '%s'", target)
 	}
 	if err := confirmDestructive(secretDeleteYes, destructiveAsk{
-		what:   fmt.Sprintf("secret '%s' from %s", key, owner),
+		action: fmt.Sprintf("deletes secret '%s' from %s", key, owner),
 		prompt: fmt.Sprintf("Delete secret '%s' from %s? [y/N] ", key, owner),
 		accept: yesAnswer,
 	}); err != nil {

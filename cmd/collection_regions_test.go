@@ -111,17 +111,27 @@ func TestCollectionsRegionsShowsThePreviewAndAsksBeforeChanging(t *testing.T) {
 }
 
 func TestCollectionsRegionsChangesNothingUnlessConfirmed(t *testing.T) {
-	for _, answer := range []string{"\n", "n\n", "no\n", "maybe\n", ""} {
+	for _, c := range []struct {
+		answer string
+		code   int
+		says   string
+	}{
+		{"\n", exitRequestFailed, "Cancelled: collection 'articles' was not changed"},
+		{"n\n", exitRequestFailed, "Cancelled: collection 'articles' was not changed"},
+		{"no\n", exitRequestFailed, "Cancelled: collection 'articles' was not changed"},
+		{"maybe\n", exitRequestFailed, "Cancelled: collection 'articles' was not changed"},
+		{"", exitInputRefused, "no answer"},
+	} {
 		vec, cp := vecWithArticles(t), standardCP(t, previewBody(`,"refusal":null`))
 		r, _, stderr := runWithCP(vec, cp, false)
-		if code := collectionsRegions(r, "articles", twoRegions, false, false, strings.NewReader(answer), true); code != exitInputRefused {
-			t.Errorf("answer %q: exit %d, want %d", answer, code, exitInputRefused)
+		if code := collectionsRegions(r, "articles", twoRegions, false, false, strings.NewReader(c.answer), true); code != c.code {
+			t.Errorf("answer %q: exit %d, want %d", c.answer, code, c.code)
 		}
 		if n := len(requestsTo(cp, "PATCH", changePath)); n != 0 {
-			t.Errorf("answer %q: changed without a yes", answer)
+			t.Errorf("answer %q: changed without a yes", c.answer)
 		}
-		if !strings.Contains(stderr.String(), "not confirmed") {
-			t.Errorf("answer %q: stderr %q", answer, stderr.String())
+		if !strings.Contains(stderr.String(), c.says) {
+			t.Errorf("answer %q: stderr %q", c.answer, stderr.String())
 		}
 	}
 }
@@ -167,8 +177,8 @@ func TestCollectionsRegionsRefusesBeforeAnyRequestWhenNobodyCanConfirm(t *testin
 		regions      []string
 		wantInStderr string
 	}{
-		{"--json without --yes", true, true, twoRegions, "--yes"},
-		{"no terminal without --yes", false, false, twoRegions, "--yes"},
+		{"--json, no terminal, without --yes", true, false, twoRegions, "This changes the regions of collection 'articles'; pass --yes to confirm without a prompt."},
+		{"no terminal without --yes", false, false, twoRegions, "This changes the regions of collection 'articles'; pass --yes to confirm without a prompt."},
 		{"no regions", false, true, nil, "--regions is required"},
 	}
 	for _, c := range cases {

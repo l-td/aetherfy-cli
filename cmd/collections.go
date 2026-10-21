@@ -312,7 +312,7 @@ var collectionDeleteYes bool
 
 func collectionsDelete(r *vecRun, name string, yes bool, stdin io.Reader, interactive bool) int {
 	if err := confirmDestructiveOn(yes, destructiveAsk{
-		what:     fmt.Sprintf("collection '%s' and every point in it", name),
+		action:   fmt.Sprintf("deletes collection '%s' and every point in it", name),
 		warn:     []string{fmt.Sprintf("This permanently deletes collection '%s' and every point in it.", name)},
 		prompt:   "Type the collection name to confirm: ",
 		accept:   typedName(name),

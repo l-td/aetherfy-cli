@@ -18,7 +18,6 @@ package cmd
 // at the bound.
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -69,13 +68,8 @@ func collectionsRegions(r *vecRun, name string, regions []string, yes, wait bool
 	if len(regions) == 0 {
 		return r.fail(refuse("--regions is required: the regions to place collection '%s' in, comma-separated", name))
 	}
-	if !yes && r.json {
-		return r.fail(refuse("not changing collection '%s': --json cannot answer the confirmation. "+
-			"Pass --yes to change it without the question.", name))
-	}
-	if !yes && !interactive {
-		return r.fail(refuse("not changing collection '%s': stdin is not a terminal, so nobody can "+
-			"confirm. Pass --yes to change it without the question.", name))
+	if err := refuseUnconfirmable(yes, interactive, fmt.Sprintf("changes the regions of collection '%s'", name), "--yes"); err != nil {
+		return r.fail(err)
 	}
 	client, code := r.open()
 	if code != 0 {
@@ -104,11 +98,12 @@ func collectionsRegions(r *vecRun, name string, regions []string, yes, wait bool
 		return 0
 	}
 	if !yes {
-		fmt.Fprint(r.stderr, "Proceed? [y/N] ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		answer := strings.ToLower(strings.TrimSpace(line))
-		if answer != "y" && answer != "yes" {
-			return r.fail(refuse("collection '%s' not changed: the change was not confirmed", name))
+		if err := askToConfirm(destructiveAsk{
+			prompt:   "Proceed? [y/N] ",
+			accept:   yesAnswer,
+			mismatch: fmt.Sprintf("collection '%s' was not changed", name),
+		}, vecPrompter(r, stdin)); err != nil {
+			return r.fail(err)
 		}
 	}
 	change, err := cp.ChangeCollectionRegions(col.ID, regions)

@@ -79,17 +79,6 @@ func init() {
 	deployCmd.Flags().BoolVarP(&deployYes, "yes", "y", false, "Skip the overage confirmation prompt and proceed (non-interactive)")
 }
 
-// promptYesNo asks a yes/no question on stdin and reports whether the answer
-// was yes. Default NO: anything other than "y" — including a blank line, EOF,
-// or a closed stdin — declines. It is a var so tests can drive the confirm
-// paths without a terminal.
-var promptYesNo = func(question string) bool {
-	output.Warning.Printf("%s [y/N] ", question)
-	var answer string
-	_, _ = fmt.Scanln(&answer)
-	return strings.EqualFold(strings.TrimSpace(answer), "y")
-}
-
 // isRefusedKeys reports a local aetherfy.yaml refused for naming a key the
 // server does not accept (one it does not declare, or one the platform owns)
 // -- a file that exists, so the "create one" help that follows other
@@ -125,16 +114,15 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 		if apiErr.AdditionalMonthlyUSD != nil {
 			impact = fmt.Sprintf("adds ~$%.2f/mo of usage", *apiErr.AdditionalMonthlyUSD)
 		}
-		if !deployYes {
-			if !isInteractive() {
-				output.PrintAPIError(apiErr.StatusCode, apiErr.Code, fmt.Sprintf("This deployment %s. Re-run with --yes to proceed.", impact))
-				os.Exit(1)
-			}
-			if !promptYesNo(fmt.Sprintf("This deployment %s — continue?", impact)) {
-				output.PrintInfo("Deployment cancelled.")
-				_ = output.Result(map[string]interface{}{"agent_id": agentID, "cancelled": true})
-				os.Exit(0)
-			}
+		if err := confirmDestructive(deployYes, destructiveAsk{
+			action:   "deployment " + impact,
+			prompt:   fmt.Sprintf("This deployment %s — continue? [y/N] ", impact),
+			accept:   yesAnswer,
+			mismatch: "nothing was deployed",
+		}); err != nil {
+			// No terminal and no --yes is exit 2, a "no" is exit 1 (never 0).
+			printUnprinted(err)
+			os.Exit(ExitCode(err))
 		}
 		// Confirmed (or --yes) → resend accepting the overage.
 		sp := output.NewSpinner("Deploying...")

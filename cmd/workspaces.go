@@ -358,7 +358,7 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
 	if err := confirmDestructive(workspaceDeleteYes, destructiveAsk{
-		what: fmt.Sprintf("workspace '%s' and all its secrets", name),
+		action: fmt.Sprintf("deletes workspace '%s' and all its secrets", name),
 		warn: []string{
 			fmt.Sprintf("This will permanently delete workspace '%s' and all its secrets.", name),
 			"Vector collections will NOT be deleted.",

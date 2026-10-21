@@ -268,7 +268,7 @@ var schemaDeleteYes bool
 
 func schemaDelete(r *vecRun, collection string, yes bool, stdin io.Reader, interactive bool) int {
 	if err := confirmDestructiveOn(yes, destructiveAsk{
-		what:     fmt.Sprintf("the schema of collection '%s' (its points stay)", collection),
+		action:   fmt.Sprintf("deletes the schema of collection '%s' (its points stay)", collection),
 		warn:     []string{fmt.Sprintf("This deletes the schema of collection '%s'. Its points stay.", collection)},
 		prompt:   "Type the collection name to confirm: ",
 		accept:   typedName(collection),

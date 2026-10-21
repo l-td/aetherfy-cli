@@ -237,7 +237,7 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 	idOrName := args[0]
 
 	if err := confirmDestructive(agentDeleteYes, destructiveAsk{
-		what:     fmt.Sprintf("agent '%s' and all its deployments", idOrName),
+		action:   fmt.Sprintf("deletes agent '%s' and all its deployments", idOrName),
 		warn:     []string{fmt.Sprintf("This will permanently delete agent '%s' and all its deployments.", idOrName)},
 		prompt:   "Type the agent name to confirm: ",
 		accept:   typedName(idOrName),
