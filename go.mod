@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/briandowns/spinner v1.23.0
+	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.16.0
 	github.com/go-resty/resty/v2 v2.11.0
 	github.com/olekukonko/tablewriter v0.0.5
