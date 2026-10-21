@@ -3,7 +3,7 @@
 The version is stamped at release time (goreleaser ldflags), not kept in the code,
 so an entry here is written for the version the owner tags next.
 
-## v0.4.2 (not tagged yet)
+## v0.4.2 (2026-10-21)
 
 ### Breaking changes, and how to update a script
 
