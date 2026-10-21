@@ -13,6 +13,8 @@ package test
 
 import (
 	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -94,20 +96,34 @@ func TestWhoamiExitsThreeWhenNotAuthenticated(t *testing.T) {
 // 3 unconditionally — including if the command were broken outright — so it
 // could not tell "correctly refuses" from "never works".
 //
-// AETHERFY_API_KEY is the documented override and needs no network or real
-// credentials: whoami makes no API call.
+// AETHERFY_API_KEY is the documented override and needs no real credentials.
+// whoami reads the account from the API on every run (GET /auth/me), so the
+// binary is pointed at a stand-in one: no network, and the plan it prints is
+// the one that stand-in served.
 func TestWhoamiExitsZeroWhenAuthenticated(t *testing.T) {
 	bin := buildCLI(t)
+
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/auth/me" {
+			http.Error(w, "unrouted", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"user_id":"u-1","email":"dev@example.com","tier":"performance"}`))
+	}))
+	defer api.Close()
 
 	stdout, stderr, code := runCLI(t, bin, []string{
 		"AETHERFY_CONFIG_DIR=" + t.TempDir(),
 		"AETHERFY_API_KEY=afy_test_0000000000000000000000000000",
+		"AETHERFY_API_URL=" + api.URL + "/api/v1",
 	}, "whoami")
 
 	assert.Equal(t, 0, code,
 		"`afy whoami` with a key present must exit 0.\nstdout: %q\nstderr: %q", stdout, stderr)
 	assert.NotEmpty(t, stdout,
 		"the authenticated path must still print the status block to stdout")
+	assert.Contains(t, stdout, "performance", "the plan printed is the API's, though nothing was saved at login")
 	assert.NotContains(t, stdout, notLoggedInHint)
 	assert.NotContains(t, stderr, notLoggedInHint)
 }

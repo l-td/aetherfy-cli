@@ -46,18 +46,32 @@ type Model struct {
 	Forbid bool
 }
 
-// Source is what Extract reads: every BaseModel class in SourcePath, and the
-// three unknown-field constants.
+// PlatformField is one PLATFORM_FIELDS entry: the key that left aetherfy.yaml,
+// and the sentence saying where that property is set now.
+type PlatformField struct {
+	Key   string
+	Where string
+}
+
+// Source is what Extract reads: every BaseModel class in SourcePath, the three
+// unknown-field constants and PLATFORM_FIELDS with the three constants that
+// build its refusal.
 type Source struct {
 	Models           map[string]*Model
 	Message          string  // UNKNOWN_FIELD_MESSAGE
 	Suggestion       string  // UNKNOWN_FIELD_SUGGESTION
 	SuggestionCutoff float64 // UNKNOWN_FIELD_SUGGESTION_CUTOFF
-	// PlatformFields are PLATFORM_FIELDS' keys, sorted: the keys that left
-	// aetherfy.yaml for the platform (name, description, workspace). The
-	// server refuses each with its own sentence; the CLI passes them through
-	// so that sentence is the one the user reads.
-	PlatformFields []string
+	// PlatformFields are PLATFORM_FIELDS' entries IN THE FILE'S ORDER (the
+	// refusal lists the declared ones in that order): the keys that left
+	// aetherfy.yaml for the platform (name, description, workspace), each with
+	// the sentence saying where it is set now.
+	PlatformFields []PlatformField
+	// PlatformRefusal, PlatformClause and PlatformJoiner are the control
+	// plane's PLATFORM_FIELDS_REFUSAL, PLATFORM_FIELD_CLAUSE and
+	// PLATFORM_FIELD_JOINER: the sentence a file declaring one is refused with.
+	PlatformRefusal string
+	PlatformClause  string
+	PlatformJoiner  string
 }
 
 var (
@@ -68,14 +82,52 @@ var (
 	fieldDecl = regexp.MustCompile(`^    ([A-Za-z][A-Za-z0-9_]*)\s*:\s*(.+?)\s*(?:=.*)?$`)
 	forbid    = regexp.MustCompile(`^    model_config\s*=\s*ConfigDict\((.*)\)\s*$`)
 	ident     = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*`)
-	strConst  = regexp.MustCompile(`^(UNKNOWN_FIELD_MESSAGE|UNKNOWN_FIELD_SUGGESTION) = "([^"]*)"\s*(?:#.*)?$`)
+	strConst  = regexp.MustCompile(`^(UNKNOWN_FIELD_MESSAGE|UNKNOWN_FIELD_SUGGESTION|PLATFORM_FIELDS_REFUSAL|PLATFORM_FIELD_CLAUSE|PLATFORM_FIELD_JOINER) = "([^"]*)"\s*(?:#.*)?$`)
 	numConst  = regexp.MustCompile(`^UNKNOWN_FIELD_SUGGESTION_CUTOFF = ([0-9.]+)\s*(?:#.*)?$`)
-	// PLATFORM_FIELDS = { ... } at column 0, one `    "key": ...` per entry
-	// (the sentence may continue on the next lines, indented further).
+	// PLATFORM_FIELDS = { ... } at column 0: per entry a quoted key, a colon and
+	// the sentence as one or more adjacent string literals (Python joins them),
+	// alone or inside parentheses, then a comma.
 	platformOpen  = regexp.MustCompile(`^PLATFORM_FIELDS\s*(?::[^=]*)?=\s*\{\s*$`)
-	platformKey   = regexp.MustCompile(`^    "([A-Za-z_][A-Za-z0-9_]*)"\s*:`)
-	platformOther = regexp.MustCompile(`^    [^\s)]`) // a `    ),` closes a multi-line value
+	platformEntry = regexp.MustCompile(`^\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*:\s*(\(?\s*(?:"(?:[^"\\]|\\.)*"\s*)+\)?)\s*(?:,|$)`)
+	stringLit     = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
 )
+
+// parsePlatformFields reads the body of PLATFORM_FIELDS: the lines between the
+// opening brace and the closing one. Comment lines are skipped; anything else
+// that is not an entry is REFUSED, not skipped, so an entry in a shape this
+// reader does not know cannot shrink the set.
+func parsePlatformFields(body []string) ([]PlatformField, error) {
+	var kept []string
+	for _, l := range body {
+		if strings.HasPrefix(strings.TrimSpace(l), "#") {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	rest := strings.Join(kept, "\n")
+	var out []PlatformField
+	for strings.TrimSpace(rest) != "" {
+		m := platformEntry.FindStringSubmatch(rest)
+		if m == nil {
+			snippet := strings.TrimSpace(rest)
+			if len(snippet) > 80 {
+				snippet = snippet[:80]
+			}
+			return nil, fmt.Errorf("PLATFORM_FIELDS has an entry this reader cannot read: %q -- teach it the shape", snippet)
+		}
+		var where strings.Builder
+		for _, lit := range stringLit.FindAllStringSubmatch(m[2], -1) {
+			s, err := strconv.Unquote(`"` + lit[1] + `"`)
+			if err != nil {
+				return nil, fmt.Errorf("PLATFORM_FIELDS[%s] has a string this reader cannot unquote: %q", m[1], lit[1])
+			}
+			where.WriteString(s)
+		}
+		out = append(out, PlatformField{Key: m[1], Where: where.String()})
+		rest = rest[len(m[0]):]
+	}
+	return out, nil
+}
 
 // Names an annotation may use without naming a model.
 var plainTypes = map[string]bool{
@@ -104,30 +156,38 @@ func Extract(cpRoot string) (*Source, error) {
 	var cur string
 	inDoc := false
 	inPlatform := false
+	var platformBody []string
 	for _, l := range lines {
 		if platformOpen.MatchString(l) {
 			seenConst["PLATFORM_FIELDS"]++
 			inPlatform = true
+			platformBody = nil
 			continue
 		}
 		if inPlatform {
 			if strings.HasPrefix(l, "}") {
 				inPlatform = false
+				if src.PlatformFields, err = parsePlatformFields(platformBody); err != nil {
+					return nil, err
+				}
 				continue
 			}
-			if m := platformKey.FindStringSubmatch(l); m != nil {
-				src.PlatformFields = append(src.PlatformFields, m[1])
-			} else if platformOther.MatchString(l) && !strings.HasPrefix(strings.TrimSpace(l), "#") {
-				return nil, fmt.Errorf("PLATFORM_FIELDS has an entry this reader cannot read: %q -- teach it the shape", l)
-			}
+			platformBody = append(platformBody, l)
 			continue
 		}
 		if m := strConst.FindStringSubmatch(l); m != nil {
 			seenConst[m[1]]++
-			if m[1] == "UNKNOWN_FIELD_MESSAGE" {
+			switch m[1] {
+			case "UNKNOWN_FIELD_MESSAGE":
 				src.Message = m[2]
-			} else {
+			case "UNKNOWN_FIELD_SUGGESTION":
 				src.Suggestion = m[2]
+			case "PLATFORM_FIELDS_REFUSAL":
+				src.PlatformRefusal = m[2]
+			case "PLATFORM_FIELD_CLAUSE":
+				src.PlatformClause = m[2]
+			case "PLATFORM_FIELD_JOINER":
+				src.PlatformJoiner = m[2]
 			}
 		}
 		if m := numConst.FindStringSubmatch(l); m != nil {
@@ -205,7 +265,6 @@ func Extract(cpRoot string) (*Source, error) {
 	if inPlatform {
 		return nil, fmt.Errorf("PLATFORM_FIELDS in %s never closes at column 0", SourcePath)
 	}
-	sort.Strings(src.PlatformFields)
 	return src, nil
 }
 
@@ -228,8 +287,12 @@ func Validate(src *Source) error {
 			"module-level literals in %s (found %q, %q, %v)", SourcePath, src.Message, src.Suggestion, src.SuggestionCutoff)
 	}
 	if len(src.PlatformFields) == 0 {
-		return fmt.Errorf("no PLATFORM_FIELDS entries in %s -- an empty set would let the CLI pass nothing "+
-			"through and still agree", SourcePath)
+		return fmt.Errorf("no PLATFORM_FIELDS entries in %s -- an empty set would let the CLI refuse nothing "+
+			"and still agree", SourcePath)
+	}
+	if src.PlatformRefusal == "" || src.PlatformClause == "" || src.PlatformJoiner == "" {
+		return fmt.Errorf("PLATFORM_FIELDS_REFUSAL, PLATFORM_FIELD_CLAUSE and PLATFORM_FIELD_JOINER must all be "+
+			"module-level literals in %s (found %q, %q, %q)", SourcePath, src.PlatformRefusal, src.PlatformClause, src.PlatformJoiner)
 	}
 	return nil
 }

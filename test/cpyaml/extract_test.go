@@ -26,6 +26,9 @@ func fakeCP(t *testing.T, body string) string {
 const realShape = "UNKNOWN_FIELD_MESSAGE = \"unknown field `{path}`\"\r\n" +
 	"UNKNOWN_FIELD_SUGGESTION = \", did you mean `{suggestion}`?\"\r\n" +
 	"UNKNOWN_FIELD_SUGGESTION_CUTOFF = 0.6\r\n" +
+	"PLATFORM_FIELDS_REFUSAL = \"says how it runs. Remove {fields}.\"\r\n" +
+	"PLATFORM_FIELD_CLAUSE = \"`{field}:` ({where})\"\r\n" +
+	"PLATFORM_FIELD_JOINER = \"; \"\r\n" +
 	"\r\n" +
 	"# The keys that left aetherfy.yaml.\r\n" +
 	"PLATFORM_FIELDS = {\r\n" +
@@ -86,8 +89,16 @@ func TestExtractReadsTheModelsTheirNestingAndTheWording(t *testing.T) {
 	assert.Equal(t, "unknown field `{path}`", src.Message)
 	assert.Equal(t, ", did you mean `{suggestion}`?", src.Suggestion)
 	assert.Equal(t, 0.6, src.SuggestionCutoff)
-	assert.Equal(t, []string{"description", "name", "workspace"}, src.PlatformFields,
-		"PLATFORM_FIELDS' keys, continuation lines and comments not read as keys")
+	assert.Equal(t, []PlatformField{
+		{"name", "the agent's name is set on the platform: rename it with `afy update <agent> --name <new>`"},
+		{"workspace", "moved with afy update"},
+		{"description", "set on the platform"},
+	}, src.PlatformFields,
+		"PLATFORM_FIELDS' entries in the file's order, a sentence split over literals or parenthesised joined, "+
+			"comments not read as entries")
+	assert.Equal(t, "says how it runs. Remove {fields}.", src.PlatformRefusal)
+	assert.Equal(t, "`{field}:` ({where})", src.PlatformClause)
+	assert.Equal(t, "; ", src.PlatformJoiner)
 }
 
 func TestDefaultsReadsEachFieldsDefaultAcrossLines(t *testing.T) {
@@ -118,6 +129,18 @@ func TestMissingConfigMessageJoinsItsLiterals(t *testing.T) {
 
 	_, err = MissingConfigMessage(fakeCP(t, "MISSING_CONFIG_MESSAGE = (\r\n    PREFIX + \"x\"\r\n)\r\n"))
 	assert.Error(t, err, "a line that is not a string literal is refused, not skipped")
+}
+
+func TestAMissingPlatformConstantIsRefused(t *testing.T) {
+	for _, line := range []string{
+		"PLATFORM_FIELDS_REFUSAL = \"says how it runs. Remove {fields}.\"\r\n",
+		"PLATFORM_FIELD_CLAUSE = \"`{field}:` ({where})\"\r\n",
+		"PLATFORM_FIELD_JOINER = \"; \"\r\n",
+	} {
+		src, err := Extract(fakeCP(t, replaceOnce(t, realShape, line, "")))
+		require.NoError(t, err)
+		assert.Error(t, Validate(src), "%q missing: the sentence cannot be compared", line)
+	}
 }
 
 func TestAMissingOrUnreadablePlatformFieldsIsRefused(t *testing.T) {

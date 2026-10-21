@@ -85,8 +85,6 @@ type jsonCase struct {
 	// keys landed) and exits 1 when any did not: its stdout is still one JSON
 	// document, and the error is on stderr as for every other refusal.
 	resultOnRefusal bool
-	// stdin is what the command reads (a confirmation), "" for none.
-	stdin string
 }
 
 const (
@@ -114,13 +112,13 @@ func jsonCases() []jsonCase {
 		{class: "show", args: []string{"status", "bot"}, ok: []route{{"GET", "/agents/bot", 200, agentRow}, {"GET", "/agents/bot/deployments", 200, `[]`}}, refuse: []string{"GET /agents/bot"}},
 		{class: "show", args: []string{"workspaces", "info", "acme"}, ok: []route{{"GET", "/workspaces/acme", 200, wsRow}}, refuse: []string{"GET /workspaces/acme"}},
 		{class: "show", args: []string{"github", "status"}, ok: []route{{"GET", "/auth/github/status", 200, `{"connected":false,"installations":[]}`}}, refuse: []string{"GET /auth/github/status"}},
-		{class: "show", args: []string{"whoami"}},
+		{class: "show", args: []string{"whoami"}, ok: []route{{"GET", "/auth/me", 200, `{"user_id":"u-1","email":"dev@example.com","tier":"starter"}`}}, refuse: []string{"GET /auth/me"}},
 		{class: "show", args: []string{"version"}},
 
 		// --- mutate ---
 		{class: "mutate", args: []string{"create", "newbot", "--workspace", "acme"}, ok: []route{
 			{"GET", "/workspaces/acme", 200, wsRow}, {"POST", "/agents", 201, agentRow}}, refuse: []string{"POST /agents"}},
-		{class: "mutate", args: []string{"delete", "bot", "--force"}, ok: []route{{"DELETE", "/agents/bot", 200, `{}`}}, refuse: []string{"DELETE /agents/bot"}},
+		{class: "mutate", args: []string{"delete", "bot", "--yes"}, ok: []route{{"DELETE", "/agents/bot", 200, `{}`}}, refuse: []string{"DELETE /agents/bot"}},
 		{class: "mutate", args: []string{"stop", "bot"}, ok: []route{{"POST", "/agents/bot/stop", 200, `{}`}}, refuse: []string{"POST /agents/bot/stop"}},
 		{class: "mutate", args: []string{"start", "bot"}, ok: []route{{"POST", "/agents/bot/start", 200, `{"readiness":"serving"}`}}, refuse: []string{"POST /agents/bot/start"}},
 		{class: "mutate", args: []string{"archive", "bot"}, ok: []route{{"POST", "/agents/bot/archive", 200, `{}`}}, refuse: []string{"POST /agents/bot/archive"}},
@@ -128,15 +126,15 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"cancel", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[]`}}, refuse: []string{"GET /agents/bot/deployments"}},
 		{class: "mutate", args: []string{"update", "bot", "--description", "x"}, ok: []route{{"PATCH", "/agents/bot", 200, agentRow}}, refuse: []string{"PATCH /agents/bot"}},
 		{class: "mutate", args: []string{"schedule", "resume", "bot"}, ok: []route{{"POST", "/agents/bot/schedule/resume", 200, `{"changed":true,"cron_paused":false}`}}, refuse: []string{"POST /agents/bot/schedule/resume"}},
-		{class: "mutate", args: []string{"workspaces", "regions", "acme", "--regions", "us-east-1"}, ok: []route{{"PATCH", "/workspaces/acme/regions", 202, `{"operation_id":"op-1","status":"pending","from_regions":["us-east-1"],"to_regions":["us-east-1"]}`}}, refuse: []string{"PATCH /workspaces/acme/regions"}},
+		{class: "mutate", args: []string{"workspaces", "regions", "acme", "--regions", "eu-central-1"}, ok: []route{{"GET", "/deploy-options", 200, deployOptions}, {"PATCH", "/workspaces/acme/regions", 202, `{"operation_id":"op-1","status":"pending","from_regions":["eu-central-1"],"to_regions":["eu-central-1"]}`}}, refuse: []string{"PATCH /workspaces/acme/regions"}},
 		{class: "mutate", args: []string{"schedule", "pause", "bot"}, ok: []route{{"POST", "/agents/bot/schedule/pause", 200, `{"changed":true,"cron_paused":true}`}}, refuse: []string{"POST /agents/bot/schedule/pause"}},
 		{class: "mutate", args: []string{"run", "bot"}, ok: []route{{"POST", "/agents/bot/run", 200, `{"deployment_id":"d-1","version":3}`}}, refuse: []string{"POST /agents/bot/run"}},
 		{class: "mutate", args: []string{"spawn", "parent", "child"}, ok: []route{{"POST", "/agents/parent/spawn", 200, `{"spawn_id":"s-1","deployment_id":"d-1","status":"queued"}`}}, refuse: []string{"POST /agents/parent/spawn"}},
 		{class: "mutate", args: []string{"secrets", "set", "bot", "K=v"}, ok: []route{{"POST", "/agents/bot/secrets", 200, `{}`}}, refuse: []string{"POST /agents/bot/secrets"}, resultOnRefusal: true},
-		{class: "mutate", args: []string{"secrets", "delete", "bot", "K"}, ok: []route{{"DELETE", "/agents/bot/secrets/K", 200, `{}`}}, stdin: "y\n", refuse: []string{"DELETE /agents/bot/secrets/K"}},
+		{class: "mutate", args: []string{"secrets", "delete", "bot", "K", "--yes"}, ok: []route{{"DELETE", "/agents/bot/secrets/K", 200, `{}`}}, refuse: []string{"DELETE /agents/bot/secrets/K"}},
 		{class: "mutate", args: []string{"workspaces", "create", "acme", "--regions", "eu-central-1"}, ok: []route{{"GET", "/deploy-options", 200, deployOptions}, {"POST", "/workspaces", 201, wsRow}}, refuse: []string{"POST /workspaces"}},
 		{class: "mutate", args: []string{"workspaces", "update", "acme", "--description", "x"}, ok: []route{{"PATCH", "/workspaces/acme", 200, wsRow}}, refuse: []string{"PATCH /workspaces/acme"}},
-		{class: "mutate", args: []string{"workspaces", "delete", "acme", "--force"}, ok: []route{{"DELETE", "/workspaces/acme", 200, `{"secrets_deleted":0}`}}, refuse: []string{"DELETE /workspaces/acme"}},
+		{class: "mutate", args: []string{"workspaces", "delete", "acme", "--yes"}, ok: []route{{"DELETE", "/workspaces/acme", 200, `{"secrets_deleted":0}`}}, refuse: []string{"DELETE /workspaces/acme"}},
 		{class: "mutate", args: []string{"github", "unlink", "bot"}, ok: []route{{"DELETE", "/agents/bot/github", 200, `{}`}}, refuse: []string{"DELETE /agents/bot/github"}},
 		{class: "mutate", args: []string{"github", "disconnect"}, ok: []route{{"DELETE", "/auth/github", 200, `{}`}}, refuse: []string{"DELETE /auth/github"}},
 		{class: "mutate", args: []string{"logout"}},
@@ -179,7 +177,7 @@ func runCase(t *testing.T, c jsonCase, asJSON, refuse bool) (stdout, stderr stri
 	if asJSON {
 		args = append(args, "--json")
 	}
-	return runAfyProcessWith(t, cp, nil, c.stdin, args...)
+	return runAfyProcess(t, cp, nil, args...)
 }
 
 func TestJSONContractOnSuccessStdoutIsOnlyJSON(t *testing.T) {

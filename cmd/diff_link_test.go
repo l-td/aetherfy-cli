@@ -161,7 +161,7 @@ func TestDiffRefusesAnUnlinkedFolderAndAPlatformField(t *testing.T) {
 	named := agentFolder(t, "runtime: python3.11\nname: invoice-parser\n")
 	linkFolder(t, named, map[string]string{"default": prodID})
 	_, stderr, code = runAfyProcess(t, cp, nil, "diff", "--path", named)
-	if code == 0 || !strings.Contains(stderr, "declares 'name:', which a deploy refuses") {
+	if code == 0 || !strings.Contains(stderr, "`name:` (the agent's name is set on the platform: rename it with `afy update <agent> --name <new>` or in the dashboard)") {
 		t.Errorf("a yaml declaring name: must be refused; exit %d: %s", code, stderr)
 	}
 	if len(cp.called("GET", "/agents/"+prodID+"/yaml")) != 0 {

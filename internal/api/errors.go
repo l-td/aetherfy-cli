@@ -56,6 +56,13 @@ type APIError struct {
 	// workspace still uses. nil for every other error, and for a server that
 	// does not send it.
 	RegionsInUse []string `json:"-"`
+	// Violations carries the `message` of each entry of the envelope's
+	// `violations` list (a refusal that names every rule a request broke, such
+	// as a regions change: code VALIDATION_VIOLATIONS, message "Request
+	// validation failed."). The summary says nothing without them. Empty for
+	// every other error, and for the VALIDATION_ERROR form, whose summary
+	// already joins its entries.
+	Violations []string `json:"-"`
 }
 
 func (e *APIError) Error() string {
@@ -122,6 +129,15 @@ func parseAPIError(resp *resty.Response) error {
 				if secs, ok := v["retry_after_seconds"].(float64); ok {
 					n := int(secs)
 					apiErr.RetryAfterSeconds = &n
+				}
+				if list, ok := v["violations"].([]interface{}); ok {
+					for _, item := range list {
+						if entry, ok := item.(map[string]interface{}); ok {
+							if msg, ok := entry["message"].(string); ok && msg != "" {
+								apiErr.Violations = append(apiErr.Violations, msg)
+							}
+						}
+					}
 				}
 				if list, ok := v["regions_in_use"].([]interface{}); ok {
 					for _, r := range list {

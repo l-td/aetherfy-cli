@@ -209,15 +209,24 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 var agentsDeleteCmd = &cobra.Command{
 	Use:   "delete <name>",
 	Short: "Delete an agent",
-	Long:  "Delete an agent and all its deployments.",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runAgentsDelete,
+	Long: `Delete an agent and all its deployments.
+
+Asks you to type the agent's name first. --yes skips the question; it is
+required when stdin is not a terminal, so a script cannot delete by accident.
+Declining the question exits 1: a cancelled delete is never a success.`,
+	Example: `  # Delete, confirming by name
+  afy delete scraper
+
+  # Delete from a script
+  afy delete scraper --yes`,
+	Args: cobra.ExactArgs(1),
+	RunE: runAgentsDelete,
 }
 
-var forceDelete bool
+var agentDeleteYes bool
 
 func init() {
-	agentsDeleteCmd.Flags().BoolVarP(&forceDelete, "force", "f", false, "Skip confirmation prompt")
+	agentsDeleteCmd.Flags().BoolVarP(&agentDeleteYes, "yes", "y", false, "Delete without asking")
 }
 
 func runAgentsDelete(cmd *cobra.Command, args []string) error {
@@ -227,16 +236,14 @@ func runAgentsDelete(cmd *cobra.Command, args []string) error {
 
 	idOrName := args[0]
 
-	// Confirm deletion
-	if !forceDelete {
-		output.Warning.Printf("This will permanently delete agent '%s' and all its deployments.\n", idOrName)
-		fmt.Fprint(output.Out(), "Type the agent name to confirm: ")
-		var confirm string
-		_, _ = fmt.Scanln(&confirm)
-		if confirm != idOrName {
-			output.PrintInfo("Deletion cancelled.")
-			return output.Result(map[string]interface{}{"agent": idOrName, "deleted": false})
-		}
+	if err := confirmDestructive(agentDeleteYes, destructiveAsk{
+		what:     fmt.Sprintf("agent '%s' and all its deployments", idOrName),
+		warn:     []string{fmt.Sprintf("This will permanently delete agent '%s' and all its deployments.", idOrName)},
+		prompt:   "Type the agent name to confirm: ",
+		accept:   typedName(idOrName),
+		mismatch: "the name typed did not match",
+	}); err != nil {
+		return err
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Deleting agent '%s'...", idOrName))
@@ -1590,18 +1597,10 @@ func runAgentsDiff(cmd *cobra.Command, args []string) error {
 	}
 	// A key `afy deploy` would refuse is not a change to preview: shown as
 	// "+ schedul: ..." it would read as a field the deploy is about to set.
-	if err := archive.CheckUnknownFields(data); err != nil {
+	// Nor is a key the platform owns (name:, description:, workspace:).
+	if err := archive.CheckConfigKeys(data); err != nil {
 		output.PrintError("%v", err)
 		return shown(err)
-	}
-	for _, f := range archive.PlatformFields {
-		if _, declared := local[f]; declared {
-			// The server refuses the file at deploy; nothing it would change
-			// is worth showing until the key is gone.
-			output.PrintError("aetherfy.yaml declares '%s:', which a deploy refuses: the agent's %s is set on the "+
-				"platform ('afy update <agent> --%s'), not in the file. Remove it.", f, f, f)
-			return shown(fmt.Errorf("aetherfy.yaml declares %s", f))
-		}
 	}
 
 	client := api.NewClient()

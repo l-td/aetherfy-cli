@@ -62,55 +62,13 @@ func init() {
 // plan (GET /deploy-options) BEFORE anything is sent. Nothing is assumed:
 // omitted without a terminal is refused naming the allowed ones.
 func chooseWorkspaceRegions(cmd *cobra.Command, client *api.Client, p *prompter) ([]string, error) {
-	opts, err := client.GetDeployOptions("")
+	opts, allowed, max, err := planWorkspaceRegions(client)
 	if err != nil {
-		return nil, printRefusal("Failed to read the regions your plan allows", err)
-	}
-	allowed := opts.AllowedRegions()
-	if len(allowed) == 0 {
-		return nil, refuse("your plan allows no region for a workspace; check your plan on the dashboard")
-	}
-	max := opts.MaxRegions
-	if max < 1 {
-		max = 1
+		return nil, err
 	}
 
 	if cmd.Flags().Changed("regions") {
-		var regions []string
-		seen := map[string]bool{}
-		for _, r := range workspaceCreateRegions {
-			r = strings.TrimSpace(r)
-			if r == "" {
-				return nil, refuse("--regions got an empty region (allowed: %s)", strings.Join(allowed, ", "))
-			}
-			if seen[r] {
-				continue
-			}
-			seen[r] = true
-			regions = append(regions, r)
-		}
-		if len(regions) == 0 {
-			return nil, refuse("--regions needs at least one region (allowed: %s)", strings.Join(allowed, ", "))
-		}
-		for _, r := range regions {
-			if contains(allowed, r) {
-				continue
-			}
-			known := false
-			for _, o := range opts.Regions {
-				if o.Code == r {
-					known = true
-				}
-			}
-			if known {
-				return nil, refuse("region %s is not open on your plan (allowed: %s). Nothing was created.", r, strings.Join(allowed, ", "))
-			}
-			return nil, refuse("%s is not a region (allowed on your plan: %s). Nothing was created.", r, strings.Join(allowed, ", "))
-		}
-		if len(regions) > max {
-			return nil, refuse("%d regions given, but your plan allows %d per workspace (allowed: %s). Nothing was created.", len(regions), max, strings.Join(allowed, ", "))
-		}
-		return regions, nil
+		return checkTypedRegions(workspaceCreateRegions, opts, allowed, max, "Nothing was created.")
 	}
 
 	if !isInteractive() || output.IsJSON() {
@@ -130,6 +88,68 @@ func chooseWorkspaceRegions(cmd *cobra.Command, client *api.Client, p *prompter)
 	regions := make([]string, len(picked))
 	for i, idx := range picked {
 		regions[i] = allowed[idx]
+	}
+	return regions, nil
+}
+
+// planWorkspaceRegions is what the plan allows a workspace to own (GET
+// /deploy-options): the options, the open region codes, and how many a
+// workspace may hold.
+func planWorkspaceRegions(client *api.Client) (opts *api.DeployOptions, allowed []string, max int, err error) {
+	opts, err = client.GetDeployOptions("")
+	if err != nil {
+		return nil, nil, 0, printRefusal("Failed to read the regions your plan allows", err)
+	}
+	allowed = opts.AllowedRegions()
+	if len(allowed) == 0 {
+		return nil, nil, 0, refuse("your plan allows no region for a workspace; check your plan on the dashboard")
+	}
+	max = opts.MaxRegions
+	if max < 1 {
+		max = 1
+	}
+	return opts, allowed, max, nil
+}
+
+// checkTypedRegions is the one local check of a --regions value, for
+// `workspaces create` and `workspaces regions`: no empty entry, none the
+// platform does not know, none the plan does not open, no more than the plan
+// allows. Each refusal lists the allowed regions and ends with `nothing`,
+// what was not done (exit 2). The returned list drops repeats.
+func checkTypedRegions(typed []string, opts *api.DeployOptions, allowed []string, max int, nothing string) ([]string, error) {
+	var regions []string
+	seen := map[string]bool{}
+	for _, r := range typed {
+		r = strings.TrimSpace(r)
+		if r == "" {
+			return nil, refuse("--regions got an empty region (allowed: %s)", strings.Join(allowed, ", "))
+		}
+		if seen[r] {
+			continue
+		}
+		seen[r] = true
+		regions = append(regions, r)
+	}
+	if len(regions) == 0 {
+		return nil, refuse("--regions needs at least one region (allowed: %s)", strings.Join(allowed, ", "))
+	}
+	for _, r := range regions {
+		if contains(allowed, r) {
+			continue
+		}
+		known := false
+		for _, o := range opts.Regions {
+			if o.Code == r {
+				known = true
+			}
+		}
+		if known {
+			return nil, refuse("region %s is not open on your plan (allowed: %s). %s", r, strings.Join(allowed, ", "), nothing)
+		}
+		return nil, refuse("%s is not a region (allowed on your plan: %s). %s", r, strings.Join(allowed, ", "), nothing)
+	}
+	if len(regions) > max {
+		return nil, refuse("%d regions given, but your plan allows %d per workspace (allowed: %s). %s", len(regions), max, strings.Join(allowed, ", "), nothing)
 	}
 	return regions, nil
 }
@@ -165,6 +185,7 @@ func runWorkspacesCreate(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	output.KeyValue("ID", workspace.ID)
 	output.KeyValue("Name", workspace.Name)
+	output.KeyValue("Regions", strings.Join(workspace.Regions, ", "))
 	if workspace.Description != "" {
 		output.KeyValue("Description", workspace.Description)
 	}
@@ -314,19 +335,19 @@ Vector collections in the workspace are NOT deleted automatically.
 Clean them up separately via the vectordb API.
 
 The workspace must have no active agents. Delete all agents first.`,
-	Example: `  # Delete a workspace (prompts for confirmation)
+	Example: `  # Delete a workspace (asks you to type its name)
   afy workspaces delete my-workspace
 
-  # Delete without confirmation
-  afy workspaces delete my-workspace --force`,
+  # Delete from a script
+  afy workspaces delete my-workspace --yes`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspacesDelete,
 }
 
-var workspaceForceDelete bool
+var workspaceDeleteYes bool
 
 func init() {
-	workspacesDeleteCmd.Flags().BoolVarP(&workspaceForceDelete, "force", "f", false, "Skip confirmation prompt")
+	workspacesDeleteCmd.Flags().BoolVarP(&workspaceDeleteYes, "yes", "y", false, "Delete without asking")
 }
 
 func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
@@ -336,16 +357,17 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 
 	name := args[0]
 
-	if !workspaceForceDelete {
-		output.Warning.Printf("This will permanently delete workspace '%s' and all its secrets.\n", name)
-		output.Warning.Println("Vector collections will NOT be deleted.")
-		fmt.Fprint(output.Out(), "Type the workspace name to confirm: ")
-		var confirm string
-		_, _ = fmt.Scanln(&confirm)
-		if confirm != name {
-			output.PrintInfo("Deletion cancelled.")
-			return output.Result(map[string]interface{}{"workspace": name, "deleted": false})
-		}
+	if err := confirmDestructive(workspaceDeleteYes, destructiveAsk{
+		what: fmt.Sprintf("workspace '%s' and all its secrets", name),
+		warn: []string{
+			fmt.Sprintf("This will permanently delete workspace '%s' and all its secrets.", name),
+			"Vector collections will NOT be deleted.",
+		},
+		prompt:   "Type the workspace name to confirm: ",
+		accept:   typedName(name),
+		mismatch: "the name typed did not match",
+	}); err != nil {
+		return err
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Deleting workspace '%s'...", name))
@@ -606,11 +628,23 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 
 	name := args[0]
 
+	// Checked here, as `workspaces create` checks its regions, before anything
+	// is sent: a name the platform does not know is exit 2 with the allowed
+	// ones listed, not a server refusal.
+	client := api.NewClient()
+	opts, allowed, max, err := planWorkspaceRegions(client)
+	if err != nil {
+		return err
+	}
+	regions, err := checkTypedRegions(workspaceRegions, opts, allowed, max, "Nothing was changed.")
+	if err != nil {
+		return err
+	}
+
 	sp := output.NewSpinner(fmt.Sprintf("Changing the regions of workspace '%s'...", name))
 	sp.Start()
 
-	client := api.NewClient()
-	change, err := client.UpdateWorkspaceRegions(name, workspaceRegions)
+	change, err := client.UpdateWorkspaceRegions(name, regions)
 	sp.Stop()
 
 	if err != nil {

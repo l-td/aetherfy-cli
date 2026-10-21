@@ -331,15 +331,24 @@ var secretsDeleteCmd = &cobra.Command{
 	Short: "Delete a secret from an agent or workspace",
 	Long: `Delete a secret from an agent or workspace.
 
-Use --workspace flag to delete workspace-scoped secrets.`,
+Use --workspace flag to delete workspace-scoped secrets.
+
+Asks [y/N] first. --yes skips the question; it is required when stdin is not a
+terminal, so a script cannot delete by accident. Answering no exits 1: a
+cancelled delete is never a success.`,
 	Example: `  # Delete an agent secret
   afy secrets delete my-agent API_KEY
 
   # Delete a workspace secret
-  afy secrets delete --workspace my-workspace SHARED_API_KEY`,
+  afy secrets delete --workspace my-workspace SHARED_API_KEY
+
+  # Delete from a script
+  afy secrets delete my-agent API_KEY --yes`,
 	Args: cobra.RangeArgs(1, 2),
 	RunE: runSecretsDelete,
 }
+
+var secretDeleteYes bool
 
 func runSecretsDelete(cmd *cobra.Command, args []string) error {
 	if err := checkAuth(); err != nil {
@@ -366,18 +375,16 @@ func runSecretsDelete(cmd *cobra.Command, args []string) error {
 		key = args[1]
 	}
 
-	// Confirm
+	owner := fmt.Sprintf("agent '%s'", target)
 	if workspaceFlag != "" {
-		output.Warning.Printf("Delete secret '%s' from workspace '%s'? [y/N] ", key, target)
-	} else {
-		output.Warning.Printf("Delete secret '%s' from agent '%s'? [y/N] ", key, target)
+		owner = fmt.Sprintf("workspace '%s'", target)
 	}
-
-	var confirm string
-	_, _ = fmt.Scanln(&confirm)
-	if strings.ToLower(confirm) != "y" {
-		output.PrintInfo("Cancelled")
-		return output.Result(map[string]interface{}{"key": key, "deleted": false})
+	if err := confirmDestructive(secretDeleteYes, destructiveAsk{
+		what:   fmt.Sprintf("secret '%s' from %s", key, owner),
+		prompt: fmt.Sprintf("Delete secret '%s' from %s? [y/N] ", key, owner),
+		accept: yesAnswer,
+	}); err != nil {
+		return err
 	}
 
 	sp := output.NewSpinner("Deleting secret...")
@@ -406,6 +413,7 @@ func init() {
 	secretsListCmd.Flags().StringVarP(&workspaceFlag, "workspace", "w", "", "Workspace name (for workspace-scoped secrets)")
 	secretsSetCmd.Flags().StringVarP(&workspaceFlag, "workspace", "w", "", "Workspace name (for workspace-scoped secrets)")
 	secretsDeleteCmd.Flags().StringVarP(&workspaceFlag, "workspace", "w", "", "Workspace name (for workspace-scoped secrets)")
+	secretsDeleteCmd.Flags().BoolVarP(&secretDeleteYes, "yes", "y", false, "Delete without asking")
 
 	secretsCmd.AddCommand(secretsListCmd)
 	secretsCmd.AddCommand(secretsSetCmd)

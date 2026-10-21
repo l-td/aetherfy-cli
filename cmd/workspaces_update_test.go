@@ -67,7 +67,7 @@ func TestWorkspaceRefusalsPrintTheServersSentence(t *testing.T) {
 			"A workspace named 'acme' already exists.", []string{"workspaces", "update", "invoices", "--name", "acme"}},
 		{"the last workspace", "DELETE", "/workspaces/default", 409, "WORKSPACE_IS_LAST",
 			"'default' is your only workspace; every agent and collection lives in one, so it can't be deleted.",
-			[]string{"workspaces", "delete", "default", "--force"}},
+			[]string{"workspaces", "delete", "default", "--yes"}},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			cp := newFakeCP(t)

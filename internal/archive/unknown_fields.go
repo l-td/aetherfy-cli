@@ -99,19 +99,14 @@ func (e *UnknownFieldsError) Error() string {
 	return "aetherfy.yaml: " + strings.Join(e.Clauses, "; ")
 }
 
-// PlatformFields are the keys that LEFT aetherfy.yaml for the platform: the
-// agent's name, description and workspace are set with `afy update` or the
-// dashboard. The control plane refuses a file declaring one, with a sentence
-// saying where that property is set now (shared/config_parser.py
-// PLATFORM_FIELDS). That sentence has one owner: the CLI lets these keys
-// through to the server rather than refusing them in words of its own.
-// Held to PLATFORM_FIELDS' keys by TestPlatformFieldsEqualTheControlPlanes.
-var PlatformFields = []string{"description", "name", "workspace"}
-
 // CheckUnknownFields refuses aetherfy.yaml bytes that name a key outside
 // KnownFields, at any depth, with the server's wording and suggestion. Only
 // NAMES are checked: values, and fields left out, are the server's business
 // (a field absent from the file keeps the value set elsewhere).
+//
+// A top-level key the PLATFORM owns (PlatformFields) is not checked here: it is
+// not unknown, it is refused in its own words by CheckPlatformFields, which
+// CheckConfigKeys runs first.
 //
 // Bytes that are not a YAML mapping pass through: the decode reports those.
 func CheckUnknownFields(data []byte) error {
@@ -144,7 +139,7 @@ func walkUnknown(n *yaml.Node, known FieldSet, path []string, clauses *[]string)
 		}
 		name := key.Value
 		if len(path) == 0 && isPlatformField(name) {
-			continue // the server's to refuse, in its words (PlatformFields)
+			continue // refused in the control plane's words by CheckPlatformFields
 		}
 		sub, ok := known[name]
 		if !ok {
@@ -159,7 +154,7 @@ func walkUnknown(n *yaml.Node, known FieldSet, path []string, clauses *[]string)
 
 func isPlatformField(name string) bool {
 	for _, f := range PlatformFields {
-		if f == name {
+		if f.Key == name {
 			return true
 		}
 	}

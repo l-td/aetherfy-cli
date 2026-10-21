@@ -89,7 +89,6 @@ func runLogin(cmd *cobra.Command, args []string) error {
 		APIKey: apiKey,
 		UserID: userInfo.UserID,
 		Email:  userInfo.Email,
-		Tier:   userInfo.Tier,
 	}
 
 	if err := creds.Save(); err != nil {

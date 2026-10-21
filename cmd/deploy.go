@@ -90,12 +90,14 @@ var promptYesNo = func(question string) bool {
 	return strings.EqualFold(strings.TrimSpace(answer), "y")
 }
 
-// isUnknownFields reports a local aetherfy.yaml refused for naming a key the
-// server does not accept -- a file that exists, so the "create one" help that
-// follows other validation failures does not apply.
-func isUnknownFields(err error) bool {
+// isRefusedKeys reports a local aetherfy.yaml refused for naming a key the
+// server does not accept (one it does not declare, or one the platform owns)
+// -- a file that exists, so the "create one" help that follows other
+// validation failures does not apply.
+func isRefusedKeys(err error) bool {
 	var uf *archive.UnknownFieldsError
-	return errors.As(err, &uf)
+	var pf *archive.PlatformFieldsError
+	return errors.As(err, &uf) || errors.As(err, &pf)
 }
 
 // handleDeployResult post-processes the first deploy attempt for the D2 Part 6
@@ -193,7 +195,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	if err := archive.ValidateAetherfyConfig(absPath); err != nil {
 		output.PrintError("%v", err)
-		if isUnknownFields(err) {
+		if isRefusedKeys(err) {
 			// The file exists and names a key the server would refuse: the
 			// sentence above says which.
 			os.Exit(1)
@@ -419,7 +421,7 @@ func runDeployFromGitHub(client *api.Client, agent *api.Agent, repoRef string) e
 	// Validate aetherfy.yaml exists in the clone
 	if err := archive.ValidateAetherfyConfig(tmpDir); err != nil {
 		output.PrintError("%v", err)
-		if !isUnknownFields(err) {
+		if !isRefusedKeys(err) {
 			output.Println("")
 			output.Println("The repository must contain an aetherfy.yaml file.")
 		}

@@ -76,7 +76,7 @@ func ParseAetherfyConfig(dir string) (*AetherfyConfig, error) {
 		return nil, fmt.Errorf("failed to parse aetherfy.yaml: %w", err)
 	}
 	// After the decode, so a file that is not YAML at all keeps its own error.
-	if err := CheckUnknownFields(data); err != nil {
+	if err := CheckConfigKeys(data); err != nil {
 		return nil, err
 	}
 	return &cfg, nil

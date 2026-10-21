@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const base = "name: typo-agent\nruntime: python3.11\n"
+const base = "runtime: python3.11\n"
 
 func refusal(t *testing.T, yamlText string) string {
 	t.Helper()
@@ -148,13 +148,47 @@ func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 // one side accepts what the other refuses. Live against the sibling checkout
 // like the other control-plane guards: skipped where there is none, FAILED
 // where cperrors.RequireEnv says there must be (the e2e nightly).
-func TestAPlatformFieldPassesThroughAndATypoOfOneDoesNot(t *testing.T) {
-	for _, key := range PlatformFields {
-		assert.NoError(t, CheckUnknownFields([]byte(key+": x\nruntime: python3.11\n")),
-			"%s: is the server's to refuse, in its own words", key)
+func TestAPlatformKeyIsNotAnUnknownFieldAndATypoOfOneIs(t *testing.T) {
+	for _, f := range PlatformFields {
+		assert.NoError(t, CheckUnknownFields([]byte(f.Key+": x\nruntime: python3.11\n")),
+			"%s: is refused by CheckPlatformFields, in its own words, not as an unknown field", f.Key)
 	}
 	assert.Error(t, CheckUnknownFields([]byte("nmae: x\nruntime: python3.11\n")), "a typo is still refused here")
-	assert.Error(t, CheckUnknownFields([]byte("spawn:\n  name: x\n")), "only TOP-LEVEL keys pass through")
+	assert.Error(t, CheckUnknownFields([]byte("spawn:\n  name: x\n")), "only TOP-LEVEL keys are the platform's")
+}
+
+// The sentence is the control plane's, word for word
+// (tests/unit/shared/test_yaml_owns_how_the_agent_runs.py there pins the same text).
+func TestAPlatformKeyIsRefusedWithTheControlPlanesSentence(t *testing.T) {
+	err := CheckConfigKeys([]byte("workspace: b\nname: a\nruntime: python3.11\n"))
+	require.Error(t, err)
+	var pf *PlatformFieldsError
+	require.True(t, errors.As(err, &pf), "%T", err)
+	assert.Equal(t, []string{"name", "workspace"}, pf.Keys, "in PLATFORM_FIELDS' order, not the file's")
+	assert.Equal(t, "aetherfy.yaml says how the agent runs, not what it is called or where it lives. Remove "+
+		"`name:` (the agent's name is set on the platform: rename it with `afy update <agent> --name <new>` or in the dashboard); "+
+		"`workspace:` (the workspace an agent lives in is set on the platform: move it with "+
+		"`afy update <agent> --workspace <name>` or the dashboard's Move).", err.Error())
+
+	assert.Contains(t, CheckConfigKeys([]byte("description: d\nruntime: python3.11\n")).Error(), "`description:` (the agent's description")
+}
+
+func TestOnlyTheTopLevelIsThePlatformsAndAMissingKeyPasses(t *testing.T) {
+	assert.NoError(t, CheckPlatformFields([]byte("runtime: python3.11\nspawn:\n  enabled: true\n")))
+	assert.NoError(t, CheckPlatformFields([]byte("runtime: python3.11\nspawn:\n  name: x\n")), "nested is the unknown-field walk's")
+	assert.NoError(t, CheckPlatformFields([]byte("- not\n- a mapping\n")), "the decode reports that")
+	assert.NoError(t, CheckPlatformFields([]byte("")))
+}
+
+// A platform key is reported before an unknown one, as the control plane does
+// (it refuses these before it validates the model).
+func TestAPlatformKeyIsReportedBeforeAnUnknownField(t *testing.T) {
+	err := CheckConfigKeys([]byte("name: a\nschedul: x\nruntime: python3.11\n"))
+	var pf *PlatformFieldsError
+	require.True(t, errors.As(err, &pf), "%T %v", err, err)
+	assert.NotContains(t, err.Error(), "schedul")
+	var uf *UnknownFieldsError
+	require.True(t, errors.As(CheckConfigKeys([]byte("schedul: x\nruntime: python3.11\n")), &uf))
 }
 
 func TestKnownFieldsEqualTheControlPlaneModel(t *testing.T) {
@@ -168,8 +202,13 @@ func TestKnownFieldsEqualTheControlPlaneModel(t *testing.T) {
 	// CLI should have caught; one fewer would refuse it in the CLI's words,
 	// not the server's. Part of this comparison (not a test of its own) so the
 	// e2e nightly, which lists this test, runs it.
-	assert.Equal(t, src.PlatformFields, PlatformFields,
-		"archive.PlatformFields and the control plane's PLATFORM_FIELDS (%s) disagree", cpyaml.SourcePath)
+	var cpPlatform []PlatformField
+	for _, f := range src.PlatformFields {
+		cpPlatform = append(cpPlatform, PlatformField{Key: f.Key, Where: f.Where})
+	}
+	assert.Equal(t, cpPlatform, PlatformFields,
+		"archive.PlatformFields and the control plane's PLATFORM_FIELDS (%s) disagree: the keys, the sentences "+
+			"saying where each is set, or their order (the refusal lists them in that order)", cpyaml.SourcePath)
 
 	// What a field left out of the file becomes on deploy: `afy diff` compares
 	// an omitted field with yamldiff.Defaults, a copy of the model's defaults.
@@ -201,6 +240,15 @@ func TestUnknownFieldWordingEqualsTheControlPlanes(t *testing.T) {
 	assert.Equal(t, py(src.Message), UnknownFieldMessage, "the unknown-field sentence")
 	assert.Equal(t, py(src.Suggestion), UnknownFieldSuggestion, "the did-you-mean clause")
 	assert.Equal(t, src.SuggestionCutoff, UnknownFieldSuggestionCutoff, "the suggestion cutoff")
+}
+
+// The platform-key refusal's frame, clause and joiner are the control plane's
+// (PLATFORM_FIELDS_REFUSAL, PLATFORM_FIELD_CLAUSE, PLATFORM_FIELD_JOINER).
+func TestPlatformFieldWordingEqualsTheControlPlanes(t *testing.T) {
+	src := controlPlaneSource(t)
+	assert.Equal(t, strings.NewReplacer("{fields}", "%s").Replace(src.PlatformRefusal), PlatformFieldsRefusal, "the refusal sentence")
+	assert.Equal(t, strings.NewReplacer("{field}", "%s", "{where}", "%s").Replace(src.PlatformClause), PlatformFieldClause, "one field's clause")
+	assert.Equal(t, src.PlatformJoiner, PlatformFieldJoiner, "the joiner")
 }
 
 // cpRootForPair is the control-plane checkout controlPlaneSource read.
