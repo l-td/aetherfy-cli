@@ -100,6 +100,10 @@ func printUnprinted(err error) {
 	if !ok && errors.As(err, &in) {
 		code = usageErrorCode
 	}
+	var cancelled *cancelledError
+	if !ok && errors.As(err, &cancelled) {
+		code = cancelledCode
+	}
 	if !output.IsJSON() && (jsonOut || argsAskForJSON(os.Args[1:])) {
 		// A flag error stops cobra before PersistentPreRunE: the run has not
 		// been switched yet, but --json was typed.

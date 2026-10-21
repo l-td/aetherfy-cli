@@ -11,7 +11,7 @@ import (
 
 // cancelledError is a destructive command the person declined at its prompt.
 // Nothing was done, and the command did not do what it was asked: exit 1, with
-// the error document under --json. It is never a success, because a script that
+// the error document under --json (code CLI_CANCELLED, no status). It is never a success, because a script that
 // sees exit 0 believes the delete happened.
 type cancelledError struct{ reason string }
 

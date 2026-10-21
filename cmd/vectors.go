@@ -55,6 +55,11 @@ const (
 // is not one of the control plane's codes.
 const usageErrorCode = "CLI_USAGE_ERROR"
 
+// cancelledCode is the code --json gives a question the person answered no (exit
+// 1): the command did not do what it was asked, and no server wrote the refusal.
+// A script branches on it, not on the sentence.
+const cancelledCode = "CLI_CANCELLED"
+
 // inputError is input refused before any request was sent: exit 2.
 type inputError struct{ msg string }
 
@@ -288,6 +293,10 @@ func (r *vecRun) fail(err error) int {
 		}
 		if out.Error.Code == "" && code == exitInputRefused {
 			out.Error.Code = usageErrorCode
+		}
+		var cancelled *cancelledError
+		if out.Error.Code == "" && errors.As(err, &cancelled) {
+			out.Error.Code = cancelledCode
 		}
 		var upsert *upsertFailure
 		if errors.As(err, &upsert) {
