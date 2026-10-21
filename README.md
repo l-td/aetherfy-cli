@@ -190,7 +190,7 @@ afy deploy --target staging
 |---------|-------------|
 | `afy list` | List all agents |
 | `afy create <name>` | Create an agent in a workspace (`--workspace`, asked when the account has several; `--description`); link a folder to it with `afy init --agent <name>` |
-| `afy delete <name>` | Delete an agent and all its deployments |
+| `afy delete <name>` | Delete an agent and all its deployments (asks you to type its name; `--yes` from a script. Declining exits 1) |
 | `afy status <name>` | Show detailed agent status |
 | `afy stop <name>` | Pause a running agent |
 | `afy start <name>` | Resume a paused agent |
@@ -257,7 +257,7 @@ Workspaces group related agents so they can share secrets and vector collections
 | `afy workspaces agents <name>` | List the agents that live in a workspace and, separately, the agents of other workspaces granted access to it (`--json`: `{"living": [...], "granted": [...]}`) |
 | `afy workspaces update <name> --name <new>` | Rename a workspace (its agents keep running; code naming the old name stops finding it) |
 | `afy workspaces update <name> --description <text>` | Change a workspace's description |
-| `afy workspaces delete <name>` | Delete an empty workspace and its secrets (your last workspace cannot be deleted) |
+| `afy workspaces delete <name>` | Delete an empty workspace and its secrets (your last workspace cannot be deleted). Asks you to type its name; `--yes` from a script. Declining exits 1 |
 
 ### Vectors
 
@@ -329,7 +329,7 @@ Secrets can be scoped to an agent or to a workspace. Agent-scoped values overrid
 | `afy secrets set <agent> KEY=value [KEY2=value2 ...]` | Set one or more secrets |
 | `afy secrets set <agent> KEY --stdin` | Read a secret value from stdin |
 | `afy secrets set --workspace <name> KEY=value` | Set a workspace-scoped secret |
-| `afy secrets delete <agent> KEY` | Delete a secret |
+| `afy secrets delete <agent> KEY` | Delete a secret (asks `[y/N]`; `--yes` from a script. Declining exits 1) |
 
 Keys starting with `AETHERFY_` are reserved.
 
