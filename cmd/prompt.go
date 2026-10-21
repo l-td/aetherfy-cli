@@ -139,14 +139,3 @@ func (p *prompter) chooseMany(label string, items []string, max int) ([]int, err
 	}
 	return picked, nil
 }
-
-// confirm asks a yes/no question, defaulting to no.
-func (p *prompter) confirm(label string) (bool, error) {
-	fmt.Fprintf(p.out, "%s [y/N]: ", label)
-	answer, err := p.readLine()
-	if err != nil {
-		return false, err
-	}
-	a := strings.ToLower(answer)
-	return a == "y" || a == "yes", nil
-}

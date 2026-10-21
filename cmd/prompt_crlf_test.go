@@ -26,7 +26,7 @@ func TestPrompterReadsCRLFAnswers(t *testing.T) {
 	if s, err := p.text("Agent name", "x"); err != nil || s != "invoice-parser" {
 		t.Errorf(`"invoice-parser\r\n" = %q, %v`, s, err)
 	}
-	if yes, err := p.confirm("Overwrite"); err != nil || !yes {
-		t.Errorf(`"y\r\n" = %v, %v; want yes`, yes, err)
+	if err := askToConfirm(destructiveAsk{prompt: "Overwrite [y/N]: ", accept: yesAnswer}, p); err != nil {
+		t.Errorf(`"y\r\n" must confirm: %v`, err)
 	}
 }
