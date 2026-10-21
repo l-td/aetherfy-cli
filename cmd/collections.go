@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -312,18 +311,14 @@ required when stdin is not a terminal, so a script cannot delete by accident.`,
 var collectionDeleteYes bool
 
 func collectionsDelete(r *vecRun, name string, yes bool, stdin io.Reader, interactive bool) int {
-	if !yes {
-		if !interactive {
-			return r.fail(refuse("not deleting collection '%s': stdin is not a terminal, so nobody "+
-				"can confirm. Pass --yes to delete without the question.", name))
-		}
-		// The question goes to stderr, so --json keeps stdout to one object.
-		fmt.Fprintf(r.stderr, "This permanently deletes collection '%s' and every point in it.\n", name)
-		fmt.Fprint(r.stderr, "Type the collection name to confirm: ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		if strings.TrimSpace(line) != name {
-			return r.fail(refuse("deletion cancelled: the name typed did not match"))
-		}
+	if err := confirmDestructiveOn(yes, destructiveAsk{
+		what:     fmt.Sprintf("collection '%s' and every point in it", name),
+		warn:     []string{fmt.Sprintf("This permanently deletes collection '%s' and every point in it.", name)},
+		prompt:   "Type the collection name to confirm: ",
+		accept:   typedName(name),
+		mismatch: "the name typed did not match",
+	}, interactive, vecPrompter(r, stdin)); err != nil {
+		return r.fail(err)
 	}
 	client, code := r.open()
 	if code != 0 {

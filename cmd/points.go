@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -483,9 +482,9 @@ func pointsDelete(r *vecRun, collection string, rawIDs []string, filterRaw strin
 		return r.fail(refuse("not deleting: an empty --filter matches every point in '%s'. "+
 			"To delete the whole collection, run afy collections delete %s.", collection, collection))
 	}
-	if !yes && !interactive {
-		return r.fail(refuse("not deleting points from '%s': stdin is not a terminal, so nobody "+
-			"can confirm. Pass --yes to delete without the question.", collection))
+	pointsWhat := fmt.Sprintf("points from collection '%s'", collection)
+	if err := refuseUnconfirmable(yes, interactive, pointsWhat); err != nil {
+		return r.fail(err)
 	}
 	client, code := r.open()
 	if code != 0 {
@@ -515,10 +514,12 @@ func pointsDelete(r *vecRun, collection string, rawIDs []string, filterRaw strin
 
 	if n > 0 {
 		if !yes {
-			fmt.Fprint(r.stderr, "Type the collection name to confirm: ")
-			line, _ := bufio.NewReader(stdin).ReadString('\n')
-			if strings.TrimSpace(line) != collection {
-				return r.fail(refuse("deletion cancelled: the name typed did not match"))
+			if err := askToConfirm(destructiveAsk{
+				prompt:   "Type the collection name to confirm: ",
+				accept:   typedName(collection),
+				mismatch: "the name typed did not match",
+			}, vecPrompter(r, stdin)); err != nil {
+				return r.fail(err)
 			}
 		}
 		if err := client.DeletePoints(collection, ids, filter); err != nil {

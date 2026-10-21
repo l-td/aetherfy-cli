@@ -12,7 +12,8 @@ import (
 // AetherfyConfig represents the parsed aetherfy.yaml file.
 //
 // ITS YAML TAGS ARE THE CLI'S FIELD SET. A key in the file that no tag here
-// names is refused before upload (CheckUnknownFields), and the set is compared
+// names is refused before upload (CheckConfigKeys, which also refuses the keys
+// the platform owns: CheckPlatformFields), and the set is compared
 // with the control plane's AetherfyConfig model wherever that checkout exists
 // (TestKnownFieldsEqualTheControlPlaneModel). So every field the server accepts
 // has a field here, including the ones the CLI never reads.

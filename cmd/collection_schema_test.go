@@ -261,7 +261,7 @@ func TestSchemaSetRefusesABadFileBeforeAnyRequest(t *testing.T) {
 func TestSchemaDelete(t *testing.T) {
 	s, st := schemaFake(t, "v2")
 	_, stderr, code := runAfyProcess(t, nil, schemaEnv(s), "collections", "schema", "delete", "articles", "--workspace", "research")
-	if code != exitInputRefused || len(s.got()) != 0 || !strings.Contains(stderr, "Pass --yes") {
+	if code != exitInputRefused || len(s.got()) != 0 || !strings.Contains(stderr, "This deletes the schema of collection 'articles' (its points stay); pass --yes to confirm without a prompt.") {
 		t.Errorf("no terminal, no --yes: exit %d, %d requests, stderr %q", code, len(s.got()), stderr)
 	}
 	stdout, stderr, err := runAfy(t, nil, "collections", "schema", "delete", "articles", "--workspace", "research", "--yes")
@@ -273,6 +273,20 @@ func TestSchemaDelete(t *testing.T) {
 	}
 	if st.etag != "" || !strings.Contains(stdout, "Schema of collection 'articles' deleted in workspace 'research'") {
 		t.Errorf("stdout %q, store at %q", stdout, st.etag)
+	}
+}
+
+func TestSchemaDeleteDeclinedAtThePromptExitsOneAndDeletesNothing(t *testing.T) {
+	s, st := schemaFake(t, "v2")
+	r, stdout, stderr, connects := s.run("research", true)
+	if code := schemaDelete(r, "articles", false, strings.NewReader("nope\n"), true); code != exitRequestFailed {
+		t.Errorf("exit %d, want %d: a cancelled delete is a failure, never a success", code, exitRequestFailed)
+	}
+	if len(s.got()) != 0 || *connects != 0 || st.etag != "v2" {
+		t.Error("a declined delete resolved, sent or changed something")
+	}
+	if stdout.Len() != 0 || !strings.Contains(stderr.String(), `"message":"Cancelled: the name typed did not match"`) {
+		t.Errorf("stdout %q, stderr %q", stdout.String(), stderr.String())
 	}
 }
 

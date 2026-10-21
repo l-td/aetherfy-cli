@@ -14,7 +14,6 @@ package cmd
 // offer it, and these commands are the dashboard's parity.
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"errors"
@@ -268,17 +267,14 @@ without a terminal).`,
 var schemaDeleteYes bool
 
 func schemaDelete(r *vecRun, collection string, yes bool, stdin io.Reader, interactive bool) int {
-	if !yes {
-		if !interactive {
-			return r.fail(refuse("not deleting the schema of collection '%s': stdin is not a terminal, so nobody "+
-				"can confirm. Pass --yes to delete without the question.", collection))
-		}
-		fmt.Fprintf(r.stderr, "This deletes the schema of collection '%s'. Its points stay.\n", collection)
-		fmt.Fprint(r.stderr, "Type the collection name to confirm: ")
-		line, _ := bufio.NewReader(stdin).ReadString('\n')
-		if strings.TrimSpace(line) != collection {
-			return r.fail(refuse("deletion cancelled: the name typed did not match"))
-		}
+	if err := confirmDestructiveOn(yes, destructiveAsk{
+		what:     fmt.Sprintf("the schema of collection '%s' (its points stay)", collection),
+		warn:     []string{fmt.Sprintf("This deletes the schema of collection '%s'. Its points stay.", collection)},
+		prompt:   "Type the collection name to confirm: ",
+		accept:   typedName(collection),
+		mismatch: "the name typed did not match",
+	}, interactive, vecPrompter(r, stdin)); err != nil {
+		return r.fail(err)
 	}
 	client, code := r.open()
 	if code != 0 {

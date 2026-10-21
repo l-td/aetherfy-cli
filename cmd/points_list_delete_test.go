@@ -313,12 +313,15 @@ func TestPointsDeleteAsksUnlessYes(t *testing.T) {
 	})
 	t.Run("typing another name deletes nothing", func(t *testing.T) {
 		s := deleteServer(t, nil, 3)
-		r, _, _, _ := s.run("default", false)
-		if code := pointsDelete(r, "articles", nil, langFilter, false, strings.NewReader("article\n"), true); code != exitInputRefused {
-			t.Errorf("exit %d", code)
+		r, _, stderr, _ := s.run("default", false)
+		if code := pointsDelete(r, "articles", nil, langFilter, false, strings.NewReader("article\n"), true); code != exitRequestFailed {
+			t.Errorf("exit %d, want %d: a cancelled delete is a failure, never a success", code, exitRequestFailed)
 		}
 		if got := paths(s.got()); got != "POST /points/count" {
 			t.Errorf("requests = %s; a mismatched name must not delete", got)
+		}
+		if !strings.Contains(stderr.String(), "Cancelled") {
+			t.Errorf("stderr must say Cancelled: %q", stderr.String())
 		}
 	})
 	t.Run("no terminal and no --yes is refused before any request", func(t *testing.T) {
@@ -331,8 +334,8 @@ func TestPointsDeleteAsksUnlessYes(t *testing.T) {
 			t.Error("a refused delete resolved, sent or printed something")
 		}
 		e := decode(t, stderr.String())["error"].(map[string]interface{})
-		if msg, _ := e["message"].(string); !strings.Contains(msg, "stdin is not a terminal") || !strings.Contains(msg, "--yes") {
-			t.Errorf("the refusal should say why and how to proceed: %v", e)
+		if msg, _ := e["message"].(string); msg != "This deletes points from collection 'articles'; pass --yes to confirm without a prompt." {
+			t.Errorf("the refusal should be the one sentence every delete gives: %v", e)
 		}
 	})
 	t.Run("nothing matching deletes nothing and asks nothing", func(t *testing.T) {

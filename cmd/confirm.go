@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/output"
@@ -34,25 +36,25 @@ type destructiveAsk struct {
 	mismatch string
 }
 
-// confirmDestructive is the ONE confirmation every destructive command makes
-// (afy delete, afy secrets delete, afy workspaces delete). yes skips it.
+// refuseUnconfirmable is the refusal of a destructive command that cannot be
+// answered: no terminal and no --yes. A usage error (exit 2, CLI_USAGE_ERROR),
+// raised BEFORE anything is asked or sent, because nobody can answer and
+// asking would read nothing, which a script would take for an answer.
+func refuseUnconfirmable(yes, interactive bool, what string) error {
+	if yes || interactive {
+		return nil
+	}
+	return refuse("This deletes %s; pass --yes to confirm without a prompt.", what)
+}
+
+// askToConfirm asks the question and reads the answer from p.
 //
-//   - No terminal and no --yes: refused BEFORE anything is asked, as a usage
-//     error (exit 2, CLI_USAGE_ERROR). Nobody can answer, so asking would read
-//     nothing and a script would take the silence for an answer.
 //   - A person answers no: a cancelledError (exit 1).
 //   - Input that ends before an answer: refused, exit 2, nothing done (the
 //     prompter's rule for every question).
-func confirmDestructive(yes bool, ask destructiveAsk) error {
-	if yes {
-		return nil
-	}
-	if !stdinIsTerminal() {
-		return refuse("This deletes %s; pass --yes to confirm without a prompt.", ask.what)
-	}
-	p := newPrompter()
+func askToConfirm(ask destructiveAsk, p *prompter) error {
 	for _, line := range ask.warn {
-		output.Warning.Println(line)
+		output.Warning.Fprintln(p.out, line)
 	}
 	fmt.Fprint(p.out, ask.prompt)
 	line, err := p.readLine()
@@ -63,6 +65,38 @@ func confirmDestructive(yes bool, ask destructiveAsk) error {
 		return &cancelledError{reason: ask.mismatch}
 	}
 	return nil
+}
+
+// confirmDestructiveOn is the whole confirmation: --yes skips it, a run that
+// cannot be answered is refused, anything else is asked.
+func confirmDestructiveOn(yes bool, ask destructiveAsk, interactive bool, p *prompter) error {
+	if yes {
+		return nil
+	}
+	if err := refuseUnconfirmable(yes, interactive, ask.what); err != nil {
+		return err
+	}
+	return askToConfirm(ask, p)
+}
+
+// confirmDestructive is the confirmation every destructive command makes
+// (afy delete, afy secrets delete, afy workspaces delete), asking on the
+// process's terminal.
+func confirmDestructive(yes bool, ask destructiveAsk) error {
+	if yes {
+		return nil
+	}
+	if err := refuseUnconfirmable(yes, stdinIsTerminal(), ask.what); err != nil {
+		return err
+	}
+	return askToConfirm(ask, newPrompter())
+}
+
+// vecPrompter is the prompter of a vector command: the question goes to
+// stderr, so --json keeps stdout to one object, and the answer is read from
+// the command's stdin.
+func vecPrompter(r *vecRun, stdin io.Reader) *prompter {
+	return &prompter{in: bufio.NewReader(stdin), out: r.stderr}
 }
 
 // typedName accepts only the exact name.

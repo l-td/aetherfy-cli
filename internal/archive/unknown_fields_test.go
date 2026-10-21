@@ -197,11 +197,13 @@ func TestKnownFieldsEqualTheControlPlaneModel(t *testing.T) {
 		"archive.AetherfyConfig's yaml tags and the control plane's %s (%s) disagree. Add the field to the "+
 			"struct (typed `any` if the CLI does not read it) -- and to docs-site's aetherfy-yaml schema.",
 		cpyaml.RootModel, cpyaml.SourcePath)
-	// The keys passed through for the server to refuse are exactly the
-	// control plane's PLATFORM_FIELDS: one more here would upload a typo the
-	// CLI should have caught; one fewer would refuse it in the CLI's words,
-	// not the server's. Part of this comparison (not a test of its own) so the
-	// e2e nightly, which lists this test, runs it.
+	// The platform-owned keys the CLI refuses before the upload are exactly the
+	// control plane's PLATFORM_FIELDS, with the same "where it is set" sentence
+	// and in the same order (the refusal lists them in that order): one more
+	// here would refuse a key the server accepts; one fewer would upload a file
+	// the server refuses; a changed sentence would say something the server
+	// does not. Part of this comparison (not a test of its own) so the e2e
+	// nightly, which lists this test, runs it.
 	var cpPlatform []PlatformField
 	for _, f := range src.PlatformFields {
 		cpPlatform = append(cpPlatform, PlatformField{Key: f.Key, Where: f.Where})
@@ -240,15 +242,14 @@ func TestUnknownFieldWordingEqualsTheControlPlanes(t *testing.T) {
 	assert.Equal(t, py(src.Message), UnknownFieldMessage, "the unknown-field sentence")
 	assert.Equal(t, py(src.Suggestion), UnknownFieldSuggestion, "the did-you-mean clause")
 	assert.Equal(t, src.SuggestionCutoff, UnknownFieldSuggestionCutoff, "the suggestion cutoff")
-}
 
-// The platform-key refusal's frame, clause and joiner are the control plane's
-// (PLATFORM_FIELDS_REFUSAL, PLATFORM_FIELD_CLAUSE, PLATFORM_FIELD_JOINER).
-func TestPlatformFieldWordingEqualsTheControlPlanes(t *testing.T) {
-	src := controlPlaneSource(t)
-	assert.Equal(t, strings.NewReplacer("{fields}", "%s").Replace(src.PlatformRefusal), PlatformFieldsRefusal, "the refusal sentence")
-	assert.Equal(t, strings.NewReplacer("{field}", "%s", "{where}", "%s").Replace(src.PlatformClause), PlatformFieldClause, "one field's clause")
-	assert.Equal(t, src.PlatformJoiner, PlatformFieldJoiner, "the joiner")
+	// The platform-key refusal's frame, clause and joiner (PLATFORM_FIELDS_REFUSAL,
+	// PLATFORM_FIELD_CLAUSE, PLATFORM_FIELD_JOINER). Here, not in a test of its own,
+	// because the e2e nightly runs the comparisons by name and lists this test
+	// (TestTheNightlyRunsEveryControlPlaneComparison holds that list to the code).
+	assert.Equal(t, strings.NewReplacer("{fields}", "%s").Replace(src.PlatformRefusal), PlatformFieldsRefusal, "the platform-key refusal sentence")
+	assert.Equal(t, strings.NewReplacer("{field}", "%s", "{where}", "%s").Replace(src.PlatformClause), PlatformFieldClause, "one platform field's clause")
+	assert.Equal(t, src.PlatformJoiner, PlatformFieldJoiner, "what joins the clauses")
 }
 
 // cpRootForPair is the control-plane checkout controlPlaneSource read.
