@@ -19,13 +19,17 @@ const (
 )
 
 func deletedRow(id, name, workspace, status, expires string) string {
+	return deletedRowBy(id, name, workspace, status, expires, `{"kind":"person"}`)
+}
+
+func deletedRowBy(id, name, workspace, status, expires, by string) string {
 	ws := `"` + workspace + `"`
 	exp := `"` + expires + `"`
 	if expires == "" {
 		exp = "null"
 	}
 	return `{"id":"` + id + `","name":"` + name + `","workspace":` + ws + `,"workspace_id":"w-1","regions":["us-east-1","eu-central-1"],` +
-		`"points":120,"bytes":3221225472,"deleted_at":"2026-10-20T10:00:00.000Z","expires_at":` + exp + `,"status":"` + status + `","restore":null}`
+		`"points":120,"bytes":3221225472,"deleted_at":"2026-10-20T10:00:00.000Z","deleted_by":` + by + `,"expires_at":` + exp + `,"status":"` + status + `","restore":null}`
 }
 
 const planAllowance = `{"recovery_days":30,"restores_per_month":10,"restores_used":3,"restores_left":7,` +
@@ -193,16 +197,16 @@ func TestRestoreByNameRefusesNoMatchAndAmbiguityWithoutSendingAnything(t *testin
 		return 202, startedBody
 	})
 	r, _, stderr, _ := s.run("research", false)
-	if code := collectionsRestore(r, "missing", "", false); code != exitRequestFailed {
-		t.Errorf("no match: exit %d", code)
+	if code := collectionsRestore(r, "missing", "", false); code != exitInputRefused {
+		t.Errorf("no match: exit %d, want %d (input refused before anything was sent)", code, exitInputRefused)
 	}
 	if !strings.Contains(stderr.String(), "no deleted collection named 'missing' in workspace 'research'") ||
 		!strings.Contains(stderr.String(), "afy collections deleted") {
 		t.Errorf("stderr %q", stderr.String())
 	}
 	r2, _, stderr2, _ := s.run("research", false)
-	if code := collectionsRestore(r2, "notes", "", false); code != exitRequestFailed {
-		t.Errorf("ambiguous: exit %d", code)
+	if code := collectionsRestore(r2, "notes", "", false); code != exitInputRefused {
+		t.Errorf("ambiguous: exit %d, want %d (input refused before anything was sent)", code, exitInputRefused)
 	}
 	for _, want := range []string{"2 deleted collections", idNotes, idNotes2, "restore one by its id"} {
 		if !strings.Contains(stderr2.String(), want) {
@@ -219,7 +223,8 @@ func TestARestoreTheAPIRefusesExitsOneWithItsCodeAndSentence(t *testing.T) {
 	}{
 		{409, `{"error":{"code":"COLLECTION_NAME_TAKEN_FOR_RESTORE","message":"The name \"notes\" is in use in workspace \"research\". Restore it under another name with \"as\"."}}`, "COLLECTION_NAME_TAKEN_FOR_RESTORE"},
 		{410, `{"error":{"code":"COLLECTION_BACKUP_EXPIRED","message":"expired"}}`, "COLLECTION_BACKUP_EXPIRED"},
-		{429, `{"error":{"code":"COLLECTION_RESTORE_LIMIT_EXCEEDED","message":"Your plan allows 3 restores a month and 3 are used. The limit resets on 2026-11-01.","limit":"count","plan_limit":3,"used":3,"resets_at":"2026-11-01T00:00:00.000Z"}}`, "COLLECTION_RESTORE_LIMIT_EXCEEDED"},
+		{403, `{"error":{"code":"PLAN_LIMIT_EXCEEDED","message":"Your plan allows 3 restores a month and 3 are used. The limit resets on 2026-11-01.","upgrade_url":"/billing/upgrade","limit":"collection_restores_per_month","allowed":3,"current":3}}`, "PLAN_LIMIT_EXCEEDED"},
+		{409, `{"error":{"code":"COLLECTION_BACKUP_UNAVAILABLE","message":"The backup of this deleted collection could not be completed. Its data is kept, and support can retry it."}}`, "COLLECTION_BACKUP_UNAVAILABLE"},
 		{403, `{"error":{"code":"AUTH_AGENT_KEY_OUT_OF_SCOPE","message":"an agent key cannot do this"}}`, "AUTH_AGENT_KEY_OUT_OF_SCOPE"},
 	}
 	for _, c := range cases {
@@ -282,6 +287,58 @@ func TestRestoreWaitFollowsTheRestoreToItsEnd(t *testing.T) {
 				t.Errorf("want %q in:\nstdout %q\nstderr %q", c.in, stdout.String(), stderr.String())
 			}
 		})
+	}
+}
+
+func TestRestoreWaitBoundCountsTheTimeThatPassedNotTheTimeSlept(t *testing.T) {
+	// Every poll takes ten minutes to answer (a slow server): three polls are thirty minutes
+	// whatever was slept between them, and the bound is thirty minutes.
+	clock := shortWait(t, 30*time.Minute)
+	n := 0
+	s := newVecServer(t, func(r vecRequest) (int, string) {
+		if r.Method == "POST" {
+			return 202, startedBody
+		}
+		n++
+		clock.now = clock.now.Add(10 * time.Minute)
+		return 200, `{"id":"r-1","collection_id":"c-9","state":"running","regions_ready":1,"regions_total":2}`
+	})
+	r, _, stderr, _ := s.run("research", false)
+	if code := collectionsRestore(r, idNotes, "", true); code != exitStillPending {
+		t.Fatalf("exit %d, want %d (stderr %q)", code, exitStillPending, stderr.String())
+	}
+	if n > 3 {
+		t.Errorf("%d polls: the bound was passed after 30 minutes and it kept asking", n)
+	}
+	if !strings.Contains(stderr.String(), "still running") {
+		t.Errorf("stderr %q", stderr.String())
+	}
+}
+
+func TestDeletedSaysWhoDeletedIt(t *testing.T) {
+	s := newVecServer(t, func(vecRequest) (int, string) {
+		return 200, deletedList(
+			deletedRowBy(idNotes, "notes", "research", "ready", "", `{"kind":"agent","agent_id":"a-77"}`),
+			deletedRow(idNotes2, "drafts", "research", "ready", ""),
+		)
+	})
+	r, stdout, _, _ := s.run("research", false)
+	if code := collectionsDeleted(r); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	for _, want := range []string{"DELETED BY", "agent a-77", "person"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, stdout.String())
+		}
+	}
+	rj, jout, _, _ := s.run("research", true)
+	if code := collectionsDeleted(rj); code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	rows := decode(t, jout.String())["deleted_collections"].([]interface{})
+	by := rows[0].(map[string]interface{})["deleted_by"].(map[string]interface{})
+	if by["kind"] != "agent" || by["agent_id"] != "a-77" {
+		t.Errorf("deleted_by = %v", by)
 	}
 }
 

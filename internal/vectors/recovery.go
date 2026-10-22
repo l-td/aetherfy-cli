@@ -22,17 +22,25 @@ type RestoreProgress struct {
 	Error        string `json:"error,omitempty"`
 }
 
+// DeletedBy is who deleted the collection: a person (the dashboard, or an
+// account key), or an agent, by its id.
+type DeletedBy struct {
+	Kind    string `json:"kind"`
+	AgentID string `json:"agent_id,omitempty"`
+}
+
 // DeletedCollection is one entry of the deleted-collections list.
 type DeletedCollection struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Workspace   *string  `json:"workspace"`
-	WorkspaceID string   `json:"workspace_id"`
-	Regions     []string `json:"regions"`
-	Points      int64    `json:"points"`
-	Bytes       int64    `json:"bytes"`
-	DeletedAt   string   `json:"deleted_at"`
-	ExpiresAt   *string  `json:"expires_at"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Workspace   *string   `json:"workspace"`
+	WorkspaceID string    `json:"workspace_id"`
+	Regions     []string  `json:"regions"`
+	Points      int64     `json:"points"`
+	Bytes       int64     `json:"bytes"`
+	DeletedAt   string    `json:"deleted_at"`
+	DeletedBy   DeletedBy `json:"deleted_by"`
+	ExpiresAt   *string   `json:"expires_at"`
 	// Status is ready, backing_up, unavailable or restoring.
 	Status  string           `json:"status"`
 	Restore *RestoreProgress `json:"restore"`

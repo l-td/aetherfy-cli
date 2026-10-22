@@ -223,11 +223,22 @@ func TestCollectionsRegionsANoOpSendsNoChange(t *testing.T) {
 	}
 }
 
-func shortWait(t *testing.T, bound time.Duration) {
+// fakeClock is the clock the follow loops measure their bound on: it moves when
+// a test sleeps, and when a test says a poll took a while.
+type fakeClock struct{ now time.Time }
+
+func (c *fakeClock) Now() time.Time        { return c.now }
+func (c *fakeClock) Sleep(d time.Duration) { c.now = c.now.Add(d) }
+
+// shortWait bounds a follow loop to `bound` on a fake clock (one second per
+// poll interval) and returns the clock, for a test whose polls take time.
+func shortWait(t *testing.T, bound time.Duration) *fakeClock {
 	t.Helper()
-	b, i, s := operationWaitBound, operationPollInterval, operationSleep
-	operationWaitBound, operationPollInterval, operationSleep = bound, time.Second, func(time.Duration) {}
-	t.Cleanup(func() { operationWaitBound, operationPollInterval, operationSleep = b, i, s })
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	b, i, s, n := operationWaitBound, operationPollInterval, operationSleep, operationNow
+	operationWaitBound, operationPollInterval, operationSleep, operationNow = bound, time.Second, clock.Sleep, clock.Now
+	t.Cleanup(func() { operationWaitBound, operationPollInterval, operationSleep, operationNow = b, i, s, n })
+	return clock
 }
 
 func TestCollectionsRegionsWaitFollowsTheOperationToItsEnd(t *testing.T) {

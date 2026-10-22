@@ -14,7 +14,9 @@ package cmd
 //
 // A deleted collection is addressed by the id `deleted` shows. A name works as
 // a shorthand when exactly one deleted collection in the workspace had it; two
-// of the same name are told apart by id (this refuses and lists them).
+// of the same name are told apart by id (this refuses and lists them), and a
+// name nothing matches is refused too: both are input the command refused
+// before sending anything (exit 2, as a usage error).
 // Only a person's key may do this: an agent's key is refused 403.
 
 import (
@@ -37,9 +39,10 @@ var collectionsDeletedCmd = &cobra.Command{
 
 Each shows the id to restore it by, when it was deleted and until when it can be
 restored (your plan's window, counted from when its backup was ready), its size,
-and its status: ready, backing_up (its backup is still being taken), unavailable
-(it could not be taken and is being looked at) or restoring. The last line says
-what is left of your plan's restores this month.`,
+who deleted it (a person, or an agent by its id), and its status: ready, backing_up
+(its backup is still being taken), unavailable (it could not be completed; its data
+is kept and support can retry it) or restoring. The last line says what is left of
+your plan's restores this month.`,
 	Example: `  # What can I get back from the research workspace?
   afy collections deleted --workspace research
 
@@ -55,6 +58,7 @@ type deletedCollectionJSON struct {
 	ID        string                   `json:"id"`
 	Name      string                   `json:"name"`
 	DeletedAt string                   `json:"deleted_at"`
+	DeletedBy vectors.DeletedBy        `json:"deleted_by"`
 	ExpiresAt *string                  `json:"expires_at"`
 	Points    int64                    `json:"points"`
 	Bytes     int64                    `json:"bytes"`
@@ -92,7 +96,7 @@ func collectionsDeleted(r *vecRun) int {
 		}{vecEnvelope: r.envelope(), DeletedCollections: []deletedCollectionJSON{}, Allowance: list.Allowance}
 		for _, d := range rows {
 			out.DeletedCollections = append(out.DeletedCollections, deletedCollectionJSON{
-				ID: d.ID, Name: d.Name, DeletedAt: d.DeletedAt, ExpiresAt: d.ExpiresAt, Points: d.Points,
+				ID: d.ID, Name: d.Name, DeletedAt: d.DeletedAt, DeletedBy: d.DeletedBy, ExpiresAt: d.ExpiresAt, Points: d.Points,
 				Bytes: d.Bytes, Regions: d.Regions, Status: d.Status, Restore: d.Restore,
 			})
 		}
@@ -108,10 +112,10 @@ func collectionsDeleted(r *vecRun) int {
 				status = fmt.Sprintf("restoring %d/%d", d.Restore.RegionsReady, d.Restore.RegionsTotal)
 			}
 			table = append(table, []string{
-				d.Name, d.ID, shortDate(d.DeletedAt), restorableUntil(d.ExpiresAt), humanBytes(d.Bytes), status,
+				d.Name, d.ID, shortDate(d.DeletedAt), deletedBy(d.DeletedBy), restorableUntil(d.ExpiresAt), humanBytes(d.Bytes), status,
 			})
 		}
-		output.RenderTable(r.stdout, []string{"Name", "ID", "Deleted", "Restorable until", "Size", "Status"}, table)
+		output.RenderTable(r.stdout, []string{"Name", "ID", "Deleted", "Deleted by", "Restorable until", "Size", "Status"}, table)
 		fmt.Fprintf(r.stdout, "\n%d deleted collection(s) in %s\n", len(rows), workspaceLabel(client.Workspace()))
 	}
 	if line := allowanceLine(list.Allowance); line != "" {
@@ -127,6 +131,14 @@ func shortDate(iso string) string {
 		return iso
 	}
 	return t.UTC().Format("2006-01-02")
+}
+
+// deletedBy says who deleted the collection: a person, or an agent by its id.
+func deletedBy(by vectors.DeletedBy) string {
+	if by.Kind == "agent" {
+		return "agent " + by.AgentID
+	}
+	return "person"
 }
 
 func restorableUntil(expires *string) string {
@@ -175,7 +187,9 @@ regions, and a new id. It keeps its old name unless that is taken (409
 COLLECTION_NAME_TAKEN_FOR_RESTORE); --as restores it under another.
 
 A restore counts against your plan's restores per month and the volume restored
-per month; the error names which, the plan's number and when it resets. It runs
+per month; a refusal (403 PLAN_LIMIT_EXCEEDED) names which, the plan's number and
+when it resets. A name that matches no deleted collection, or more than one, is
+refused before anything is sent (exit 2). It runs
 in the background: --wait follows it to the end (exit 1 if it fails, 4 if it is
 still running after 30 minutes).`,
 	Example: `  # Restore by name
@@ -216,7 +230,7 @@ func pickDeleted(client *vectors.Client, arg string) (string, error) {
 	}
 	switch len(same) {
 	case 0:
-		return "", fmt.Errorf("no deleted collection named '%s' in %s. 'afy collections deleted' lists what can be restored",
+		return "", refuse("no deleted collection named '%s' in %s. 'afy collections deleted' lists what can be restored",
 			arg, workspaceLabel(client.Workspace()))
 	case 1:
 		return same[0].ID, nil
@@ -225,14 +239,14 @@ func pickDeleted(client *vectors.Client, arg string) (string, error) {
 	for _, d := range same {
 		ids = append(ids, fmt.Sprintf("%s (deleted %s)", d.ID, shortDate(d.DeletedAt)))
 	}
-	return "", fmt.Errorf("%d deleted collections in %s were named '%s'; restore one by its id: %s",
+	return "", refuse("%d deleted collections in %s were named '%s'; restore one by its id: %s",
 		len(same), workspaceLabel(client.Workspace()), arg, strings.Join(ids, ", "))
 }
 
 // followRestore polls a restore until it ends: nil when it is done, an error
 // saying why when it failed, a *stillPendingError (exit 4) when the bound passes.
 func followRestore(client *vectors.Client, id string) (*vectors.RestoreProgress, error) {
-	var waited time.Duration
+	deadline := operationNow().Add(operationWaitBound)
 	for {
 		p, err := client.GetRestore(id)
 		if err != nil {
@@ -248,14 +262,13 @@ func followRestore(client *vectors.Client, id string) (*vectors.RestoreProgress,
 			}
 			return p, fmt.Errorf("restore %s failed: %s", id, msg)
 		}
-		if waited >= operationWaitBound {
+		if !operationNow().Before(deadline) {
 			return p, &stillPendingError{msg: fmt.Sprintf(
 				"restore %s is still running (%d of %d regions ready) after %s. It keeps running; "+
 					"'afy collections get' shows the collection once it is ready.",
 				id, p.RegionsReady, p.RegionsTotal, operationWaitBound)}
 		}
 		operationSleep(operationPollInterval)
-		waited += operationPollInterval
 	}
 }
 
