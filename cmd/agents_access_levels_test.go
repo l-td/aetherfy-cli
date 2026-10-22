@@ -86,7 +86,7 @@ func TestLevelANewGrantAtALevelSaysWhatItReachesAndSendsIt(t *testing.T) {
 	// The canonical sentences, word for word (cmd/access_words.go; the design doc).
 	if !strings.Contains(out.String(), "Adds workspace 'gamma' at read and write access") ||
 		!strings.Contains(out.String(), "This lets the agent's code do more in gamma. Read and write access: everything read "+
-			"access can do, plus add, change and delete points, and create collections.") {
+			"access can do, plus add, change and delete points, and create collections and indexes.") {
 		t.Errorf("preview:\n%s", out.String())
 	}
 	reqs := requestsTo(cp, "POST", accessWsPath)
@@ -113,8 +113,8 @@ func TestLevelRaisingAGrantAsksAndLoweringOneDoesNot(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 	if !strings.Contains(out.String(), "Changes its level in workspace 'beta' from read access to full access") ||
-		!strings.Contains(out.String(), "Full access: everything read and write access can do, plus delete collections and "+
-			"change their structure (schema, indexes, aliases), which changes them for everyone who uses them.") ||
+		!strings.Contains(out.String(), "Full access: everything read and write access can do, plus delete collections, "+
+			"delete indexes and change their structure (schema, aliases), which changes them for everyone who uses them.") ||
 		!strings.Contains(errOut.String(), "Proceed?") {
 		t.Errorf("out:\n%s\nerr: %s", out.String(), errOut.String())
 	}

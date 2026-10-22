@@ -18,8 +18,8 @@ var levelWords = map[string]string{
 // levelSentences is what each level can do.
 var levelSentences = map[string]string{
 	"read":       "Read access: can search, query, retrieve and count points, and read a collection's information and schema.",
-	"read_write": "Read and write access: everything read access can do, plus add, change and delete points, and create collections.",
-	"full":       "Full access: everything read and write access can do, plus delete collections and change their structure (schema, indexes, aliases), which changes them for everyone who uses them.",
+	"read_write": "Read and write access: everything read access can do, plus add, change and delete points, and create collections and indexes.",
+	"full":       "Full access: everything read and write access can do, plus delete collections, delete indexes and change their structure (schema, aliases), which changes them for everyone who uses them.",
 }
 
 // wordsOf is the level as people say it (an unknown level is shown as it is).

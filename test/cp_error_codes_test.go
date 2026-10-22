@@ -152,7 +152,7 @@ var notControlPlaneCodes = map[string]string{
 	// assignment. That this guard demanded
 	// they be classified is the mechanism working — a file full of things that
 	// look like codes is exactly what must not slip in unexamined.
-	"UPGRADE_URL":               "extractor-test fixture: plan_validator.py's `UPGRADE_URL = \"/billing/upgrade\"`, not self-named",
+	"UPGRADE_URL":               "extractor-test fixture: plan_validator.py's `UPGRADE_URL = \"https://app.aetherfy.com/dashboard/settings/billing\"`, not self-named",
 	"SUPPORT_CONTACT":           "extractor-test fixture: bound to a mailto:, not self-named",
 	"FREEZE_REASON_CEILING":     "extractor-test fixture: bound to \"ceiling\", not self-named",
 	"FREEZE_REASON_DUNNING":     "extractor-test fixture: bound to \"dunning\", not self-named",

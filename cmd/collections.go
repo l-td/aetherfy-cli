@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"strings"
 
@@ -306,8 +308,8 @@ var collectionsDeleteCmd = &cobra.Command{
 	Long: `Delete a collection and every point in it.
 
 Asks you to type the collection's name first, and names the agents that used it
-in the last 7 days ("Used by agent 'x' in the last 7 days."): a warning, never a
-refusal. --yes skips the question; it is required when stdin is not a terminal,
+in the last 35 days ("Used by agent 'x' in the last 35 days."; the window the control
+plane states): a warning, never a refusal. --yes skips the question; it is required when stdin is not a terminal,
 so a script cannot delete by accident. A protected collection can be deleted by
 you but never by an agent's key.`,
 	Example: `  # Delete, confirming by name
@@ -345,11 +347,21 @@ func collectionsDelete(r *vecRun, name string, yes bool, stdin io.Reader, intera
 	if !yes {
 		// The warning before the question: who used the collection lately, from
 		// the observations (the dashboard's dialog says the same). A warning
-		// only: the delete is the person's call, and a lookup that fails is said
-		// and never blocks it.
-		if col, err := client.GetCollection(name); err != nil {
+		// only: the delete is the person's call, so a lookup that fails is said
+		// and never blocks it -- the collection's own lookup (it gives the id the
+		// warning is asked by) and the warning's alike. The one exception is a
+		// collection that does not exist: that is its own 404, as the delete would
+		// answer it.
+		col, err := client.GetCollection(name)
+		var apiErr *vectors.APIError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
 			return r.fail(err)
-		} else if recent, err := r.controlPlane().GetCollectionRecentAgents(col.ID); err != nil {
+		}
+		var recent *api.RecentAgents
+		if err == nil {
+			recent, err = r.controlPlane().GetCollectionRecentAgents(col.ID)
+		}
+		if err != nil {
 			ask.warn = append(ask.warn, fmt.Sprintf("Could not check which agents used it recently: %v", err))
 		} else {
 			var used []string

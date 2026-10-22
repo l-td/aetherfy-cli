@@ -36,7 +36,7 @@ var accessPairs = []accessPair{
 	{"Collection settings: protect", []string{"collections", "protect"}, nil},
 	{"Collection settings: unprotect", []string{"collections", "unprotect"}, []string{"yes"}},
 	{"Collections list: the PROTECTED badge", []string{"collections", "list"}, nil},
-	{"Collection delete dialog: the agents that used it recently", []string{"collections", "delete"}, []string{"yes"}},
+	{"Collection page, USED BY list: the agents that used it recently", []string{"collections", "delete"}, []string{"yes"}},
 }
 
 func findCommand(t *testing.T, path []string) *cobra.Command {

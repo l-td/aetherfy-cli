@@ -251,7 +251,7 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 			"GET /api/v1/collections/c-1/recent-agents": func(vecRequest) (int, string) { return 200, body },
 		})
 	}
-	const nobody = `{"collection_id":"c-1","window_days":7,"agents":[]}`
+	const nobody = `{"collection_id":"c-1","window_days":35,"agents":[]}`
 
 	t.Run("--yes deletes, and asks nothing else", func(t *testing.T) {
 		s := vec(t)
@@ -306,10 +306,11 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 		}
 	})
 	// The warning before the question (the dashboard's dialog says the same): who
-	// used the collection in the last 7 days. A warning, never a refusal.
+	// used the collection in the last 35 days (the window the control plane states).
+	// A warning, never a refusal.
 	t.Run("the agents that used it recently are named before the question", func(t *testing.T) {
 		s := vec(t)
-		cp := recent(`{"collection_id":"c-1","window_days":7,"agents":[` +
+		cp := recent(`{"collection_id":"c-1","window_days":35,"agents":[` +
 			`{"agent_id":"a-1","name":"invoice-bot","last_seen":"2026-10-20T10:00:00Z"},` +
 			`{"agent_id":"a-2","name":"nightly","last_seen":"2026-10-18T10:00:00Z"}]}`)
 		r, _, stderr := runWithCP(s, cp, false)
@@ -317,13 +318,53 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 			t.Fatalf("exit %d: %s", code, stderr.String())
 		}
 		out := stderr.String()
-		first := strings.Index(out, "Used by agent 'invoice-bot' in the last 7 days.")
-		second := strings.Index(out, "Used by agent 'nightly' in the last 7 days.")
+		first := strings.Index(out, "Used by agent 'invoice-bot' in the last 35 days.")
+		second := strings.Index(out, "Used by agent 'nightly' in the last 35 days.")
 		question := strings.Index(out, "Type the collection name to confirm: ")
 		if first < 0 || second < first || question < second {
 			t.Errorf("want both agents, newest first, before the question:\n%s", out)
 		}
 		deleted(t, s)
+	})
+	// The collection's own lookup (it gives the id the warning is asked by) is held
+	// to the same rule as the warning's: a failure is said and never blocks the
+	// delete, except a collection that does not exist, which is its own 404.
+	t.Run("a collection lookup that fails is said and does not block the delete", func(t *testing.T) {
+		s := newVecServer(t, func(r vecRequest) (int, string) {
+			if r.Method == "GET" {
+				return 503, `{"error":{"code":"SERVICE_UNAVAILABLE","message":"down"}}`
+			}
+			return 200, `{"result":true}`
+		})
+		cp := recent(nobody)
+		r, _, stderr := runWithCP(s, cp, false)
+		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), true); code != 0 {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "Could not check which agents used it recently") {
+			t.Errorf("stderr %q", stderr.String())
+		}
+		if len(cp.got()) != 0 {
+			t.Errorf("asked for a warning with no collection id: %v", cp.got())
+		}
+		deleted(t, s)
+	})
+	t.Run("a collection that does not exist is its own 404 and asks nothing", func(t *testing.T) {
+		s := newVecServer(t, func(r vecRequest) (int, string) {
+			return 404, `{"error":{"code":"COLLECTION_NOT_FOUND","message":"Collection 'articles' not found"}}`
+		})
+		r, _, stderr := runWithCP(s, recent(nobody), false)
+		if code := collectionsDelete(r, "articles", false, strings.NewReader("articles\n"), true); code == 0 {
+			t.Fatalf("a missing collection was reported deleted")
+		}
+		if strings.Contains(stderr.String(), "Type the collection name") {
+			t.Errorf("asked to confirm deleting what does not exist: %q", stderr.String())
+		}
+		for _, req := range s.got() {
+			if req.Method == "DELETE" {
+				t.Error("sent a delete for a missing collection")
+			}
+		}
 	})
 	t.Run("a warning that cannot be read is said and does not block the delete", func(t *testing.T) {
 		s := vec(t)

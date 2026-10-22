@@ -31,11 +31,15 @@ var collectionsProtectCmd = &cobra.Command{
 	Short: "Protect a collection: no agent removes data from it",
 	Long: `Protect a collection: no agent's API key may delete it, delete its points,
 vectors or payload fields (by id or by filter), or delete or repoint an alias
-that points at it, whatever the agent's access level. Adding and updating points
-stays allowed, and so does overwriting an existing point: protection stops
-removal, not change. You can still do all of it with your own API key, here or
-in the dashboard. Nothing is deleted or changed by protecting it, and it asks
-nothing.`,
+that points at it, whatever the agent's access level.
+
+Protection stops an agent from deleting the collection or deleting data from it.
+An agent with write access can still change or overwrite points. To stop all
+changes, give the agent read access (afy access). You can still do all of it
+with your own API key, here or in the dashboard. Nothing is deleted or changed
+by protecting it, and it asks nothing. The change applies within a minute; if the
+vector service cannot confirm it at once the command says so (the change is saved)
+and running it again applies it.`,
 	Example: `  # Protect the knowledge base the agents read
   afy collections protect support-kb --workspace research`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
@@ -128,6 +132,7 @@ func changeProtection(r *vecRun, name string, protect bool, confirm func() error
 		fmt.Fprintf(r.stdout, "No change: collection '%s' is not protected.\n", name)
 	case protect:
 		fmt.Fprintf(r.stdout, "Collection '%s' is protected: no agent's key may delete it or remove data from it. "+
+			"An agent with write access can still change or overwrite points; to stop all changes, give it read access. "+
 			"It takes effect within %s.\n", name, accessChangeWindow)
 	default:
 		fmt.Fprintf(r.stdout, "Collection '%s' is no longer protected. It takes effect within %s.\n", name, accessChangeWindow)

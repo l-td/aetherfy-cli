@@ -30,6 +30,9 @@ func TestProtectSendsOnlyProtectedByTheCollectionsIDAndAsksNothing(t *testing.T)
 	if strings.Contains(stderr.String(), "Proceed?") {
 		t.Error("protecting asked")
 	}
+	if !strings.Contains(stdout.String(), "An agent with write access can still change or overwrite points; to stop all changes, give it read access.") {
+		t.Errorf("the confirmation must say what protection does not stop: %q", stdout.String())
+	}
 	if !strings.Contains(stdout.String(), "Collection 'articles' is protected: no agent's key may delete it or remove data from it") {
 		t.Errorf("stdout %q", stdout.String())
 	}

@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 132
+      "count": 133
     },
     {
       "path": "api/routes/regions.py",
@@ -400,6 +400,10 @@
       "tier": "top-level"
     },
     "LOG_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "MEMORY_SIZE_UNSUPPORTED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

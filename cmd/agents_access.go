@@ -55,8 +55,9 @@ you grant it; any other workspace is refused to it. In each it holds a level:
   read        search, query, retrieve and count points; read a collection's
               information and schema
   read_write  read, plus add, change and delete points, and create collections
-  full        read and write, plus delete collections and change their
-              structure (schema, indexes, aliases)
+              and indexes
+  full        read and write, plus delete collections, delete indexes and change
+              their structure (schema, aliases)
 
 --add grants a workspace, --remove revokes one; each takes a name, repeats, or
 takes a comma-separated list. A new grant is read; --level sets the level of
