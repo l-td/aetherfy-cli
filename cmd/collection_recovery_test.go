@@ -223,7 +223,7 @@ func TestARestoreTheAPIRefusesExitsOneWithItsCodeAndSentence(t *testing.T) {
 	}{
 		{409, `{"error":{"code":"COLLECTION_NAME_TAKEN_FOR_RESTORE","message":"The name \"notes\" is in use in workspace \"research\". Restore it under another name with \"as\"."}}`, "COLLECTION_NAME_TAKEN_FOR_RESTORE"},
 		{410, `{"error":{"code":"COLLECTION_BACKUP_EXPIRED","message":"expired"}}`, "COLLECTION_BACKUP_EXPIRED"},
-		{403, `{"error":{"code":"PLAN_LIMIT_EXCEEDED","message":"Your plan allows 3 restores a month and 3 are used. The limit resets on 2026-11-01.","upgrade_url":"/billing/upgrade","limit":"collection_restores_per_month","allowed":3,"current":3}}`, "PLAN_LIMIT_EXCEEDED"},
+		{403, `{"error":{"code":"PLAN_LIMIT_EXCEEDED","message":"Your plan allows 3 restores a month and 3 are used. The limit resets on 2026-11-01.","upgrade_url":"https://app.aetherfy.com/dashboard/settings/billing","limit":"collection_restores_per_month","allowed":3,"current":3}}`, "PLAN_LIMIT_EXCEEDED"},
 		{409, `{"error":{"code":"COLLECTION_BACKUP_UNAVAILABLE","message":"The backup of this deleted collection could not be completed. Its data is kept, and support can retry it."}}`, "COLLECTION_BACKUP_UNAVAILABLE"},
 		{403, `{"error":{"code":"AUTH_AGENT_KEY_OUT_OF_SCOPE","message":"an agent key cannot do this"}}`, "AUTH_AGENT_KEY_OUT_OF_SCOPE"},
 	}
