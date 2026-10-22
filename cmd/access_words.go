@@ -1,6 +1,11 @@
 package cmd
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/l-td/aetherfy-cli/internal/api"
+)
 
 // The words of the access levels, written once in the design doc (aetherfy-
 // control-plane docs/AGENT_ACCESS_LEVELS.md, "The canonical sentences") and
@@ -41,6 +46,37 @@ const narrowedNote = "Takes effect within " + accessChangeWindow + "; requests a
 // unprotectSentence is what turning a collection's protection off means.
 func unprotectSentence(collection string) string {
 	return fmt.Sprintf("Unprotecting %s lets agents with read and write access delete its points, and agents with full access delete the collection.", collection)
+}
+
+// moveConsequences are the lines a move to workspace `to` asks about, from the
+// agent's access as it is now: what the move resets, what it keeps, and that the
+// old home is no longer reached. The same sentences, word for word, are the
+// dashboard's move dialog (lib/agents/access-levels.js moveConsequences) and the
+// docs page platform/agent-access ("Moving an agent").
+func moveConsequences(a *api.AgentAccess, to string) []string {
+	var lines []string
+	if a.OwnWorkspaceLevelSetting != nil {
+		lines = append(lines, fmt.Sprintf("Its own level in '%s' (%s) is cleared; in '%s' it holds that workspace's default.",
+			a.OwnWorkspace, wordsOf(*a.OwnWorkspaceLevelSetting), to))
+	}
+	if a.SecretsAccess {
+		lines = append(lines, "Its secrets switch is turned off.")
+	}
+	var kept []string
+	for _, g := range a.GrantedWorkspaceRefs {
+		if g.Name == to {
+			lines = append(lines, fmt.Sprintf("Its grant to '%s' is dropped: it is its home now.", to))
+			continue
+		}
+		kept = append(kept, fmt.Sprintf("'%s' (%s)", g.Name, wordsOf(g.Level)))
+	}
+	if len(kept) > 0 {
+		lines = append(lines, "It keeps its other grants: "+strings.Join(kept, ", ")+".")
+	} else {
+		lines = append(lines, "It has no other grants.")
+	}
+	lines = append(lines, fmt.Sprintf("It no longer reaches '%s' unless it is granted there.", a.OwnWorkspace))
+	return lines
 }
 
 // usedByAgent is one line of the warning before a collection is deleted.

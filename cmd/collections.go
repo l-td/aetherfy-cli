@@ -309,8 +309,9 @@ var collectionsDeleteCmd = &cobra.Command{
 
 Asks you to type the collection's name first, and names the agents that used it
 in the last 35 days ("Used by agent 'x' in the last 35 days."; the window the control
-plane states): a warning, never a refusal. --yes skips the question; it is required when stdin is not a terminal,
-so a script cannot delete by accident. A protected collection can be deleted by
+plane states): a warning, never a refusal. --yes skips the question, not the warning: the
+same lines go to stderr. It is required when stdin is not a terminal, so a script cannot
+delete by accident. A protected collection can be deleted by
 you but never by an agent's key.`,
 	Example: `  # Delete, confirming by name
   afy collections delete articles
@@ -344,32 +345,37 @@ func collectionsDelete(r *vecRun, name string, yes bool, stdin io.Reader, intera
 	if code != 0 {
 		return code
 	}
-	if !yes {
-		// The warning before the question: who used the collection lately, from
-		// the observations (the dashboard's dialog says the same). A warning
-		// only: the delete is the person's call, so a lookup that fails is said
-		// and never blocks it -- the collection's own lookup (it gives the id the
-		// warning is asked by) and the warning's alike. The one exception is a
-		// collection that does not exist: that is its own 404, as the delete would
-		// answer it.
-		col, err := client.GetCollection(name)
-		var apiErr *vectors.APIError
-		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
-			return r.fail(err)
+	// The warning: who used the collection lately, from the observations (the
+	// dashboard's dialog says the same). A warning only: the delete is the
+	// person's call, so a lookup that fails is said and never blocks it -- the
+	// collection's own lookup (it gives the id the warning is asked by) and the
+	// warning's alike. The one exception is a collection that does not exist: that
+	// is its own 404, as the delete would answer it. It is shown with --yes too (on
+	// stderr, so --json output stays one object): a script that deletes without
+	// being asked still leaves the line in its log.
+	col, err := client.GetCollection(name)
+	var apiErr *vectors.APIError
+	if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+		return r.fail(err)
+	}
+	var recent *api.RecentAgents
+	if err == nil {
+		recent, err = r.controlPlane().GetCollectionRecentAgents(col.ID)
+	}
+	var lookup []string
+	if err != nil {
+		lookup = append(lookup, fmt.Sprintf("Could not check which agents used it recently: %v", err))
+	} else {
+		for _, a := range recent.Agents {
+			lookup = append(lookup, usedByAgent(a.Name, recent.WindowDays))
 		}
-		var recent *api.RecentAgents
-		if err == nil {
-			recent, err = r.controlPlane().GetCollectionRecentAgents(col.ID)
+	}
+	if yes {
+		for _, line := range lookup {
+			output.Warning.Fprintln(r.stderr, line)
 		}
-		if err != nil {
-			ask.warn = append(ask.warn, fmt.Sprintf("Could not check which agents used it recently: %v", err))
-		} else {
-			var used []string
-			for _, a := range recent.Agents {
-				used = append(used, usedByAgent(a.Name, recent.WindowDays))
-			}
-			ask.warn = append(used, ask.warn...)
-		}
+	} else {
+		ask.warn = append(lookup, ask.warn...)
 		if err := askToConfirm(ask, vecPrompter(r, stdin)); err != nil {
 			return r.fail(err)
 		}

@@ -253,20 +253,48 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	}
 	const nobody = `{"collection_id":"c-1","window_days":35,"agents":[]}`
 
-	t.Run("--yes deletes, and asks nothing else", func(t *testing.T) {
+	t.Run("--yes deletes, asks nothing, and says who used it on stderr", func(t *testing.T) {
 		s := vec(t)
-		cp := recent(nobody)
-		r, stdout, _ := runWithCP(s, cp, true)
+		cp := recent(`{"collection_id":"c-1","window_days":35,"agents":[` +
+			`{"agent_id":"a-1","name":"invoice-bot","last_seen":"2026-10-20T10:00:00Z"}]}`)
+		r, stdout, stderr := runWithCP(s, cp, true)
 		if code := collectionsDelete(r, "articles", true, strings.NewReader(""), false); code != 0 {
 			t.Fatalf("exit %d", code)
 		}
 		deleted(t, s)
-		if len(cp.got()) != 0 {
-			t.Errorf("--yes looked up the warning it would not show: %v", cp.got())
+		if !strings.Contains(stderr.String(), "Used by agent 'invoice-bot' in the last 35 days.") {
+			t.Errorf("--yes skips the question, not the warning: %q", stderr.String())
 		}
+		if strings.Contains(stderr.String(), "Type the collection name") {
+			t.Errorf("--yes asked: %q", stderr.String())
+		}
+		// stdout stays the one JSON object.
 		out := decode(t, stdout.String())
 		if out["collection"] != "articles" || out["deleted"] != true {
 			t.Errorf("output = %v", out)
+		}
+	})
+	t.Run("--yes with a warning that cannot be read says so and still deletes", func(t *testing.T) {
+		s := vec(t)
+		cp := cpFake(t, map[string]func(vecRequest) (int, string){
+			"GET /api/v1/collections/c-1/recent-agents": func(vecRequest) (int, string) { return 503, `{"detail":{"code":"x","message":"down"}}` },
+		})
+		r, _, stderr := runWithCP(s, cp, true)
+		if code := collectionsDelete(r, "articles", true, strings.NewReader(""), false); code != 0 {
+			t.Fatalf("exit %d: %s", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "Could not check which agents used it recently") {
+			t.Errorf("stderr %q", stderr.String())
+		}
+		deleted(t, s)
+	})
+	t.Run("--yes on a collection that does not exist is its own 404", func(t *testing.T) {
+		s := newVecServer(t, func(r vecRequest) (int, string) {
+			return 404, `{"error":{"code":"COLLECTION_NOT_FOUND","message":"Collection 'articles' not found"}}`
+		})
+		r, _, _ := runWithCP(s, recent(nobody), true)
+		if code := collectionsDelete(r, "articles", true, strings.NewReader(""), false); code == 0 {
+			t.Fatalf("a missing collection was reported deleted")
 		}
 	})
 	t.Run("no terminal and no --yes deletes nothing", func(t *testing.T) {

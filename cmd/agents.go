@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1409,8 +1410,12 @@ agent by its old name stops finding it.
 --workspace moves the agent to another workspace. A MOVE REDEPLOYS the agent,
 so its key reaches the new workspace at once; if it cannot be redeployed, the
 move is refused and says why. Its conversation history stays in the old
-workspace. Grants are unchanged, except a grant to the new home, which is
-dropped as redundant.
+workspace. A move asks first, and lists what it changes: the agent's own level
+in the old workspace is cleared, its secrets switch is turned off, a grant to the
+new home is dropped, and its other grants are kept (named with their levels); it
+no longer reaches the old workspace unless it is granted there. --yes skips the
+question, not the list (it goes to stderr), and is required when stdin is not a
+terminal.
 
 At least one flag is required; flags not given are left unchanged.`,
 	Example: `  # Rename the agent
@@ -1429,12 +1434,14 @@ var (
 	agentUpdateName        string
 	agentUpdateWorkspace   string
 	agentUpdateDescription string
+	agentUpdateYes         bool
 )
 
 func init() {
 	agentsUpdateCmd.Flags().StringVar(&agentUpdateName, "name", "", "Rename the agent")
 	agentsUpdateCmd.Flags().StringVar(&agentUpdateWorkspace, "workspace", "", "Move the agent to this workspace (redeploys it)")
 	agentsUpdateCmd.Flags().StringVarP(&agentUpdateDescription, "description", "d", "", "Set the agent's description")
+	agentsUpdateCmd.Flags().BoolVarP(&agentUpdateYes, "yes", "y", false, "Move without asking (the list of what the move changes is still shown)")
 }
 
 func runAgentsUpdate(cmd *cobra.Command, args []string) error {
@@ -1459,6 +1466,19 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient()
 
+	// A move asks first. Refused before anything is sent when nobody can answer.
+	var moveAsk destructiveAsk
+	if wsChanged {
+		moveAsk = destructiveAsk{
+			action: fmt.Sprintf("moves agent '%s' to workspace '%s'", name, agentUpdateWorkspace),
+			prompt: "Move the agent? [y/N]: ",
+			accept: yesAnswer,
+		}
+		if err := refuseUnconfirmable(agentUpdateYes, stdinIsTerminal(), moveAsk.action, moveAsk.skip()); err != nil {
+			return err
+		}
+	}
+
 	// THE MOVE FIRST: it is the step most likely to be refused (a frozen
 	// account, a paused agent, regions outside the new workspace), and a
 	// refused move then leaves everything as it was. The rename and the
@@ -1467,6 +1487,9 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	target := name
 	var moved *api.AgentMove
 	if wsChanged {
+		if err := confirmMove(client, name, agentUpdateWorkspace, agentUpdateYes, moveAsk, newPrompter(), os.Stderr); err != nil {
+			return err
+		}
 		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
 		sp.Start()
 		move, err := client.MoveAgent(name, agentUpdateWorkspace)
@@ -1512,6 +1535,31 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return output.Result(map[string]interface{}{"move": moved, "agent": updated})
+}
+
+// confirmMove shows what the move changes and asks. The list is a warning, never a
+// refusal: a lookup that fails is said and the question is still asked. An agent
+// already in the target workspace has nothing to confirm (the move answers
+// "nothing changed"). --yes skips the question, not the list (stderr).
+func confirmMove(client *api.Client, agent, to string, yes bool, ask destructiveAsk, p *prompter, errOut io.Writer) error {
+	var lines []string
+	access, err := client.GetAgentAccess(agent)
+	switch {
+	case err != nil:
+		lines = []string{fmt.Sprintf("Could not read what the move changes: %v", err)}
+	case access.OwnWorkspace == to:
+		return nil
+	default:
+		lines = moveConsequences(access, to)
+	}
+	if yes {
+		for _, l := range lines {
+			output.Warning.Fprintln(errOut, l)
+		}
+		return nil
+	}
+	ask.warn = lines
+	return askToConfirm(ask, p)
 }
 
 func updatedWhat(name, description bool) string {
