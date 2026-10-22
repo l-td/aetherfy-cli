@@ -330,6 +330,8 @@ func TestTheFirstReadOfAFollowEndsOnARefusalWithoutRetrying(t *testing.T) {
 func mustEndWithin(t *testing.T, name string, cp *fakeCP, f *follower) {
 	t.Helper()
 	done := make(chan error, 1)
+	cancel := make(chan struct{})
+	f.cancel = cancel
 	go func() { done <- f.seed() }()
 	select {
 	case err := <-done:
@@ -337,6 +339,7 @@ func mustEndWithin(t *testing.T, name string, cp *fakeCP, f *follower) {
 			t.Errorf("%s: the refused first read must end the follow with an error", name)
 		}
 	case <-time.After(2 * time.Second):
+		close(cancel) // stop the goroutine before failing
 		t.Fatalf("%s: a refusal was retried: %d reads and the first read had not ended", name, len(cp.called("GET", "/agents/bot/logs")))
 	}
 }
@@ -371,11 +374,17 @@ func TestTheFirstReadOfAFollowRetriesANetworkErrorAndStartsWhenItAnswers(t *test
 	var err error
 	said = captureStdout(t, func() {
 		done := make(chan error, 1)
+		cancel := make(chan struct{})
+		f.cancel = cancel
 		go func() { done <- f.seed() }()
 		select {
 		case err = <-done:
 		case <-time.After(10 * time.Second):
-			t.Fatalf("the first read was never retried to success: %d reads", calls)
+			close(cancel)
+			mu.Lock()
+			n := calls
+			mu.Unlock()
+			t.Fatalf("the first read was never retried to success: %d reads", n)
 		}
 	})
 	if err != nil {
@@ -411,6 +420,8 @@ func TestTheFirstReadOfAFollowEndsOnAnAnswerTheCLICannotUse(t *testing.T) {
 	f := &follower{client: api.NewClientWithURL(srv.URL+"/api/v1", "afy_test_key"), agentID: "bot"}
 
 	done := make(chan error, 1)
+	cancel := make(chan struct{})
+	f.cancel = cancel
 	go func() { done <- f.seed() }()
 	select {
 	case err := <-done:
@@ -418,6 +429,7 @@ func TestTheFirstReadOfAFollowEndsOnAnAnswerTheCLICannotUse(t *testing.T) {
 			t.Error("an invalid answer must end the follow with an error")
 		}
 	case <-time.After(2 * time.Second):
+		close(cancel)
 		mu.Lock()
 		defer mu.Unlock()
 		t.Fatalf("an invalid answer was retried: %d reads and the first read had not ended", calls)

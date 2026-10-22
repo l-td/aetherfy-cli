@@ -181,6 +181,9 @@ type follower struct {
 	agentID string
 	afterID int64
 	warned  bool
+	// cancel, when set, ends a seed that is waiting between attempts (a test stops its
+	// goroutine with it; the command itself ends with Ctrl+C, so it leaves this nil).
+	cancel <-chan struct{}
 }
 
 // seed sets the cursor from the most recent line, so following does not replay history.
@@ -204,7 +207,11 @@ func (f *follower) seed() error {
 			return printRefusal("Failed to start following logs", err)
 		}
 		f.warnOnce("Failed to start following logs", err)
-		time.Sleep(followInterval)
+		select {
+		case <-time.After(followInterval):
+		case <-f.cancel:
+			return err
+		}
 	}
 }
 
