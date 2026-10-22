@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 )
@@ -242,18 +243,82 @@ var handBuiltError = regexp.MustCompile(`(?m)fmt\.Errorf\(|fmt\.Fprint\w*\(os\.S
 
 func TestLogsGoCarriesNoHandBuiltErrorText(t *testing.T) {
 	// Every failure goes through printRefusal / printUnprinted (the one error path);
-	// the only warning is the transient-outage line, and that is not an error.
+	// the only warning is the transient-outage line (follower.warnOnce), built from a
+	// format and not from error text, and that is not an error.
 	raw, err := os.ReadFile("logs.go")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, line := range strings.Split(string(raw), "\n") {
-		if handBuiltError.MatchString(line) && !strings.Contains(line, "Failed to fetch logs: %v (still trying)") {
+		if handBuiltError.MatchString(line) {
 			t.Errorf("cmd/logs.go builds error text by hand: %s", strings.TrimSpace(line))
 		}
 	}
 	// control: the checker sees what it is meant to catch
 	if !handBuiltError.MatchString(`return fmt.Errorf("x")`) || !handBuiltError.MatchString(`fmt.Fprintln(os.Stderr, "Error: x")`) {
 		t.Fatal("the checker misses a hand-built error")
+	}
+}
+
+// THE FIRST READ OF --follow is a read like every poll after it: a refusal ends the
+// command, a 5xx or a network failure is said once and tried again.
+
+func shortFollowInterval(t *testing.T) {
+	t.Helper()
+	old := followInterval
+	followInterval = 10 * time.Millisecond
+	t.Cleanup(func() { followInterval = old })
+}
+
+func TestTheFirstReadOfAFollowRetriesAnOutageAndStartsWhenTheControlPlaneAnswers(t *testing.T) {
+	shortFollowInterval(t)
+	cp := newFakeCP(t)
+	t.Setenv("AETHERFY_CONFIG_DIR", t.TempDir())
+	f := &follower{client: api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key"), agentID: "bot"}
+	cp.on("GET", "/agents/bot/logs", 503, `{"detail":{"code":"SERVICE_UNAVAILABLE","message":"deploying"}}`)
+
+	done := make(chan error, 1)
+	said := captureStdout(t, func() {
+		go func() { done <- f.seed() }()
+		deadline := time.Now().Add(5 * time.Second)
+		for len(cp.called("GET", "/agents/bot/logs")) < 3 {
+			if time.Now().After(deadline) {
+				t.Fatal("the first read was not retried")
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		select {
+		case err := <-done:
+			t.Fatalf("an outage must not end the follow: %v", err)
+		default:
+		}
+		cp.onWithHeaders("GET", "/agents/bot/logs", 200, oneLog, map[string]string{"X-Log-Retention-Days": "3"})
+		if err := <-done; err != nil {
+			t.Fatalf("seed after the outage: %v", err)
+		}
+	})
+	if f.afterID != 7 {
+		t.Errorf("the cursor is the newest line (7), got %d", f.afterID)
+	}
+	if strings.Count(said, "Failed to start following logs") != 1 {
+		t.Errorf("the outage is said exactly once, got %q", said)
+	}
+}
+
+func TestTheFirstReadOfAFollowEndsOnARefusalWithoutRetrying(t *testing.T) {
+	shortFollowInterval(t)
+	for name, answer := range map[string][2]interface{}{
+		"404": {404, `{"detail":{"code":"AGENT_NOT_FOUND","message":"no such agent"}}`},
+		"403": {403, `{"detail":{"code":"ACCOUNT_SUSPENDED","message":"suspended"}}`},
+	} {
+		cp := newFakeCP(t)
+		cp.on("GET", "/agents/bot/logs", answer[0].(int), answer[1].(string))
+		f := &follower{client: api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key"), agentID: "bot"}
+		if err := f.seed(); err == nil {
+			t.Errorf("%s: a refused first read must end the follow", name)
+		}
+		if n := len(cp.called("GET", "/agents/bot/logs")); n != 1 {
+			t.Errorf("%s: a refusal is not retried, the control plane saw %d reads", name, n)
+		}
 	}
 }

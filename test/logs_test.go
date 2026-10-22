@@ -95,7 +95,7 @@ func TestGetDeploymentLogs_BackwardsCompatible(t *testing.T) {
 
 // THE PLAN'S LOG WINDOW. The control plane never returns a log older than the
 // plan's retention and says how far back that is in X-Log-Retention-Days (a
-// number of days, or "unlimited"), and in X-Log-Since-Clamped when the request's
+// number of days, or "negotiated"), and in X-Log-Since-Clamped when the request's
 // `since` reached past it.
 func logsWithHeaders(t *testing.T, headers map[string]string) *api.Client {
 	t.Helper()

@@ -18,5 +18,6 @@
 - `afy logs --since` past the plan's retention shows what is kept and puts a note on stderr naming the
   retention. It is not an error.
 - `afy logs` notes on stderr when the plan's size cap removed older lines.
-- `afy logs --follow` ends with the control plane's refusal when its first read is refused, instead of
-  retrying every two seconds; a transient failure is said once per outage.
+- `afy logs --follow` ends with the control plane's refusal when a read is refused, the first one
+  included, instead of retrying every two seconds; a transient failure (a 5xx, a network error) is said
+  once per outage and tried again, on the first read as on the polls after it.

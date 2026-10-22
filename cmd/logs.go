@@ -151,24 +151,20 @@ func capPhrase(bytes *int64) string {
 	return fmt.Sprintf(" (%s on your plan)", output.FormatBytes(*bytes))
 }
 
+// followInterval is the poll period of `afy logs --follow` (a variable so a test can
+// shorten it).
+var followInterval = 2 * time.Second
+
 func streamLogs(client *api.Client, agentID string) error {
-	// Seed the cursor from the most recent batch so we don't replay history. A seed
-	// the control plane refuses (an agent that does not exist, a key that may not
-	// read it) is the command's failure, said once, not something to retry forever.
-	var afterID int64
-	seed, err := client.GetAgentLogs(agentID, api.LogQuery{Tail: 1, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
-	if err != nil {
-		return printRefusal("Failed to start following logs", err)
-	}
-	if len(seed.Entries) > 0 {
-		afterID = seed.Entries[0].ID
+	f := &follower{client: client, agentID: agentID}
+	if err := f.seed(); err != nil {
+		return err
 	}
 
 	output.PrintInfo("Streaming logs for '%s' (Ctrl+C to stop)...", agentID)
 	output.Println("")
 
-	f := &follower{client: client, agentID: agentID, afterID: afterID}
-	ticker := time.NewTicker(2 * time.Second)
+	ticker := time.NewTicker(followInterval)
 	defer ticker.Stop()
 	for range ticker.C {
 		if err := f.tick(); err != nil {
@@ -187,6 +183,39 @@ type follower struct {
 	warned  bool
 }
 
+// seed sets the cursor from the most recent line, so following does not replay history.
+// It is the same read as every poll, so it fails the same way: a refusal (a 4xx other
+// than a rate limit, an answer the CLI cannot use: an agent that does not exist, a key
+// that may not read it) ends the command through the one error path, and a network
+// blip or a 5xx is said once and tried again, as the polls after it are. A follow
+// started in the middle of a deploy or an outage waits for the control plane instead
+// of dying on its first read.
+func (f *follower) seed() error {
+	for {
+		seed, err := f.client.GetAgentLogs(f.agentID, api.LogQuery{Tail: 1, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
+		if err == nil {
+			f.warned = false
+			if len(seed.Entries) > 0 {
+				f.afterID = seed.Entries[0].ID
+			}
+			return nil
+		}
+		if followRefused(err) {
+			return printRefusal("Failed to start following logs", err)
+		}
+		f.warnOnce("Failed to start following logs", err)
+		time.Sleep(followInterval)
+	}
+}
+
+// warnOnce says a transient failure once per outage.
+func (f *follower) warnOnce(what string, err error) {
+	if !f.warned {
+		output.PrintWarning("%s: %v (still trying)", what, err)
+		f.warned = true
+	}
+}
+
 // tick reads what arrived since the cursor and prints it. A failure the control plane
 // refuses (a 4xx other than a rate limit, an answer the CLI cannot use) ends the
 // command through the one error path; a network blip or a 5xx is said ONCE per outage
@@ -199,10 +228,7 @@ func (f *follower) tick() error {
 		if followRefused(err) {
 			return printRefusal("Failed to fetch logs", err)
 		}
-		if !f.warned {
-			output.PrintWarning("Failed to fetch logs: %v (still trying)", err)
-			f.warned = true
-		}
+		f.warnOnce("Failed to fetch logs", err)
 		return nil
 	}
 	f.warned = false
