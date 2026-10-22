@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"time"
 )
 
 // Deploy uploads code and triggers a deployment. confirmOverage=true accepts a
@@ -162,39 +163,59 @@ type LogQuery struct {
 	DeploymentID string // scope to one run's logs (deployment_id query param)
 }
 
-// The response headers of a logs read: the plan's retention, and whether the
-// request's `since` reached past it.
+// The response headers of a logs read: what bounds the account's logs on its plan.
 const (
 	headerLogRetentionDays = "X-Log-Retention-Days"
+	headerLogMaxBytes      = "X-Log-Max-Bytes-Stored"
 	headerLogSinceClamped  = "X-Log-Since-Clamped"
-	logRetentionUnlimited  = "unlimited"
+	headerLogCapRolledOut  = "X-Log-Cap-Rolled-Out-Through"
+	logBoundNegotiated     = "negotiated"
 )
 
-// LogPage is one read of an agent's logs: the entries, and how far back the
-// caller's plan keeps them. The server never returns a log older than the plan's
-// retention, even before it deletes it.
+// LogPage is one read of an agent's logs: the entries, and what bounds the
+// caller's logs on its plan. The server never returns a log older than the
+// plan's retention, even before it deletes it.
 type LogPage struct {
 	Entries []LogEntry
-	// RetentionDays is the plan's log retention in days; nil = the plan keeps
-	// logs without limit.
+	// RetentionDays is the plan's log retention in days; nil = negotiated per
+	// contract.
 	RetentionDays *int
+	// MaxBytesStored is the most log bytes an account keeps on the plan; nil =
+	// negotiated per contract.
+	MaxBytesStored *int64
 	// SinceClamped is true when the request's `since` reached back past the
 	// retention and the server cut it to it.
 	SinceClamped bool
+	// CapRolledOutThrough is set when the plan's size cap has removed lines the
+	// retention would still have kept, and this read reaches before them: the
+	// newest timestamp it removed. nil otherwise.
+	CapRolledOutThrough *time.Time
 }
 
 // parseLogRetention reads X-Log-Retention-Days: a number of days, or
-// "unlimited" (nil). The control plane always sends it, so an absent or
-// unreadable value is an error rather than a guess at the plan.
+// "negotiated" (nil). The control plane always sends it, so an absent or
+// unreadable value is a ResponseInvalidError rather than a guess at the plan.
 func parseLogRetention(header string) (*int, error) {
-	if header == logRetentionUnlimited {
+	if header == logBoundNegotiated {
 		return nil, nil
 	}
 	days, err := strconv.Atoi(header)
 	if err != nil || days < 1 {
-		return nil, fmt.Errorf("the control plane did not state the plan's log retention (%s: %q)", headerLogRetentionDays, header)
+		return nil, &ResponseInvalidError{Message: fmt.Sprintf(
+			"the control plane did not state the plan's log retention (%s: %q)", headerLogRetentionDays, header)}
 	}
 	return &days, nil
+}
+
+// parseLogMaxBytes reads X-Log-Max-Bytes-Stored: a number of bytes, or
+// "negotiated" (nil). Only the size cap's note uses it, so a value that cannot be
+// read is not a failure: the note then says the cap without its size.
+func parseLogMaxBytes(header string) *int64 {
+	n, err := strconv.ParseInt(header, 10, 64)
+	if err != nil || n < 1 {
+		return nil
+	}
+	return &n
 }
 
 // GetAgentLogs is the filter-aware variant. When AfterID is set, the server
@@ -239,9 +260,19 @@ func (c *Client) GetAgentLogs(agentID string, q LogQuery) (*LogPage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &LogPage{
-		Entries:       logs,
-		RetentionDays: retention,
-		SinceClamped:  resp.Header().Get(headerLogSinceClamped) == "true",
-	}, nil
+	page := &LogPage{
+		Entries:        logs,
+		RetentionDays:  retention,
+		MaxBytesStored: parseLogMaxBytes(resp.Header().Get(headerLogMaxBytes)),
+		SinceClamped:   resp.Header().Get(headerLogSinceClamped) == "true",
+	}
+	if raw := resp.Header().Get(headerLogCapRolledOut); raw != "" {
+		through, err := time.Parse(time.RFC3339, raw)
+		if err != nil {
+			return nil, &ResponseInvalidError{Message: fmt.Sprintf(
+				"the control plane sent a size-cap mark that is not a time (%s: %q)", headerLogCapRolledOut, raw)}
+		}
+		page.CapRolledOutThrough = &through
+	}
+	return page, nil
 }

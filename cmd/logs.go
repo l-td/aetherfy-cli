@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -89,15 +90,22 @@ func runLogs(cmd *cobra.Command, args []string) error {
 		output.PrintNote("--since %s reaches past your plan's log retention (%s); showing what is kept.",
 			logsSince, retentionPhrase(page.RetentionDays))
 	}
+	// So is the size cap: an account over its stored-log size has its oldest lines
+	// removed first, and a read that reaches before them says where the logs now start.
+	if page.CapRolledOutThrough != nil {
+		output.PrintNote("older lines were removed because your account is over its stored-log size%s; nothing before %s is left.",
+			capPhrase(page.MaxBytesStored), page.CapRolledOutThrough.UTC().Format(time.RFC3339))
+	}
 
-	// --json: the logs, empty or not, and the plan's retention in days (null =
-	// unlimited), so a script reads the same shape every time.
+	// --json: the logs, empty or not, the plan's retention in days (null =
+	// negotiated) and whether --since was cut, so a script reads the same shape
+	// every time.
 	if output.IsJSON() {
 		logs := page.Entries
 		if logs == nil {
 			logs = []api.LogEntry{}
 		}
-		return output.JSON(logsDocument{RetentionDays: page.RetentionDays, SinceClamped: page.SinceClamped, Logs: logs})
+		return output.JSON(logsDocument{Logs: logs, RetentionDays: page.RetentionDays, SinceClamped: page.SinceClamped})
 	}
 
 	logs := page.Entries
@@ -116,19 +124,18 @@ func runLogs(cmd *cobra.Command, args []string) error {
 
 // logsDocument is `afy logs --json`: the logs and the plan's window on them.
 type logsDocument struct {
-	// RetentionDays is the plan's log retention; null = the plan keeps logs
-	// without limit.
+	Logs []api.LogEntry `json:"logs"`
+	// RetentionDays is the plan's log retention; null = negotiated per contract.
 	RetentionDays *int `json:"retention_days"`
 	// SinceClamped is true when --since reached past the retention and was cut to it.
-	SinceClamped bool           `json:"since_clamped"`
-	Logs         []api.LogEntry `json:"logs"`
+	SinceClamped bool `json:"since_clamped"`
 }
 
-// retentionPhrase is the retention as a sentence part: "7 days", "1 day".
+// retentionPhrase is the retention as a sentence part: "3 days", "1 day".
 func retentionPhrase(days *int) string {
 	switch {
 	case days == nil:
-		return "unlimited"
+		return "negotiated"
 	case *days == 1:
 		return "1 day"
 	default:
@@ -136,36 +143,88 @@ func retentionPhrase(days *int) string {
 	}
 }
 
-func streamLogs(client *api.Client, agentID string) error {
-	output.PrintInfo("Streaming logs for '%s' (Ctrl+C to stop)...", agentID)
-	output.Println("")
+// capPhrase names the plan's stored-log size in a sentence, or nothing where it is negotiated.
+func capPhrase(bytes *int64) string {
+	if bytes == nil {
+		return ""
+	}
+	return fmt.Sprintf(" (%s on your plan)", output.FormatBytes(*bytes))
+}
 
-	// Seed the cursor from the most recent batch so we don't replay history.
+func streamLogs(client *api.Client, agentID string) error {
+	// Seed the cursor from the most recent batch so we don't replay history. A seed
+	// the control plane refuses (an agent that does not exist, a key that may not
+	// read it) is the command's failure, said once, not something to retry forever.
 	var afterID int64
 	seed, err := client.GetAgentLogs(agentID, api.LogQuery{Tail: 1, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
-	if err == nil && len(seed.Entries) > 0 {
+	if err != nil {
+		return printRefusal("Failed to start following logs", err)
+	}
+	if len(seed.Entries) > 0 {
 		afterID = seed.Entries[0].ID
 	}
 
+	output.PrintInfo("Streaming logs for '%s' (Ctrl+C to stop)...", agentID)
+	output.Println("")
+
+	f := &follower{client: client, agentID: agentID, afterID: afterID}
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
-
 	for range ticker.C {
-		// When AfterID > 0, the server returns ASC — iterating in order prints
-		// lines as they were emitted and lets us advance the cursor exactly.
-		page, err := client.GetAgentLogs(agentID, api.LogQuery{AfterID: afterID, Tail: 500, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
-		if err != nil {
-			output.PrintWarning("Failed to fetch logs: %v", err)
-			continue
-		}
-		for _, log := range page.Entries {
-			printLogLine(log, "15:04:05")
-			if log.ID > afterID {
-				afterID = log.ID
-			}
+		if err := f.tick(); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// follower is the state of one `afy logs --follow`: the cursor, and whether the
+// current outage has been said yet.
+type follower struct {
+	client  *api.Client
+	agentID string
+	afterID int64
+	warned  bool
+}
+
+// tick reads what arrived since the cursor and prints it. A failure the control plane
+// refuses (a 4xx other than a rate limit, an answer the CLI cannot use) ends the
+// command through the one error path; a network blip or a 5xx is said ONCE per outage
+// and followed on past.
+func (f *follower) tick() error {
+	// When AfterID > 0, the server returns ASC — iterating in order prints
+	// lines as they were emitted and lets us advance the cursor exactly.
+	page, err := f.client.GetAgentLogs(f.agentID, api.LogQuery{AfterID: f.afterID, Tail: 500, Level: logsLevel, Stream: logsStream, DeploymentID: logsRun})
+	if err != nil {
+		if followRefused(err) {
+			return printRefusal("Failed to fetch logs", err)
+		}
+		if !f.warned {
+			output.PrintWarning("Failed to fetch logs: %v (still trying)", err)
+			f.warned = true
+		}
+		return nil
+	}
+	f.warned = false
+	for _, log := range page.Entries {
+		printLogLine(log, "15:04:05")
+		if log.ID > f.afterID {
+			f.afterID = log.ID
+		}
+	}
+	return nil
+}
+
+// followRefused reports whether a failed read while following is the control
+// plane's refusal (a 4xx other than a rate limit) or an answer the CLI cannot use:
+// retrying those would repeat the same answer forever.
+func followRefused(err error) bool {
+	var invalid *api.ResponseInvalidError
+	if errors.As(err, &invalid) {
+		return true
+	}
+	status, _, _, ok := serverRefusal(err)
+	return ok && status >= 400 && status < 500 && status != 429
 }
 
 // systemStream is the control plane's platform stream: the one thing that tells

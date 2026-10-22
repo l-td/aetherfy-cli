@@ -118,8 +118,8 @@ func TestGetAgentLogs_ReadsThePlansRetention(t *testing.T) {
 	assert.False(t, page.SinceClamped)
 }
 
-func TestGetAgentLogs_UnlimitedIsNoRetention(t *testing.T) {
-	page, err := logsWithHeaders(t, map[string]string{"X-Log-Retention-Days": "unlimited"}).GetAgentLogs("agent-1", api.LogQuery{})
+func TestGetAgentLogs_NegotiatedIsNoRetention(t *testing.T) {
+	page, err := logsWithHeaders(t, map[string]string{"X-Log-Retention-Days": "negotiated"}).GetAgentLogs("agent-1", api.LogQuery{})
 	require.NoError(t, err)
 	assert.Nil(t, page.RetentionDays)
 }
@@ -144,4 +144,40 @@ func TestGetAgentLogs_ARetentionTheControlPlaneDidNotStateIsAnError(t *testing.T
 			assert.Contains(t, err.Error(), "X-Log-Retention-Days")
 		})
 	}
+}
+
+func TestGetAgentLogs_ReadsTheStoredBytesCapAndTheSizeCapMark(t *testing.T) {
+	page, err := logsWithHeaders(t, map[string]string{
+		"X-Log-Retention-Days":         "14",
+		"X-Log-Max-Bytes-Stored":       "262144000",
+		"X-Log-Cap-Rolled-Out-Through": "2026-10-20T10:00:00+00:00",
+	}).GetAgentLogs("agent-1", api.LogQuery{})
+	require.NoError(t, err)
+	require.NotNil(t, page.MaxBytesStored)
+	assert.Equal(t, int64(250*1024*1024), *page.MaxBytesStored)
+	require.NotNil(t, page.CapRolledOutThrough)
+	assert.Equal(t, 2026, page.CapRolledOutThrough.Year())
+}
+
+func TestGetAgentLogs_ANegotiatedCapAndNoMarkAreNil(t *testing.T) {
+	page, err := logsWithHeaders(t, map[string]string{
+		"X-Log-Retention-Days": "14", "X-Log-Max-Bytes-Stored": "negotiated",
+	}).GetAgentLogs("agent-1", api.LogQuery{})
+	require.NoError(t, err)
+	assert.Nil(t, page.MaxBytesStored)
+	assert.Nil(t, page.CapRolledOutThrough)
+}
+
+func TestGetAgentLogs_AMarkThatIsNotATimeIsAnInvalidResponse(t *testing.T) {
+	_, err := logsWithHeaders(t, map[string]string{
+		"X-Log-Retention-Days": "14", "X-Log-Cap-Rolled-Out-Through": "yesterday",
+	}).GetAgentLogs("agent-1", api.LogQuery{})
+	var invalid *api.ResponseInvalidError
+	require.ErrorAs(t, err, &invalid)
+}
+
+func TestGetAgentLogs_AnUnreadableRetentionIsAnInvalidResponse(t *testing.T) {
+	_, err := logsWithHeaders(t, map[string]string{"X-Log-Retention-Days": "a week"}).GetAgentLogs("agent-1", api.LogQuery{})
+	var invalid *api.ResponseInvalidError
+	require.ErrorAs(t, err, &invalid)
 }

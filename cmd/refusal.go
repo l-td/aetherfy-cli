@@ -11,6 +11,11 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/vectors"
 )
 
+// responseInvalidCode is the code --json gives an error the CLI raised itself for an
+// answer that lacks what the control plane's contract promises (api.ResponseInvalidError).
+// Like CLI_USAGE_ERROR it is the CLI's, not the server's: it has a message and no status.
+const responseInvalidCode = "CLI_RESPONSE_INVALID"
+
 // printRefusal prints a failed request and returns its error.
 //
 // A REFUSAL THE CONTROL PLANE EXPLAINS IS PRINTED AS IT WROTE IT. Its message
@@ -35,6 +40,13 @@ func noReleaseYet(agent string) string {
 // The returned error is marked as printed, so Execute does not print it a
 // second time; its exit code and its type (errors.As) are unchanged.
 func printRefusal(what string, err error) error {
+	var invalid *api.ResponseInvalidError
+	if errors.As(err, &invalid) {
+		// The CLI's own refusal of an answer that lacks what the contract promises:
+		// its sentence says everything, and --json gives it its own code.
+		output.PrintAPIError(0, responseInvalidCode, invalid.Message)
+		return shown(err)
+	}
 	if status, code, msg, ok := serverRefusal(err); ok && msg != "" {
 		output.PrintAPIError(status, code, msg)
 		return shown(err)
@@ -99,6 +111,10 @@ func printUnprinted(err error) {
 	var in *inputError
 	if !ok && errors.As(err, &in) {
 		code = usageErrorCode
+	}
+	var invalid *api.ResponseInvalidError
+	if !ok && errors.As(err, &invalid) {
+		code = responseInvalidCode
 	}
 	if !output.IsJSON() && (jsonOut || argsAskForJSON(os.Args[1:])) {
 		// A flag error stops cobra before PersistentPreRunE: the run has not

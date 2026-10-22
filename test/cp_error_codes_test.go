@@ -91,6 +91,7 @@ var notControlPlaneCodes = map[string]string{
 
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
 	"CLI_USAGE_ERROR":       "the CLI's own code (cmd.usageErrorCode) for input it refused before sending anything; no server sends it",
+	"CLI_RESPONSE_INVALID":  "the CLI's own code (cmd.responseInvalidCode) for an answer that lacks what the contract promises, such as a logs read with no stated retention; no server sends it",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",
