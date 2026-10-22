@@ -1415,7 +1415,7 @@ in the old workspace is cleared, its secrets switch is turned off, a grant to th
 new home is dropped, and its other grants are kept (named with their levels); it
 no longer reaches the old workspace unless it is granted there. --yes skips the
 question, not the list (it goes to stderr), and is required when stdin is not a
-terminal.
+terminal (an agent already in that workspace has nothing to confirm).
 
 At least one flag is required; flags not given are left unchanged.`,
 	Example: `  # Rename the agent
@@ -1466,16 +1466,13 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient()
 
-	// A move asks first. Refused before anything is sent when nobody can answer.
+	// A move asks first (confirmMove), unless the agent already lives there.
 	var moveAsk destructiveAsk
 	if wsChanged {
 		moveAsk = destructiveAsk{
 			action: fmt.Sprintf("moves agent '%s' to workspace '%s'", name, agentUpdateWorkspace),
 			prompt: "Move the agent? [y/N]: ",
 			accept: yesAnswer,
-		}
-		if err := refuseUnconfirmable(agentUpdateYes, stdinIsTerminal(), moveAsk.action, moveAsk.skip()); err != nil {
-			return err
 		}
 	}
 
@@ -1487,7 +1484,7 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	target := name
 	var moved *api.AgentMove
 	if wsChanged {
-		if err := confirmMove(client, name, agentUpdateWorkspace, agentUpdateYes, moveAsk, newPrompter(), os.Stderr); err != nil {
+		if err := confirmMove(client, name, agentUpdateWorkspace, agentUpdateYes, stdinIsTerminal(), moveAsk, newPrompter(), os.Stderr); err != nil {
 			return err
 		}
 		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
@@ -1540,8 +1537,11 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 // confirmMove shows what the move changes and asks. The list is a warning, never a
 // refusal: a lookup that fails is said and the question is still asked. An agent
 // already in the target workspace has nothing to confirm (the move answers
-// "nothing changed"). --yes skips the question, not the list (stderr).
-func confirmMove(client *api.Client, agent, to string, yes bool, ask destructiveAsk, p *prompter, errOut io.Writer) error {
+// "nothing changed"), so that is checked FIRST, before nobody-can-answer refuses.
+// --yes skips the question, not the list (stderr). With no terminal and no --yes
+// the move is refused (exit 2) before anything is changed: the one read above it
+// sends nothing.
+func confirmMove(client *api.Client, agent, to string, yes, interactive bool, ask destructiveAsk, p *prompter, errOut io.Writer) error {
 	var lines []string
 	access, err := client.GetAgentAccess(agent)
 	switch {
@@ -1551,6 +1551,9 @@ func confirmMove(client *api.Client, agent, to string, yes bool, ask destructive
 		return nil
 	default:
 		lines = moveConsequences(access, to)
+	}
+	if err := refuseUnconfirmable(yes, interactive, ask.action, ask.skip()); err != nil {
+		return err
 	}
 	if yes {
 		for _, l := range lines {

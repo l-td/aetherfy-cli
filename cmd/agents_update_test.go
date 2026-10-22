@@ -241,15 +241,15 @@ func moveCP(t *testing.T) *fakeCP {
 
 // Without --yes and without a terminal nobody can answer: refused, exit 2's rule,
 // BEFORE anything is read or sent.
-func TestUpdateMoveWithoutYesOrTerminalIsRefusedBeforeAnythingIsSent(t *testing.T) {
+func TestUpdateMoveWithoutYesOrTerminalIsRefusedBeforeAnythingIsChanged(t *testing.T) {
 	onTerminal(t, false, "")
 	cp := moveCP(t)
 	_, stderr, err := runAfy(t, cp, "update", "bot", "--workspace", "acme")
 	if err == nil {
 		t.Fatal("a move nobody can confirm must be refused")
 	}
-	if len(cp.all()) != 0 {
-		t.Errorf("sent requests: %+v", cp.all())
+	if len(writesOf(cp)) != 0 {
+		t.Errorf("changed something: %+v", writesOf(cp))
 	}
 	if !strings.Contains(stderr, "This moves agent 'bot' to workspace 'acme'; pass --yes to confirm without a prompt.") {
 		t.Errorf("stderr:\n%s", stderr)
@@ -340,5 +340,22 @@ func TestUpdateMoveSaysWhenTheListCannotBeRead(t *testing.T) {
 	}
 	if len(cp.called("POST", "/agents/bot/move")) != 1 {
 		t.Error("the move was not sent")
+	}
+}
+
+// An agent already in the target workspace has nothing to confirm, so no terminal
+// and no --yes is NOT a refusal there: the move answers "nothing changed".
+func TestUpdateMoveToItsOwnWorkspaceWithoutYesOrTerminalIsNotRefused(t *testing.T) {
+	onTerminal(t, false, "")
+	cp := newFakeCP(t)
+	cp.on("GET", "/agents/bot/access", 200, botAccessJSON)
+	cp.on("POST", "/agents/bot/move", 200, `{"agent_id":"a1","agent":"bot","workspace":{"id":"w1","name":"default"},
+		"previous_workspace":{"id":"w1","name":"default"},"changed":false,"redeployed":false,"deployment":null}`)
+	stdout, stderr, err := runAfy(t, cp, "update", "bot", "--workspace", "default")
+	if err != nil {
+		t.Fatalf("refused a move that changes nothing: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "Nothing changed") {
+		t.Errorf("stdout:\n%s", stdout)
 	}
 }
