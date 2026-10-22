@@ -59,9 +59,15 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	oldStdout, oldColor := os.Stdout, color.Output
 	os.Stdout, color.Output = w, w
-	fn()
-	w.Close()
-	os.Stdout, color.Output = oldStdout, oldColor
+	// Restored by defer, so a t.Fatal inside fn (which ends the test goroutine) cannot leave
+	// the process writing into a pipe nobody reads.
+	func() {
+		defer func() {
+			os.Stdout, color.Output = oldStdout, oldColor
+			w.Close()
+		}()
+		fn()
+	}()
 
 	out, err := io.ReadAll(r)
 	r.Close()

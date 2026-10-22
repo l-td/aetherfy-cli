@@ -2,9 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -314,11 +317,114 @@ func TestTheFirstReadOfAFollowEndsOnARefusalWithoutRetrying(t *testing.T) {
 		cp := newFakeCP(t)
 		cp.on("GET", "/agents/bot/logs", answer[0].(int), answer[1].(string))
 		f := &follower{client: api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key"), agentID: "bot"}
-		if err := f.seed(); err == nil {
-			t.Errorf("%s: a refused first read must end the follow", name)
-		}
+		mustEndWithin(t, name, cp, f)
 		if n := len(cp.called("GET", "/agents/bot/logs")); n != 1 {
 			t.Errorf("%s: a refusal is not retried, the control plane saw %d reads", name, n)
 		}
+	}
+}
+
+// mustEndWithin runs f.seed() in a goroutine and fails BY ASSERTION, not by the test
+// binary's timeout, when it does not end with an error: a seed that retries a refusal
+// never ends. The reads it made are in the message.
+func mustEndWithin(t *testing.T, name string, cp *fakeCP, f *follower) {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- f.seed() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Errorf("%s: the refused first read must end the follow with an error", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("%s: a refusal was retried: %d reads and the first read had not ended", name, len(cp.called("GET", "/agents/bot/logs")))
+	}
+}
+
+func TestTheFirstReadOfAFollowRetriesANetworkErrorAndStartsWhenItAnswers(t *testing.T) {
+	shortFollowInterval(t)
+	t.Setenv("AETHERFY_CONFIG_DIR", t.TempDir())
+	var mu sync.Mutex
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		n := calls
+		mu.Unlock()
+		if n <= 4 {
+			// a network failure: the connection is closed with no answer (the client itself retries a
+			// call twice, so four failures outlast one whole first read)
+			conn, _, err := w.(http.Hijacker).Hijack()
+			if err == nil {
+				conn.Close()
+			}
+			return
+		}
+		w.Header().Set("X-Log-Retention-Days", "3")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(oneLog))
+	}))
+	t.Cleanup(srv.Close)
+	f := &follower{client: api.NewClientWithURL(srv.URL+"/api/v1", "afy_test_key"), agentID: "bot"}
+
+	var said string
+	var err error
+	said = captureStdout(t, func() {
+		done := make(chan error, 1)
+		go func() { done <- f.seed() }()
+		select {
+		case err = <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("the first read was never retried to success: %d reads", calls)
+		}
+	})
+	if err != nil {
+		t.Fatalf("a network failure on the first read must be retried, not end the follow: %v", err)
+	}
+	if f.afterID != 7 {
+		t.Errorf("the cursor is the newest line (7), got %d", f.afterID)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls < 5 {
+		t.Errorf("expected at least 5 reads (4 failures, then an answer), got %d", calls)
+	}
+	if strings.Count(said, "Failed to start following logs") != 1 {
+		t.Errorf("the outage is said exactly once, got %q", said)
+	}
+}
+
+func TestTheFirstReadOfAFollowEndsOnAnAnswerTheCLICannotUse(t *testing.T) {
+	shortFollowInterval(t)
+	calls := 0
+	var mu sync.Mutex
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		// 200 without X-Log-Retention-Days: the control plane's contract is broken, and
+		// retrying it would give the same answer forever
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+	f := &follower{client: api.NewClientWithURL(srv.URL+"/api/v1", "afy_test_key"), agentID: "bot"}
+
+	done := make(chan error, 1)
+	go func() { done <- f.seed() }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("an invalid answer must end the follow with an error")
+		}
+	case <-time.After(2 * time.Second):
+		mu.Lock()
+		defer mu.Unlock()
+		t.Fatalf("an invalid answer was retried: %d reads and the first read had not ended", calls)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if calls != 1 {
+		t.Errorf("an invalid answer is not retried, the server saw %d reads", calls)
 	}
 }
