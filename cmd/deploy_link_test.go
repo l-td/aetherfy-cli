@@ -226,27 +226,3 @@ func TestDeployWarnsWhenGitIsMissingInARepository(t *testing.T) {
 		t.Error("the warning must not stop the deploy")
 	}
 }
-
-// R6: a yaml still declaring name:, description: or workspace: is not refused
-// by the CLI in words of its own; the control plane's sentence, which says
-// where the property is set now, reaches the user unaltered.
-func TestAPlatformFieldInTheYamlGetsTheServersSentence(t *testing.T) {
-	const sentence = "aetherfy.yaml declares `workspace:`: the workspace an agent lives in is set on the platform: " +
-		"move it with `afy update <agent> --workspace <name>` or the dashboard's Move"
-	dir := agentFolder(t, "runtime: python3.11\nworkspace: acme\n")
-	linkFolder(t, dir, map[string]string{"default": prodID})
-	cp := deployCP(t)
-	cp.on("POST", "/agents/"+prodID+"/deploy", 422,
-		`{"detail":{"code":"DEPLOYMENT_CONFIG_PARSE_ERROR","message":"`+sentence+`"}}`)
-
-	_, stderr, code := runAfyProcess(t, cp, nil, "deploy", dir, "--detach")
-	if code == 0 {
-		t.Fatal("the deploy must fail")
-	}
-	if deploysSent(cp) != 1 {
-		t.Fatalf("the file must reach the server, which owns the refusal; calls: %+v", cp.all())
-	}
-	if !strings.Contains(stderr, "Error: "+sentence+"\n") {
-		t.Errorf("the server's sentence must be printed unaltered:\n%s", stderr)
-	}
-}

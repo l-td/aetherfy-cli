@@ -203,10 +203,11 @@ const narrowBlocked = `{"detail":{"code":"WORKSPACE_NARROW_BLOCKED_BY_RESOURCES"
 
 func TestWorkspacesRegionsNarrowRefusalNamesTheRegionsInUse(t *testing.T) {
 	cp := newFakeCP(t)
+	cp.on("GET", "/deploy-options", 200, regionOptions(2))
 	cp.on("PATCH", "/workspaces/research/regions", 422, narrowBlocked)
 
 	// Text: the server's sentence, then the regions it names.
-	_, stderr, err := runAfy(t, cp, "workspaces", "regions", "research", "--regions", "us-east-1")
+	_, stderr, err := runAfy(t, cp, "workspaces", "regions", "research", "--regions", "ap-southeast-1")
 	if err == nil {
 		t.Fatal("a blocked narrow succeeded")
 	}
@@ -223,7 +224,7 @@ func TestWorkspacesRegionsNarrowRefusalNamesTheRegionsInUse(t *testing.T) {
 	}
 
 	// --json: the code and status stay the server's, the sentence carries the regions.
-	stdout, stderr, code := runAfyProcess(t, cp, nil, "workspaces", "regions", "research", "--regions", "us-east-1", "--json")
+	stdout, stderr, code := runAfyProcess(t, cp, nil, "workspaces", "regions", "research", "--regions", "ap-southeast-1", "--json")
 	if code != 1 || strings.TrimSpace(stdout) != "" {
 		t.Fatalf("exit %d, stdout %q", code, stdout)
 	}
@@ -240,9 +241,10 @@ func TestWorkspacesRegionsNarrowRefusalWithoutRegionsInUseIsTheServersSentence(t
 	// A control plane that does not send regions_in_use (yet): the sentence is
 	// printed as written, with nothing appended and nothing invented.
 	cp := newFakeCP(t)
+	cp.on("GET", "/deploy-options", 200, regionOptions(2))
 	cp.on("PATCH", "/workspaces/research/regions", 422,
 		`{"detail":{"code":"WORKSPACE_NARROW_BLOCKED_BY_RESOURCES","message":"1 resource(s) still use a region being removed."}}`)
-	_, stderr, err := runAfy(t, cp, "workspaces", "regions", "research", "--regions", "us-east-1")
+	_, stderr, err := runAfy(t, cp, "workspaces", "regions", "research", "--regions", "ap-southeast-1")
 	if err == nil {
 		t.Fatal("a blocked narrow succeeded")
 	}

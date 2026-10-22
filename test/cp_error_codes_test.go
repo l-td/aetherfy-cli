@@ -81,6 +81,14 @@ var notControlPlaneCodes = map[string]string{
 	"AETHERFY_CP_ROOT":      "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
 	"AETHERFY_WORKSPACE_ID": "env var: the workspace id the control plane injects into agents (for the SDKs); the CLI reads it NOT, pinned by a test",
 	"PLATFORM_FIELDS":       "the control plane's constant of the keys that left aetherfy.yaml, read by test/cpyaml",
+
+	// Names of the control plane's module-level string constants that test/cpyaml
+	// reads (shared/config_parser.py), not codes a response carries.
+	"UNKNOWN_FIELD_SUGGESTION": "constant name: the did-you-mean clause, read by test/cpyaml",
+	"PLATFORM_FIELDS_REFUSAL":  "constant name: the sentence a yaml declaring a platform key is refused with, read by test/cpyaml",
+	"PLATFORM_FIELD_CLAUSE":    "constant name: one field's clause of that sentence, read by test/cpyaml",
+	"PLATFORM_FIELD_JOINER":    "constant name: what joins the clauses of that sentence, read by test/cpyaml",
+
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
 	"CLI_USAGE_ERROR":       "the CLI's own code (cmd.usageErrorCode) for input it refused before sending anything; no server sends it",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",

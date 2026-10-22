@@ -236,10 +236,7 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 	}
 
 	configPath := filepath.Join(absDir, "aetherfy.yaml")
-	if proceed, err := confirmOverwrite(p, configPath); err != nil || !proceed {
-		if err == nil {
-			return output.Result(map[string]interface{}{"created": false, "aborted": true})
-		}
+	if err := confirmOverwrite(p, configPath); err != nil {
 		return err
 	}
 
@@ -306,25 +303,21 @@ func initNewAgent(cmd *cobra.Command, client *api.Client, p *prompter, absDir st
 }
 
 // confirmOverwrite applies init's rule for an existing aetherfy.yaml: --force
-// overwrites; otherwise a terminal is asked, and without one it is refused.
-// It reports whether to go on (false with no error: the person declined).
-func confirmOverwrite(p *prompter, configPath string) (bool, error) {
-	if fileExists(configPath) && !initForce {
-		if !isInteractive() {
-			output.PrintError("aetherfy.yaml already exists. Use --force to overwrite.")
-			return false, shown(fmt.Errorf("aetherfy.yaml already exists"))
-		}
-		yes, err := p.confirm("aetherfy.yaml already exists. Overwrite")
-		if err != nil {
-			return false, err
-		}
-		if !yes {
-			output.Println("Aborted.")
-			return false, nil
-		}
+// overwrites; otherwise a terminal is asked, and without one it is refused
+// (exit 2, before asking). A "no" is an error too (exit 1, "Cancelled"): the
+// command did not do what it was asked. It asks through init's one prompter.
+func confirmOverwrite(p *prompter, configPath string) error {
+	if !fileExists(configPath) || initForce {
+		return nil
 	}
-
-	return true, nil
+	if err := refuseUnconfirmable(false, isInteractive(), "overwrites aetherfy.yaml", "--force"); err != nil {
+		return err
+	}
+	return askToConfirm(destructiveAsk{
+		prompt:   "aetherfy.yaml already exists. Overwrite [y/N]: ",
+		accept:   yesAnswer,
+		mismatch: "aetherfy.yaml was kept",
+	}, p)
 }
 
 // generatedConfig is the aetherfy.yaml init writes for an agent that has no

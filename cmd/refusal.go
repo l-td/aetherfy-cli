@@ -69,13 +69,22 @@ func narrowBlockedSentence(err error) (sentence string, ok bool) {
 func serverRefusal(err error) (status int, code, message string, ok bool) {
 	var cp *api.APIError
 	if errors.As(err, &cp) {
-		return cp.StatusCode, cp.Code, cp.Message, true
+		return cp.StatusCode, cp.Code, withViolations(cp.Message, cp.Violations), true
 	}
 	var vec *vectors.APIError
 	if errors.As(err, &vec) {
 		return vec.Status, vec.Code, vec.Message, true
 	}
 	return 0, "", "", false
+}
+
+// withViolations is a server's summary followed by the rules it names, one per
+// line: "Request validation failed." alone does not say which one.
+func withViolations(message string, violations []string) string {
+	if len(violations) == 0 {
+		return message
+	}
+	return message + "\n  - " + strings.Join(violations, "\n  - ")
 }
 
 // printUnprinted is Execute's report of an error no command printed (a flag

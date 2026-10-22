@@ -253,8 +253,8 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 		if len(s.got()) != 0 || *connects != 0 {
 			t.Error("deleted without a confirmation")
 		}
-		if !strings.Contains(stderr.String(), "--yes") {
-			t.Errorf("the refusal should say how to proceed: %q", stderr.String())
+		if !strings.Contains(stderr.String(), "This deletes collection 'articles' and every point in it; pass --yes to confirm without a prompt.") {
+			t.Errorf("the refusal should be the one sentence every delete gives: %q", stderr.String())
 		}
 	})
 	t.Run("typing the name deletes", func(t *testing.T) {
@@ -267,12 +267,15 @@ func TestCollectionsDeleteNeedsAConfirmation(t *testing.T) {
 	})
 	t.Run("typing another name deletes nothing", func(t *testing.T) {
 		s := newVecServer(t, ok)
-		r, _, _, _ := s.run("default", false)
-		if code := collectionsDelete(r, "articles", false, strings.NewReader("article\n"), true); code != exitInputRefused {
-			t.Errorf("exit %d", code)
+		r, _, stderr, _ := s.run("default", false)
+		if code := collectionsDelete(r, "articles", false, strings.NewReader("article\n"), true); code != exitRequestFailed {
+			t.Errorf("exit %d, want %d: a cancelled delete is a failure, never a success", code, exitRequestFailed)
 		}
 		if len(s.got()) != 0 {
 			t.Error("deleted on a mismatched name")
+		}
+		if !strings.Contains(stderr.String(), "Cancelled") {
+			t.Errorf("stderr must say Cancelled: %q", stderr.String())
 		}
 	})
 }

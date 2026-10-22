@@ -81,26 +81,62 @@ func TestAccessAddShowsWhatBecomesReachableAndAsks(t *testing.T) {
 	}
 }
 
+// One rule for every confirmation: a "no" is exit 1 with "Cancelled" (never 0),
+// input that ends before an answer is exit 2, no terminal and no --yes is exit 2
+// before asking.
 func TestAccessAddChangesNothingUnlessConfirmed(t *testing.T) {
-	for _, answer := range []string{"\n", "n\n", "no\n", ""} {
+	for _, c := range []struct {
+		answer string
+		code   int
+		says   string
+	}{
+		{"\n", exitRequestFailed, "Cancelled: agent 'bot' was not changed"},
+		{"n\n", exitRequestFailed, "Cancelled: agent 'bot' was not changed"},
+		{"no\n", exitRequestFailed, "Cancelled: agent 'bot' was not changed"},
+		{"", exitInputRefused, "no answer"},
+	} {
 		r, cp, _, errOut := runAccess(t, false)
-		if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader(answer), true); code != exitInputRefused {
-			t.Errorf("answer %q: exit %d, want %d", answer, code, exitInputRefused)
+		if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader(c.answer), true); code != c.code {
+			t.Errorf("answer %q: exit %d, want %d", c.answer, code, c.code)
 		}
 		if n := len(requestsTo(cp, "POST", accessWsPath)); n != 0 {
-			t.Errorf("answer %q: granted without a yes", answer)
+			t.Errorf("answer %q: granted without a yes", c.answer)
 		}
-		if !strings.Contains(errOut.String(), "not confirmed") {
-			t.Errorf("answer %q: stderr %q", answer, errOut.String())
+		if !strings.Contains(errOut.String(), c.says) {
+			t.Errorf("answer %q: stderr %q", c.answer, errOut.String())
 		}
 	}
 }
 
-func TestAccessAddWithJSONOrNoTerminalNeedsYesAndSendsNothing(t *testing.T) {
+// --json no longer refuses a terminal: the question goes to stderr, so stdout
+// stays one object, and a "no" is an error document, not a result.
+func TestAccessAddUnderJSONAsksOnATerminalAndACancelIsAnErrorDocument(t *testing.T) {
+	r, cp, out, errOut := runAccess(t, true)
+	if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("n\n"), true); code != exitRequestFailed {
+		t.Fatalf("exit %d, want %d", code, exitRequestFailed)
+	}
+	if n := len(requestsTo(cp, "POST", accessWsPath)); n != 0 || out.Len() != 0 {
+		t.Errorf("granted %d time(s), stdout %q", n, out.String())
+	}
+	if !strings.Contains(errOut.String(), `"message":"Cancelled: agent 'bot' was not changed"`) || strings.Contains(errOut.String(), `"code"`) {
+		t.Errorf("stderr %q", errOut.String())
+	}
+
+	r, cp, _, errOut = runAccess(t, true)
+	if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("y\n"), true); code != 0 {
+		t.Fatalf("a yes under --json must grant: exit %d, %s", code, errOut.String())
+	}
+	if n := len(requestsTo(cp, "POST", accessWsPath)); n != 1 {
+		t.Errorf("granted %d time(s)", n)
+	}
+}
+
+func TestAccessAddWithNoTerminalNeedsYesAndSendsNothing(t *testing.T) {
+	const sentence = "This grants access to agent 'bot'; pass --yes to confirm without a prompt."
 	for _, tc := range []struct {
 		asJSON, interactive bool
 		says                string
-	}{{true, true, "--json cannot answer"}, {false, false, "stdin is not a terminal"}} {
+	}{{true, false, sentence}, {false, false, sentence}} {
 		r, cp, _, errOut := runAccess(t, tc.asJSON)
 		if code := agentsAccess(r, "bot", []string{"gamma"}, nil, false, strings.NewReader("y\n"), tc.interactive); code != exitInputRefused {
 			t.Errorf("%+v: exit %d, want %d", tc, code, exitInputRefused)

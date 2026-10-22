@@ -148,8 +148,11 @@ func TestInteractiveInitConfirmsAnOverwrite(t *testing.T) {
 		cp := twoWorkspaceInitCP(t)
 		scriptPrompts(t, c.answer)
 		_, stderr, err := runAfy(t, cp, "init", dir, "--runtime", "python3.11")
-		if err != nil {
+		if c.created && err != nil {
 			t.Fatalf("answer %q: %v\n%s", c.answer, err, stderr)
+		}
+		if !c.created && (err == nil || ExitCode(err) != exitRequestFailed || !strings.Contains(err.Error(), "Cancelled")) {
+			t.Fatalf("answer %q: a declined overwrite is exit %d, Cancelled, never 0: %v", c.answer, exitRequestFailed, err)
 		}
 		if got := len(cp.called("POST", "/agents")) == 1; got != c.created {
 			t.Errorf("answer %q: created = %v, want %v", c.answer, got, c.created)

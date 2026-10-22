@@ -14,7 +14,6 @@ type Credentials struct {
 	APIKey string `yaml:"api_key"`
 	UserID string `yaml:"user_id,omitempty"`
 	Email  string `yaml:"email,omitempty"`
-	Tier   string `yaml:"tier,omitempty"`
 }
 
 // APIKeyPattern validates API key format
