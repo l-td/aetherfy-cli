@@ -90,6 +90,8 @@ var notControlPlaneCodes = map[string]string{
 	"PLATFORM_FIELD_JOINER":    "constant name: what joins the clauses of that sentence, read by test/cpyaml",
 
 	"INVALID_FILTER":   "a vectors API code (vectordb), not a control-plane one: the CLI relays it unchanged, pinned by the points command tests",
+	"INVALID_REQUEST_FIELD": "a vectors API code (vectordb), not a control-plane one: the vectors request-body test expects it from the validator",
+	"AFY_VECTORDB_DIR":      "env var: names the vectordb checkout whose validator request_bodies_test.go runs the CLI's bodies through",
 	"AFY_WRITE_BODIES": "env var: =1 rewrites internal/vectors/testdata/request-bodies.json (request_bodies_test.go)",
 
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
