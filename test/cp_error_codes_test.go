@@ -89,6 +89,9 @@ var notControlPlaneCodes = map[string]string{
 	"PLATFORM_FIELD_CLAUSE":    "constant name: one field's clause of that sentence, read by test/cpyaml",
 	"PLATFORM_FIELD_JOINER":    "constant name: what joins the clauses of that sentence, read by test/cpyaml",
 
+	"INVALID_FILTER":   "a vectors API code (vectordb), not a control-plane one: the CLI relays it unchanged, pinned by the points command tests",
+	"AFY_WRITE_BODIES": "env var: =1 rewrites internal/vectors/testdata/request-bodies.json (request_bodies_test.go)",
+
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
 	"CLI_USAGE_ERROR":       "the CLI's own code (cmd.usageErrorCode) for input it refused before sending anything; no server sends it",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
