@@ -1408,8 +1408,8 @@ to it keep deploying to it: a link names the agent by id. Code that calls the
 agent by its old name stops finding it.
 
 --workspace moves the agent to another workspace. A MOVE REDEPLOYS the agent,
-so its key reaches the new workspace at once; if it cannot be redeployed, the
-move is refused and says why. Its conversation history stays in the old
+so its key reaches the new workspace at once (for a task, from its next run); if
+it cannot be redeployed, the move is refused and says why. Its conversation history stays in the old
 workspace. A move asks first, and lists what it changes: the agent's own level
 in the old workspace is cleared, its secrets switch is turned off, a grant to the
 new home is dropped, and its other grants are kept (named with their levels); it
