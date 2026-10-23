@@ -25,8 +25,9 @@ import (
 // Part 2 runs the file through the validator itself (node, vectordb's own
 // code, not a copy of its rules) when a vectordb checkout that has it is
 // beside this one (AFY_VECTORDB_DIR names another). Without one it is SKIPPED
-// with the reason, and the same file is driven through the validator by
-// vectordb's own unit lane (tests/fixtures/filters/cli-request-bodies.json).
+// with the reason. vectordb's own unit lane reads this same file from its
+// aetherfy-cli sibling (backend/tests/unit/cliRequestBodies.test.js), so there
+// is one copy of it and a change to a body is seen by both repos.
 
 type recordedRequest struct {
 	Method string          `json:"method"`
@@ -156,7 +157,7 @@ func vectordbValidator(t *testing.T) string {
 			return p
 		}
 	}
-	t.Skip("no vectordb checkout with backend/utils/filterValidation.js beside this one (set AFY_VECTORDB_DIR); vectordb's own unit lane drives the same file through the validator")
+	t.Skip("no vectordb checkout with backend/utils/filterValidation.js beside this one (set AFY_VECTORDB_DIR); vectordb's own unit lane reads this file and drives it through the validator")
 	return ""
 }
 

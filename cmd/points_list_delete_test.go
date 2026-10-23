@@ -454,3 +454,38 @@ func TestEveryFilteredPointsCommandReportsARefusedFilterAsARequestFailure(t *tes
 		}
 	}
 }
+
+// --json carries the API's field, key and suggestion beside status, code and
+// message, and leaves them out when the API did not send them.
+func TestJSONErrorCarriesTheFilterRefusalsFieldKeyAndSuggestion(t *testing.T) {
+	s := newVecServer(t, func(vecRequest) (int, string) { return 400, invalidFilterBody })
+	r, _, stderr, _ := s.run("default", true)
+	if code := pointsCount(r, "articles", `{"shuold":[]}`); code != exitRequestFailed {
+		t.Fatalf("exit %d", code)
+	}
+	got := decode(t, stderr.String())["error"].(map[string]interface{})
+	want := map[string]interface{}{
+		"status": float64(400), "code": "INVALID_FILTER", "field": "filter", "key": "shuold", "suggestion": "should",
+		"message": "Unrecognised filter key 'shuold' at filter. Did you mean 'should'?",
+	}
+	if len(got) != len(want) {
+		t.Errorf("error = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("error.%s = %v, want %v", k, got[k], v)
+		}
+	}
+
+	plain := newVecServer(t, func(vecRequest) (int, string) {
+		return 404, `{"error":{"code":"NOT_FOUND","message":"Collection 'articles' not found"}}`
+	})
+	r, _, stderr, _ = plain.run("default", true)
+	pointsCount(r, "articles", "")
+	got = decode(t, stderr.String())["error"].(map[string]interface{})
+	for _, k := range []string{"field", "key", "suggestion"} {
+		if _, has := got[k]; has {
+			t.Errorf("error.%s is present though the API sent none: %v", k, got)
+		}
+	}
+}
