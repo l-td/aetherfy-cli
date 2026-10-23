@@ -407,3 +407,85 @@ func TestPointsDeleteReportsTheDeletesOwnError(t *testing.T) {
 		t.Errorf("stdout %q, stderr %q", stdout.String(), stderr.String())
 	}
 }
+
+// A filter the API refuses for an unknown key (INVALID_FILTER, 400) is a
+// request failure like any other: exit 1, the API's code and message as sent,
+// and on a delete it stops at the count, so nothing is asked and nothing is
+// deleted.
+const invalidFilterBody = `{"error":{"code":"INVALID_FILTER","message":"Unrecognised filter key 'shuold' at filter. Did you mean 'should'?","field":"filter","key":"shuold","suggestion":"should"}}`
+
+func TestPointsDeleteStopsAtTheCountWhenTheAPIRefusesTheFilter(t *testing.T) {
+	s := newVecServer(t, func(r vecRequest) (int, string) {
+		if strings.HasSuffix(r.Path, "/points/count") {
+			return 400, invalidFilterBody
+		}
+		t.Errorf("unexpected request %s %s", r.Method, r.Path)
+		return 500, `{}`
+	})
+	r, stdout, stderr, _ := s.run("default", false)
+	const filter = `{"shuold":[{"key":"lang","match":{"value":"en"}}]}`
+	if code := pointsDelete(r, "articles", nil, filter, false, strings.NewReader("articles\n"), true); code != exitRequestFailed {
+		t.Errorf("exit %d, want %d", code, exitRequestFailed)
+	}
+	if got := paths(s.got()); got != "POST /points/count" {
+		t.Errorf("requests = %s; want the count only", got)
+	}
+	want := "Error: Unrecognised filter key 'shuold' at filter. Did you mean 'should'? (INVALID_FILTER)\n"
+	if stdout.Len() != 0 || !strings.HasSuffix(stderr.String(), want) || strings.Contains(stderr.String(), "will be deleted") {
+		t.Errorf("stdout %q, stderr %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestEveryFilteredPointsCommandReportsARefusedFilterAsARequestFailure(t *testing.T) {
+	s := newVecServer(t, func(vecRequest) (int, string) { return 400, invalidFilterBody })
+	const filter = `{"shuold":[]}`
+	runs := map[string]func(r *vecRun) int{
+		"count":  func(r *vecRun) int { return pointsCount(r, "articles", filter) },
+		"search": func(r *vecRun) int { return pointsSearch(r, "articles", "[0.1,0.2]", 5, filter) },
+		"list":   func(r *vecRun) int { return pointsList(r, "articles", 10, "", filter, false) },
+	}
+	for name, run := range runs {
+		r, stdout, stderr, _ := s.run("default", false)
+		if code := run(r); code != exitRequestFailed {
+			t.Errorf("%s: exit %d, want %d", name, code, exitRequestFailed)
+		}
+		if stdout.Len() != 0 || !strings.HasSuffix(stderr.String(), "(INVALID_FILTER)\n") {
+			t.Errorf("%s: stdout %q, stderr %q", name, stdout.String(), stderr.String())
+		}
+	}
+}
+
+// --json carries the API's field, key and suggestion beside status, code and
+// message, and leaves them out when the API did not send them.
+func TestJSONErrorCarriesTheFilterRefusalsFieldKeyAndSuggestion(t *testing.T) {
+	s := newVecServer(t, func(vecRequest) (int, string) { return 400, invalidFilterBody })
+	r, _, stderr, _ := s.run("default", true)
+	if code := pointsCount(r, "articles", `{"shuold":[]}`); code != exitRequestFailed {
+		t.Fatalf("exit %d", code)
+	}
+	got := decode(t, stderr.String())["error"].(map[string]interface{})
+	want := map[string]interface{}{
+		"status": float64(400), "code": "INVALID_FILTER", "field": "filter", "key": "shuold", "suggestion": "should",
+		"message": "Unrecognised filter key 'shuold' at filter. Did you mean 'should'?",
+	}
+	if len(got) != len(want) {
+		t.Errorf("error = %v, want %v", got, want)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("error.%s = %v, want %v", k, got[k], v)
+		}
+	}
+
+	plain := newVecServer(t, func(vecRequest) (int, string) {
+		return 404, `{"error":{"code":"NOT_FOUND","message":"Collection 'articles' not found"}}`
+	})
+	r, _, stderr, _ = plain.run("default", true)
+	pointsCount(r, "articles", "")
+	got = decode(t, stderr.String())["error"].(map[string]interface{})
+	for _, k := range []string{"field", "key", "suggestion"} {
+		if _, has := got[k]; has {
+			t.Errorf("error.%s is present though the API sent none: %v", k, got)
+		}
+	}
+}

@@ -247,15 +247,21 @@ func (r *vecRun) printJSON(v interface{}) int {
 }
 
 // vecErrorJSON is what --json prints on stderr for a failure. status and code
-// are the API's, present only when the API answered. On an afy points upsert
+// are the API's, present only when the API answered; so are field, key and
+// suggestion, on a refused filter key. On an afy points upsert
 // that may have written something, written is the points confirmed written
 // before the failed request, and unconfirmed (when not 0) the points of that
 // request whose outcome is unknown.
 type vecErrorJSON struct {
 	Error struct {
-		Status      int    `json:"status,omitempty"`
-		Code        string `json:"code,omitempty"`
-		Message     string `json:"message"`
+		Status  int    `json:"status,omitempty"`
+		Code    string `json:"code,omitempty"`
+		Message string `json:"message"`
+		// Field, Key and Suggestion are the API's, when it sent them: the
+		// path of a refused filter key, the key and the nearest valid one.
+		Field       string `json:"field,omitempty"`
+		Key         string `json:"key,omitempty"`
+		Suggestion  string `json:"suggestion,omitempty"`
 		Written     *int   `json:"written,omitempty"`
 		Unconfirmed *int   `json:"unconfirmed,omitempty"`
 	} `json:"error"`
@@ -283,6 +289,9 @@ func (r *vecRun) fail(err error) int {
 		out.Error.Message = err.Error()
 		if isAPI {
 			out.Error.Status, out.Error.Code, out.Error.Message = apiErr.Status, apiErr.Code, apiErr.Message
+			out.Error.Field, _ = apiErr.Details["field"].(string)
+			out.Error.Key, _ = apiErr.Details["key"].(string)
+			out.Error.Suggestion, _ = apiErr.Details["suggestion"].(string)
 		} else if isCP {
 			out.Error.Status, out.Error.Code, out.Error.Message = cpErr.StatusCode, cpErr.Code, cpErr.Message
 		}

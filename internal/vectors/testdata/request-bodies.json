@@ -1,0 +1,740 @@
+[
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/count",
+    "body": {
+      "exact": true
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/query",
+    "body": {
+      "limit": 5,
+      "offset": 0,
+      "query": [
+        0.1,
+        0.2
+      ],
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "limit": 10,
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "limit": 10,
+      "offset": 7,
+      "with_payload": true,
+      "with_vector": true
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/count",
+    "body": {
+      "exact": true,
+      "filter": {
+        "must": [
+          {
+            "key": "lang",
+            "match": {
+              "value": "en"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/query",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "lang",
+            "match": {
+              "value": "en"
+            }
+          }
+        ]
+      },
+      "limit": 5,
+      "offset": 0,
+      "query": [
+        0.1,
+        0.2
+      ],
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "lang",
+            "match": {
+              "value": "en"
+            }
+          }
+        ]
+      },
+      "limit": 10,
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "lang",
+            "match": {
+              "value": "en"
+            }
+          }
+        ]
+      },
+      "limit": 10,
+      "offset": 7,
+      "with_payload": true,
+      "with_vector": true
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/delete",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "lang",
+            "match": {
+              "value": "en"
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/count",
+    "body": {
+      "exact": true,
+      "filter": {
+        "must": [
+          {
+            "key": "year",
+            "range": {
+              "gte": 2020,
+              "lt": 2025
+            }
+          }
+        ],
+        "should": [
+          {
+            "key": "tags",
+            "match": {
+              "any": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          {
+            "is_empty": {
+              "key": "__aetherfy_agent_id"
+            }
+          }
+        ],
+        "must_not": [
+          {
+            "has_id": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "key": "loc",
+            "geo_radius": {
+              "center": {
+                "lat": 52.5,
+                "lon": 13.4
+              },
+              "radius": 1000
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/query",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "year",
+            "range": {
+              "gte": 2020,
+              "lt": 2025
+            }
+          }
+        ],
+        "should": [
+          {
+            "key": "tags",
+            "match": {
+              "any": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          {
+            "is_empty": {
+              "key": "__aetherfy_agent_id"
+            }
+          }
+        ],
+        "must_not": [
+          {
+            "has_id": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "key": "loc",
+            "geo_radius": {
+              "center": {
+                "lat": 52.5,
+                "lon": 13.4
+              },
+              "radius": 1000
+            }
+          }
+        ]
+      },
+      "limit": 5,
+      "offset": 0,
+      "query": [
+        0.1,
+        0.2
+      ],
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "year",
+            "range": {
+              "gte": 2020,
+              "lt": 2025
+            }
+          }
+        ],
+        "should": [
+          {
+            "key": "tags",
+            "match": {
+              "any": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          {
+            "is_empty": {
+              "key": "__aetherfy_agent_id"
+            }
+          }
+        ],
+        "must_not": [
+          {
+            "has_id": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "key": "loc",
+            "geo_radius": {
+              "center": {
+                "lat": 52.5,
+                "lon": 13.4
+              },
+              "radius": 1000
+            }
+          }
+        ]
+      },
+      "limit": 10,
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "year",
+            "range": {
+              "gte": 2020,
+              "lt": 2025
+            }
+          }
+        ],
+        "should": [
+          {
+            "key": "tags",
+            "match": {
+              "any": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          {
+            "is_empty": {
+              "key": "__aetherfy_agent_id"
+            }
+          }
+        ],
+        "must_not": [
+          {
+            "has_id": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "key": "loc",
+            "geo_radius": {
+              "center": {
+                "lat": 52.5,
+                "lon": 13.4
+              },
+              "radius": 1000
+            }
+          }
+        ]
+      },
+      "limit": 10,
+      "offset": 7,
+      "with_payload": true,
+      "with_vector": true
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/delete",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "key": "year",
+            "range": {
+              "gte": 2020,
+              "lt": 2025
+            }
+          }
+        ],
+        "should": [
+          {
+            "key": "tags",
+            "match": {
+              "any": [
+                "a",
+                "b"
+              ]
+            }
+          },
+          {
+            "is_empty": {
+              "key": "__aetherfy_agent_id"
+            }
+          }
+        ],
+        "must_not": [
+          {
+            "has_id": [
+              1,
+              2,
+              3
+            ]
+          },
+          {
+            "key": "loc",
+            "geo_radius": {
+              "center": {
+                "lat": 52.5,
+                "lon": 13.4
+              },
+              "radius": 1000
+            }
+          }
+        ]
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/count",
+    "body": {
+      "exact": true,
+      "filter": {
+        "must": [
+          {
+            "nested": {
+              "key": "items",
+              "filter": {
+                "must": [
+                  {
+                    "key": "n",
+                    "match": {
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "min_should": {
+          "conditions": [
+            {
+              "key": "a",
+              "match": {
+                "value": 1
+              }
+            },
+            {
+              "key": "b",
+              "match": {
+                "value": 2
+              }
+            }
+          ],
+          "min_count": 1
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/query",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "nested": {
+              "key": "items",
+              "filter": {
+                "must": [
+                  {
+                    "key": "n",
+                    "match": {
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "min_should": {
+          "conditions": [
+            {
+              "key": "a",
+              "match": {
+                "value": 1
+              }
+            },
+            {
+              "key": "b",
+              "match": {
+                "value": 2
+              }
+            }
+          ],
+          "min_count": 1
+        }
+      },
+      "limit": 5,
+      "offset": 0,
+      "query": [
+        0.1,
+        0.2
+      ],
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "nested": {
+              "key": "items",
+              "filter": {
+                "must": [
+                  {
+                    "key": "n",
+                    "match": {
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "min_should": {
+          "conditions": [
+            {
+              "key": "a",
+              "match": {
+                "value": 1
+              }
+            },
+            {
+              "key": "b",
+              "match": {
+                "value": 2
+              }
+            }
+          ],
+          "min_count": 1
+        }
+      },
+      "limit": 10,
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/scroll",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "nested": {
+              "key": "items",
+              "filter": {
+                "must": [
+                  {
+                    "key": "n",
+                    "match": {
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "min_should": {
+          "conditions": [
+            {
+              "key": "a",
+              "match": {
+                "value": 1
+              }
+            },
+            {
+              "key": "b",
+              "match": {
+                "value": 2
+              }
+            }
+          ],
+          "min_count": 1
+        }
+      },
+      "limit": 10,
+      "offset": 7,
+      "with_payload": true,
+      "with_vector": true
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/delete",
+    "body": {
+      "filter": {
+        "must": [
+          {
+            "nested": {
+              "key": "items",
+              "filter": {
+                "must": [
+                  {
+                    "key": "n",
+                    "match": {
+                      "value": 1
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ],
+        "min_should": {
+          "conditions": [
+            {
+              "key": "a",
+              "match": {
+                "value": 1
+              }
+            },
+            {
+              "key": "b",
+              "match": {
+                "value": 2
+              }
+            }
+          ],
+          "min_count": 1
+        }
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/delete",
+    "body": {
+      "points": [
+        1,
+        "b3d1"
+      ]
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/retrieve",
+    "body": {
+      "ids": [
+        1,
+        "b3d1"
+      ],
+      "with_payload": true,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/points/retrieve",
+    "body": {
+      "ids": [
+        1,
+        "b3d1"
+      ],
+      "with_payload": false,
+      "with_vector": false
+    }
+  },
+  {
+    "method": "PUT",
+    "route": "/collections/articles/points",
+    "body": {
+      "points": [
+        {
+          "id": 1,
+          "vector": [
+            0.1,
+            0.2
+          ],
+          "payload": {
+            "lang": "en"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "method": "PUT",
+    "route": "/collections/articles/index",
+    "body": {
+      "field_name": "lang",
+      "field_schema": "keyword"
+    }
+  },
+  {
+    "method": "PUT",
+    "route": "/collections/articles/index",
+    "body": {
+      "field_name": "body",
+      "field_schema": {
+        "tokenizer": "word",
+        "type": "text"
+      }
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections/articles/schema/analyze",
+    "body": {
+      "sample_size": 500
+    }
+  },
+  {
+    "method": "POST",
+    "route": "/collections",
+    "body": {
+      "name": "articles",
+      "vectors": {
+        "size": 2,
+        "distance": "Cosine"
+      },
+      "regions": [
+        "us-east-1"
+      ]
+    }
+  },
+  {
+    "method": "PATCH",
+    "route": "/collections/articles",
+    "body": {
+      "description": "about articles",
+      "name": "renamed"
+    }
+  }
+]

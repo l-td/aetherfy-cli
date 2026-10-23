@@ -30,7 +30,11 @@ afy points upsert <collection> adds or replaces the points --points gives;
 afy points delete <collection> <id> removes points by id or by --filter.
 
 --filter takes a filter object as JSON, in the shape the SDKs send, e.g.
-'{"must":[{"key":"lang","match":{"value":"en"}}]}'.`,
+'{"must":[{"key":"lang","match":{"value":"en"}}]}'.
+The API checks every key of the filter: one it does not know (a misspelt
+"shuold" for "should") is refused with INVALID_FILTER, naming the key, its
+path in the filter and the nearest valid key, and the command exits 1 with the
+API's code and message. Nothing is searched or deleted on a refused filter.`,
 }
 
 // --- COUNT ---
@@ -436,7 +440,10 @@ so a script cannot delete by accident. When nothing matches, nothing is
 deleted.
 
 An empty filter ({}, or one with no conditions) is refused: it matches every
-point, and deleting every point is afy collections delete <name>.`,
+point, and deleting every point is afy collections delete <name>.
+
+A filter with a key the API does not know is refused at the count, with
+INVALID_FILTER, before any question is asked: nothing is deleted.`,
 	Example: `  # Two points by id, confirming by name
   afy points delete articles 17 42
 
