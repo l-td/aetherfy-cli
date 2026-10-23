@@ -65,7 +65,7 @@ every workspace --add names, and --add of a workspace already granted with
 --level changes its level. --level is only taken with --add. --own-level sets
 its level where it lives (read, read_write, full), or "default" to follow
 the level the workspace sets for its agents ('afy workspaces update
---agent-access-level'; a new workspace's default is read_write). A workspace's
+--agent-access-level'; a new workspace's default is read and write access). A workspace's
 default applies to the agents that live there, never to one that can only access
 it. Granting gives the agent access; it does not move it (moving is 'afy update'
 with --workspace). An empty value, or one starting with "-", is refused, exit 2.

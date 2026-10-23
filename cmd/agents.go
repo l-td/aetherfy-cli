@@ -1484,7 +1484,11 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	target := name
 	var moved *api.AgentMove
 	if wsChanged {
-		if err := confirmMove(client, name, agentUpdateWorkspace, agentUpdateYes, stdinIsTerminal(), moveAsk, newPrompter(), os.Stderr); err != nil {
+		deps := moveConfirmDeps{
+			client: client, yes: agentUpdateYes, interactive: stdinIsTerminal(),
+			ask: moveAsk, prompter: newPrompter(), errOut: os.Stderr,
+		}
+		if err := confirmMove(deps, name, agentUpdateWorkspace); err != nil {
 			return err
 		}
 		sp := output.NewSpinner(fmt.Sprintf("Moving agent '%s' to workspace '%s'...", name, agentUpdateWorkspace))
@@ -1534,6 +1538,18 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 	return output.Result(map[string]interface{}{"move": moved, "agent": updated})
 }
 
+// moveConfirmDeps is everything confirmMove touches outside itself, passed whole and never
+// defaulted: the API client, whether --yes was given, whether a person can answer, the
+// question, the prompter that reads the answer, and where the list goes.
+type moveConfirmDeps struct {
+	client      *api.Client
+	yes         bool
+	interactive bool
+	ask         destructiveAsk
+	prompter    *prompter
+	errOut      io.Writer
+}
+
 // confirmMove shows what the move changes and asks. The list is a warning, never a
 // refusal: a lookup that fails is said and the question is still asked. An agent
 // already in the target workspace has nothing to confirm (the move answers
@@ -1541,9 +1557,9 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 // --yes skips the question, not the list (stderr). With no terminal and no --yes
 // the move is refused (exit 2) before anything is changed: the one read above it
 // sends nothing.
-func confirmMove(client *api.Client, agent, to string, yes, interactive bool, ask destructiveAsk, p *prompter, errOut io.Writer) error {
+func confirmMove(d moveConfirmDeps, agent, to string) error {
 	var lines []string
-	access, err := client.GetAgentAccess(agent)
+	access, err := d.client.GetAgentAccess(agent)
 	switch {
 	case err != nil:
 		lines = []string{fmt.Sprintf("Could not read what the move changes: %v", err)}
@@ -1552,17 +1568,17 @@ func confirmMove(client *api.Client, agent, to string, yes, interactive bool, as
 	default:
 		lines = moveConsequences(access, to)
 	}
-	if err := refuseUnconfirmable(yes, interactive, ask.action, ask.skip()); err != nil {
+	if err := refuseUnconfirmable(d.yes, d.interactive, d.ask.action, d.ask.skip()); err != nil {
 		return err
 	}
-	if yes {
+	if d.yes {
 		for _, l := range lines {
-			output.Warning.Fprintln(errOut, l)
+			output.Warning.Fprintln(d.errOut, l)
 		}
 		return nil
 	}
-	ask.warn = lines
-	return askToConfirm(ask, p)
+	d.ask.warn = lines
+	return askToConfirm(d.ask, d.prompter)
 }
 
 func updatedWhat(name, description bool) string {
