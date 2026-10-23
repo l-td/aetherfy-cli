@@ -407,3 +407,50 @@ func TestPointsDeleteReportsTheDeletesOwnError(t *testing.T) {
 		t.Errorf("stdout %q, stderr %q", stdout.String(), stderr.String())
 	}
 }
+
+// A filter the API refuses for an unknown key (INVALID_FILTER, 400) is a
+// request failure like any other: exit 1, the API's code and message as sent,
+// and on a delete it stops at the count, so nothing is asked and nothing is
+// deleted.
+const invalidFilterBody = `{"error":{"code":"INVALID_FILTER","message":"Unrecognised filter key 'shuold' at filter. Did you mean 'should'?","field":"filter","key":"shuold","suggestion":"should"}}`
+
+func TestPointsDeleteStopsAtTheCountWhenTheAPIRefusesTheFilter(t *testing.T) {
+	s := newVecServer(t, func(r vecRequest) (int, string) {
+		if strings.HasSuffix(r.Path, "/points/count") {
+			return 400, invalidFilterBody
+		}
+		t.Errorf("unexpected request %s %s", r.Method, r.Path)
+		return 500, `{}`
+	})
+	r, stdout, stderr, _ := s.run("default", false)
+	const filter = `{"shuold":[{"key":"lang","match":{"value":"en"}}]}`
+	if code := pointsDelete(r, "articles", nil, filter, false, strings.NewReader("articles\n"), true); code != exitRequestFailed {
+		t.Errorf("exit %d, want %d", code, exitRequestFailed)
+	}
+	if got := paths(s.got()); got != "POST /points/count" {
+		t.Errorf("requests = %s; want the count only", got)
+	}
+	want := "Error: Unrecognised filter key 'shuold' at filter. Did you mean 'should'? (INVALID_FILTER)\n"
+	if stdout.Len() != 0 || !strings.HasSuffix(stderr.String(), want) || strings.Contains(stderr.String(), "will be deleted") {
+		t.Errorf("stdout %q, stderr %q", stdout.String(), stderr.String())
+	}
+}
+
+func TestEveryFilteredPointsCommandReportsARefusedFilterAsARequestFailure(t *testing.T) {
+	s := newVecServer(t, func(vecRequest) (int, string) { return 400, invalidFilterBody })
+	const filter = `{"shuold":[]}`
+	runs := map[string]func(r *vecRun) int{
+		"count":  func(r *vecRun) int { return pointsCount(r, "articles", filter) },
+		"search": func(r *vecRun) int { return pointsSearch(r, "articles", "[0.1,0.2]", 5, filter) },
+		"list":   func(r *vecRun) int { return pointsList(r, "articles", 10, "", filter, false) },
+	}
+	for name, run := range runs {
+		r, stdout, stderr, _ := s.run("default", false)
+		if code := run(r); code != exitRequestFailed {
+			t.Errorf("%s: exit %d, want %d", name, code, exitRequestFailed)
+		}
+		if stdout.Len() != 0 || !strings.HasSuffix(stderr.String(), "(INVALID_FILTER)\n") {
+			t.Errorf("%s: stdout %q, stderr %q", name, stdout.String(), stderr.String())
+		}
+	}
+}
