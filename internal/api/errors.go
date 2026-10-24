@@ -65,6 +65,17 @@ type APIError struct {
 	Violations []string `json:"-"`
 }
 
+// ResponseInvalidError is an answer the control plane gave successfully but
+// without something the CLI needs and the contract promises (a logs read with no
+// stated retention). It is the CLI's own refusal, not the server's: it has no
+// status and no server code, and --json gives it the code CLI_RESPONSE_INVALID
+// (cmd/refusal.go).
+type ResponseInvalidError struct {
+	Message string
+}
+
+func (e *ResponseInvalidError) Error() string { return e.Message }
+
 func (e *APIError) Error() string {
 	if e.Code != "" {
 		return fmt.Sprintf("[%d] %s (%s)", e.StatusCode, e.Message, e.Code)

@@ -596,7 +596,7 @@ func TestEveryEmptyListIsAnEmptyJSONDocument(t *testing.T) {
 		{[]string{"rollback", "bot"}, route{"GET", "/agents/bot/deployments", 200, `[]`}, "[]"},
 		{[]string{"secrets", "list", "bot"}, route{"GET", "/agents/bot/secrets", 200, `[]`}, "[]"},
 		{[]string{"runs", "bot"}, route{"GET", "/agents/bot/runs", 200, `[]`}, "[]"},
-		{[]string{"logs", "bot"}, route{"GET", "/agents/bot/logs", 200, `[]`}, "[]"},
+		{[]string{"logs", "bot"}, route{"GET", "/agents/bot/logs", 200, `[]`}, `{"logs":[],"retention_days":7,"since_clamped":false}`},
 		{[]string{"github", "repos"}, route{"GET", "/auth/github/repositories", 200, `{"repositories":[]}`}, `{"repositories":[]}`},
 	}
 	for _, tc := range cases {

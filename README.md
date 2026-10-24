@@ -309,6 +309,7 @@ lives in a workspace, and a name is unique within it.
 | `afy logs <agent> --level ERROR,WARN` | Filter by level(s), comma-separated |
 | `afy logs <agent> --stream stderr` | Filter by stream(s): `stdout`, `stderr`, `system` |
 | `afy logs <agent> --run <run-id>` | Show only the logs of one specific run |
+| `afy logs <agent> --json` | One object: `logs`, the plan's `retention_days` (`null` if negotiated) and `since_clamped` |
 
 ```bash
 # Grab a run id from the history, then read just that run's output

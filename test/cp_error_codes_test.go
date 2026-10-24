@@ -89,14 +89,15 @@ var notControlPlaneCodes = map[string]string{
 	"PLATFORM_FIELD_CLAUSE":    "constant name: one field's clause of that sentence, read by test/cpyaml",
 	"PLATFORM_FIELD_JOINER":    "constant name: what joins the clauses of that sentence, read by test/cpyaml",
 
-	"INVALID_FILTER":   "a vectors API code (vectordb), not a control-plane one: the CLI relays it unchanged, pinned by the points command tests",
+	"INVALID_FILTER":        "a vectors API code (vectordb), not a control-plane one: the CLI relays it unchanged, pinned by the points command tests",
 	"INVALID_REQUEST_FIELD": "a vectors API code (vectordb), not a control-plane one: the vectors request-body test expects it from the validator",
 	"AFY_VECTORDB_DIR":      "env var: names the vectordb checkout whose validator request_bodies_test.go runs the CLI's bodies through",
-	"AFY_WRITE_BODIES": "env var: =1 rewrites internal/vectors/testdata/request-bodies.json (request_bodies_test.go)",
+	"AFY_WRITE_BODIES":      "env var: =1 rewrites internal/vectors/testdata/request-bodies.json (request_bodies_test.go)",
 
 	"AFY_TEST_PROCESS_ARGS": "env var: the argv a re-executed cmd test binary runs as afy (cmd/afy_harness_test.go)",
 	"CLI_USAGE_ERROR":       "the CLI's own code (cmd.usageErrorCode) for input it refused before sending anything; no server sends it",
 	"CLI_CANCELLED":         "the CLI's own code (cmd.cancelledCode) for a question the person answered no; no server sends it",
+	"CLI_RESPONSE_INVALID":  "the CLI's own code (cmd.responseInvalidCode) for an answer that lacks what the contract promises, such as a logs read with no stated retention; no server sends it",
 	"AETHERFY_REQUIRE_CP":   "env var: turns the live-drift guards' skips into failures (cperrors.RequireEnv), set by the e2e nightly",
 
 	"AETHERFY_DASHBOARD_ROOT": "env var: points the landing-redirect guard at an aetherfy-dashboard checkout (dashboardRootEnv)",

@@ -50,6 +50,7 @@ func TestGetAgentLogs_BuildsQueryString(t *testing.T) {
 				for k, v := range r.URL.Query() {
 					gotQuery[k] = v[0]
 				}
+				w.Header().Set("X-Log-Retention-Days", "7")
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte("[]"))
 			}))
