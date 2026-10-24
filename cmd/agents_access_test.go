@@ -118,7 +118,7 @@ func TestAccessAddUnderJSONAsksOnATerminalAndACancelIsAnErrorDocument(t *testing
 	if n := len(requestsTo(cp, "POST", accessWsPath)); n != 0 || out.Len() != 0 {
 		t.Errorf("granted %d time(s), stdout %q", n, out.String())
 	}
-	if !strings.Contains(errOut.String(), `"message":"Cancelled: agent 'bot' was not changed"`) || strings.Contains(errOut.String(), `"code"`) {
+	if !strings.Contains(errOut.String(), `"message":"Cancelled: agent 'bot' was not changed"`) || !strings.Contains(errOut.String(), `"code":"CLI_CANCELLED"`) {
 		t.Errorf("stderr %q", errOut.String())
 	}
 

@@ -49,12 +49,20 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
+      # THE RELEASE BODY IS THE CHANGELOG'S SECTION FOR THIS TAG, written by a
+      # person: the breaking changes and how to update a script. A tag with no
+      # "## <tag>" section in CHANGELOG.md (or an empty one) FAILS here, before
+      # anything is published, rather than shipping an empty body or goreleaser's
+      # commit list. Held by internal/changelog's tests, which read this file.
+      - name: Release notes from CHANGELOG.md
+        run: go run ./scripts/release-notes "${GITHUB_REF_NAME}" > "${RUNNER_TEMP}/release-notes.md"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7.2.3
         with:
           distribution: goreleaser
           version: v2.17.0
-          args: release --clean
+          args: release --clean --release-notes=${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Uncomment if you want to publish to Homebrew tap

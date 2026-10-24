@@ -167,8 +167,11 @@ func TestACancelledDeleteUnderJSONIsAnErrorDocumentNotAResult(t *testing.T) {
 			if msg, _ := doc["message"].(string); !strings.HasPrefix(msg, "Cancelled") {
 				t.Errorf("message = %q", msg)
 			}
-			if _, has := doc["code"]; has {
-				t.Errorf("no server and no usage error wrote this: no code, got %v", doc["code"])
+			if doc["code"] != cancelledCode {
+				t.Errorf("code = %v, want %s", doc["code"], cancelledCode)
+			}
+			if _, has := doc["status"]; has {
+				t.Errorf("no server wrote this: no status, got %v", doc["status"])
 			}
 			// stdout must not carry {"deleted":false} either.
 			var v interface{}
