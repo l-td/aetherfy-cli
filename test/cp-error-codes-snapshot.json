@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 131
+      "count": 133
     },
     {
       "path": "api/routes/regions.py",
@@ -243,6 +243,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "COLLECTION_PROTECTED_COMBINED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "COLLECTION_REGIONS_EMPTY": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -396,6 +400,10 @@
       "tier": "top-level"
     },
     "LOG_RATE_LIMITED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "MEMORY_SIZE_UNSUPPORTED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

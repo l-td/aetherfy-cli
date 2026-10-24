@@ -23,6 +23,8 @@ type GrantedAgent struct {
 	ID        string    `json:"id"`
 	Name      string    `json:"name"`
 	GrantedAt time.Time `json:"granted_at"`
+	// Level is the agent's level in this workspace, by its grant.
+	Level string `json:"level"`
 }
 
 // ListWorkspaceGrantedAgents returns the agents granted access to a workspace,

@@ -74,6 +74,53 @@ type CollectionChange struct {
 	Plan              *RegionsChangePreview `json:"plan"`
 }
 
+// CollectionProtection is PATCH /collections/{id}'s answer to a `protected`
+// change: applied at once, NoOp when it already was so.
+type CollectionProtection struct {
+	CollectionID string `json:"collection_id"`
+	Protected    bool   `json:"protected"`
+	NoOp         bool   `json:"no_op"`
+}
+
+// SetCollectionProtected protects collection id (true) or not (false): no
+// agent's key may remove data from a protected collection (delete it, or its
+// points, vectors or payload fields, or an alias pointing at it). Sent on its
+// own (the control plane refuses it beside a regions change or a move to another
+// workspace, 400 COLLECTION_PROTECTED_COMBINED).
+func (c *Client) SetCollectionProtected(id string, protected bool) (*CollectionProtection, error) {
+	var out CollectionProtection
+	if err := c.Patch(fmt.Sprintf("/collections/%s", id), map[string]bool{"protected": protected}, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RecentAgents is GET /collections/{id}/recent-agents: the live agents that
+// read or wrote the collection in the last WindowDays days. The warning a person
+// sees before deleting it (the dashboard's dialog and afy collections delete); a
+// warning, never a refusal.
+type RecentAgents struct {
+	CollectionID string        `json:"collection_id"`
+	WindowDays   int           `json:"window_days"`
+	Agents       []RecentAgent `json:"agents"`
+}
+
+// RecentAgent is one of them, newest first.
+type RecentAgent struct {
+	AgentID  string `json:"agent_id"`
+	Name     string `json:"name"`
+	LastSeen string `json:"last_seen"`
+}
+
+// GetCollectionRecentAgents reads which agents used collection id recently.
+func (c *Client) GetCollectionRecentAgents(id string) (*RecentAgents, error) {
+	var out RecentAgents
+	if err := c.Get(fmt.Sprintf("/collections/%s/recent-agents", id), &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
 // WorkspaceRegionsChange is PATCH /workspaces/{name}/regions's answer:
 // Status "no_op" with CurrentRegions, or 202 with the operation.
 type WorkspaceRegionsChange struct {

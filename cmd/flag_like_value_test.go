@@ -29,7 +29,7 @@ func TestAFlagLikeValueIsRefusedAndSendsNothing(t *testing.T) {
 
 	t.Run("afy access bot --add --yes", func(t *testing.T) {
 		r, cp, _, errOut := runAccess(t, false)
-		code := agentsAccess(r, "bot", agentsAccessAdd, agentsAccessRemove, agentsAccessYes, strings.NewReader("y\n"), true)
+		code := agentsAccess(r, "bot", accessChange{add: agentsAccessAdd, remove: agentsAccessRemove, yes: agentsAccessYes}, strings.NewReader("y\n"), true)
 		refused(t, code, errOut.String(), "add")
 		if len(cp.got()) != 0 {
 			t.Errorf("sent %v", cp.got())
@@ -38,7 +38,7 @@ func TestAFlagLikeValueIsRefusedAndSendsNothing(t *testing.T) {
 
 	t.Run("CONTROL: without the check, the same values go through", func(t *testing.T) {
 		r, cp, _, errOut := runAccess(t, false)
-		code := changeAgentAccess(r, "bot", agentsAccessAdd, agentsAccessRemove, agentsAccessYes, strings.NewReader("y\n"), true)
+		code := changeAgentAccess(r, "bot", accessChange{add: agentsAccessAdd, remove: agentsAccessRemove, yes: agentsAccessYes}, strings.NewReader("y\n"), true)
 		reqs := requestsTo(cp, "POST", accessWsPath)
 		if code != 0 || len(reqs) != 1 || reqs[0].Body["workspace"] != "--yes" {
 			t.Errorf("exit %d, grants %v (%s); want the workspace \"--yes\" granted", code, reqs, errOut.String())
@@ -47,7 +47,7 @@ func TestAFlagLikeValueIsRefusedAndSendsNothing(t *testing.T) {
 
 	t.Run("afy access --remove --json", func(t *testing.T) {
 		r, cp, _, errOut := runAccess(t, true)
-		code := agentsAccess(r, "bot", nil, []string{"--json"}, false, strings.NewReader(""), false)
+		code := agentsAccess(r, "bot", accessChange{remove: []string{"--json"}}, strings.NewReader(""), false)
 		refused(t, code, errOut.String(), "remove")
 		if len(cp.got()) != 0 {
 			t.Errorf("sent %v", cp.got())

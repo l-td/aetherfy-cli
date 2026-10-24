@@ -48,7 +48,7 @@ func TestWorkspacesUpdateDescriptionOnlyAndClearing(t *testing.T) {
 func TestWorkspacesUpdateNeedsAFlag(t *testing.T) {
 	cp := newFakeCP(t)
 	_, stderr, err := runAfy(t, cp, "workspaces", "update", "invoices")
-	if err == nil || !strings.Contains(stderr, "--name <new> and/or --description <text>") {
+	if err == nil || !strings.Contains(stderr, "--name <new>, --description <text> and/or --agent-access-level <level>") {
 		t.Errorf("want the no-flag refusal, got %v\n%s", err, stderr)
 	}
 	if len(cp.all()) != 0 {

@@ -1,12 +1,16 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var workspacesCmd = &cobra.Command{
@@ -313,6 +317,7 @@ func runWorkspacesInfo(cmd *cobra.Command, args []string) error {
 	}
 	output.KeyValue("Regions", strings.Join(workspace.Regions, ", "))
 	output.KeyValue("Agents", fmt.Sprintf("%d", workspace.AgentCount))
+	output.KeyValue("Agent access level", workspace.AgentAccessLevel)
 	output.KeyValue("Created", workspace.CreatedAt.Format("2006-01-02 15:04"))
 	output.KeyValue("Updated", workspace.UpdatedAt.Format("2006-01-02 15:04"))
 
@@ -394,8 +399,13 @@ func runWorkspacesDelete(cmd *cobra.Command, args []string) error {
 
 var workspacesUpdateCmd = &cobra.Command{
 	Use:   "update <name>",
-	Short: "Rename a workspace or change its description",
-	Long: `Rename a workspace (--name), change its description (--description), or both.
+	Short: "Rename a workspace, change its description, or its agents' default level",
+	Long: `Rename a workspace (--name), change its description (--description), or the
+level its own agents hold in it (--agent-access-level: read, read_write or
+full). Every agent living in the workspace that is not set otherwise ('afy
+access <agent> --own-level') follows that level, within 60 seconds. Raising it
+asks first; --yes skips the question, and is required without a terminal or
+with --json.
 
 Everything inside refers to a workspace by id, so a rename moves nothing: its
 agents keep running and are not redeployed, and its collections, secrets and
@@ -412,7 +422,10 @@ A name already used by another of your workspaces is refused.`,
   afy workspaces update invoice-pipeline --description "Updated invoice processing agents"
 
   # Clear the description (set to empty string)
-  afy workspaces update invoice-pipeline --description ""`,
+  afy workspaces update invoice-pipeline --description ""
+
+  # Its agents only read here unless set otherwise
+  afy workspaces update invoice-pipeline --agent-access-level read`,
 	Args: cobra.ExactArgs(1),
 	RunE: runWorkspacesUpdate,
 }
@@ -422,11 +435,15 @@ A name already used by another of your workspaces is refused.`,
 var (
 	workspaceUpdateName        string
 	workspaceUpdateDescription string
+	workspaceUpdateLevel       string
+	workspaceUpdateYes         bool
 )
 
 func init() {
 	workspacesUpdateCmd.Flags().StringVar(&workspaceUpdateName, "name", "", "New workspace name")
 	workspacesUpdateCmd.Flags().StringVarP(&workspaceUpdateDescription, "description", "d", "", "New workspace description")
+	workspacesUpdateCmd.Flags().StringVar(&workspaceUpdateLevel, "agent-access-level", "", "The level its own agents hold in it: read, read_write or full")
+	workspacesUpdateCmd.Flags().BoolVarP(&workspaceUpdateYes, "yes", "y", false, "Raise the agents' level without asking")
 }
 
 func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
@@ -446,13 +463,27 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	if cmd.Flags().Changed("description") {
 		req.Description = &workspaceUpdateDescription
 	}
-	if req.Name == nil && req.Description == nil {
-		return refuse("Specify --name <new> and/or --description <text>")
+	if cmd.Flags().Changed("agent-access-level") {
+		if !isLevel(workspaceUpdateLevel) {
+			return refuse("--agent-access-level must be one of %s; got '%s'. Nothing was sent.",
+				strings.Join(api.AccessLevels, ", "), workspaceUpdateLevel)
+		}
+		req.AgentAccessLevel = &workspaceUpdateLevel
+	}
+	if req.Name == nil && req.Description == nil && req.AgentAccessLevel == nil {
+		return refuse("Specify --name <new>, --description <text> and/or --agent-access-level <level>")
+	}
+
+	client := api.NewClient()
+	if req.AgentAccessLevel != nil {
+		if err := confirmRaisedDefault(client, name, *req.AgentAccessLevel, workspaceUpdateYes,
+			term.IsTerminal(int(os.Stdin.Fd())), os.Stdin, os.Stderr); err != nil {
+			return err
+		}
 	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Updating workspace '%s'...", name))
 	sp.Start()
-	client := api.NewClient()
 	workspace, err := client.UpdateWorkspace(name, req)
 	sp.Stop()
 	if err != nil {
@@ -472,7 +503,35 @@ func runWorkspacesUpdate(cmd *cobra.Command, args []string) error {
 	} else {
 		output.KeyValue("Description", "(none)")
 	}
+	output.KeyValue("Agent access level", workspace.AgentAccessLevel)
 	return output.Result(workspace)
+}
+
+// confirmRaisedDefault asks before a workspace's default level goes UP: every
+// agent living there that is not set otherwise can then do more. Lowering it,
+// or setting what it is, asks nothing. The question goes through the shared
+// confirmation (cmd/confirm.go): --yes skips it; without a terminal a raise
+// needs --yes (exit 2, before anything is sent); a "no" exits 1.
+func confirmRaisedDefault(client *api.Client, name, level string, yes, interactive bool, stdin io.Reader, stderr io.Writer) error {
+	current, err := client.GetWorkspace(name)
+	if err != nil {
+		return printRefusal("Failed to read workspace", err)
+	}
+	if levelRank(level) <= levelRank(current.AgentAccessLevel) {
+		return nil
+	}
+	return confirmDestructiveOn(yes, destructiveAsk{
+		action: fmt.Sprintf("raises the access of every agent living in workspace '%s' that is not set otherwise, "+
+			"from %s to %s", name, wordsOf(current.AgentAccessLevel), wordsOf(level)),
+		warn: []string{
+			fmt.Sprintf("Every agent living in workspace '%s' that is not set otherwise will hold %s instead of %s, "+
+				"within %s.", name, wordsOf(level), wordsOf(current.AgentAccessLevel), accessChangeWindow),
+			raisedSentence(fmt.Sprintf("'%s'", name), level),
+		},
+		prompt:   "Proceed? [y/N] ",
+		accept:   yesAnswer,
+		mismatch: fmt.Sprintf("workspace '%s' was not changed", name),
+	}, interactive, &prompter{in: bufio.NewReader(stdin), out: stderr})
 }
 
 // --- AGENTS ---
@@ -546,7 +605,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 		output.Printf("Lives here: no agents (move one in with: afy update <agent> --workspace %s)\n", workspaceName)
 	} else {
 		output.Printf("Lives here (%d)\n", len(living))
-		table := output.Table([]string{"Name", "Type", "Status", "Created"})
+		table := output.Table([]string{"Name", "Type", "Status", "Level", "Created"})
 		for _, a := range living {
 			agentType := string(a.AgentType)
 			if agentType == "" {
@@ -556,6 +615,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 				a.Name,
 				agentType,
 				string(a.Status),
+				livingLevel(a),
 				a.CreatedAt.Format("2006-01-02 15:04"),
 			})
 		}
@@ -567,10 +627,10 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 		output.Println("Granted access: no agents from other workspaces have access to this one")
 	} else {
 		output.Printf("Granted access (%d)\n", len(granted))
-		table := output.Table([]string{"Name", "Granted"})
+		table := output.Table([]string{"Name", "Level", "Granted"})
 		for _, g := range granted {
 			at := g.GrantedAt
-			table.Append([]string{g.Name, formatUTCTime(&at)})
+			table.Append([]string{g.Name, g.Level, formatUTCTime(&at)})
 		}
 		table.Render()
 		output.Dim.Println("A grant gives an agent access to this workspace's collections; it does not move it.")
@@ -585,6 +645,18 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// livingLevel is a living agent's level here, and whether it follows the
+// workspace's default.
+func livingLevel(a api.Agent) string {
+	if a.AccessLevel == nil {
+		return ""
+	}
+	if a.AccessLevelSetting == nil {
+		return *a.AccessLevel + " (default)"
+	}
+	return *a.AccessLevel
 }
 
 // --- REGIONS ---

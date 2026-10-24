@@ -168,7 +168,7 @@ func SkipUnlessRequired(t Skipper, format string, args ...interface{}) {
 //
 // Self-naming is the whole rule, and it is what keeps this honest without a
 // hand-maintained include list. Until 2026-09-23 a listed source,
-// plan_validator.py, held one error code beside UPGRADE_URL = "/billing/upgrade",
+// plan_validator.py, held one error code beside UPGRADE_URL = "https://app.aetherfy.com/dashboard/settings/billing",
 // SUPPORT_CONTACT = "mailto:..." and two FREEZE_REASON_* values; requiring
 // name == value took the code and left the others, by form rather than by
 // enumeration. No listed file mixes the two today, and the rule stays for the
@@ -308,7 +308,7 @@ func Validate(reg *Registry) error {
 // Validate alone shape-checks the KEY and never looks at the value, so the
 // self-naming rule lived in exactly one place — the `m[1] != m[2]` test inside
 // Extract — with nothing asserting it. Deleting that test made the generator
-// write UPGRADE_URL = "/billing/upgrade", SUPPORT_CONTACT and both FREEZE_REASON_*
+// write UPGRADE_URL = "https://app.aetherfy.com/dashboard/settings/billing", SUPPORT_CONTACT and both FREEZE_REASON_*
 // values into the snapshot AS ERROR CODES, and every check passed: the keys are
 // perfectly code-shaped. The count went 123 → 127 while error_codes.py still
 // reported its usual 117, so the number a reader would look at did not move.

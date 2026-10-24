@@ -33,7 +33,7 @@ import (
 // plants them INSIDE a registry: the form rule is exactly what would keep a URL
 // or a reason string added there from reading as an error code.
 var notCodes = map[string]string{
-	"UPGRADE_URL":           "/billing/upgrade",
+	"UPGRADE_URL":           "https://app.aetherfy.com/dashboard/settings/billing",
 	"SUPPORT_CONTACT":       "mailto:sales@aetherfy.com",
 	"FREEZE_REASON_CEILING": "ceiling",
 	"FREEZE_REASON_DUNNING": "dunning",
@@ -124,7 +124,7 @@ func TestValidateExtractionCatchesANonSelfNamedConstant(t *testing.T) {
 
 	// Exactly what a loosened `m[1] != m[2]` test would have produced.
 	reg.Codes["UPGRADE_URL"] = Code{Source: "shared/error_codes.py", Tier: tierTopLevel}
-	reg.Literals["UPGRADE_URL"] = "/billing/upgrade"
+	reg.Literals["UPGRADE_URL"] = "https://app.aetherfy.com/dashboard/settings/billing"
 
 	err = ValidateExtraction(reg)
 	require.Error(t, err, "a constant bound to a URL passed validation as an error code")
