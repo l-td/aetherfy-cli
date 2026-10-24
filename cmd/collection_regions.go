@@ -321,6 +321,9 @@ var (
 	operationWaitBound    = 30 * time.Minute
 	operationPollInterval = 3 * time.Second
 	operationSleep        = time.Sleep
+	// operationNow is the clock the bound is measured on: the time that passed,
+	// polls included, not the time slept (a poll can itself take a while).
+	operationNow = time.Now
 )
 
 // pollOperation polls an operation until it ends: the final operation and
@@ -328,7 +331,7 @@ var (
 // *stillPendingError (exit 4, as `afy start --wait`) when the bound passes
 // first. A poll that cannot be answered returns that error.
 func pollOperation(cp *api.Client, id string) (*api.Operation, error) {
-	var waited time.Duration
+	deadline := operationNow().Add(operationWaitBound)
 	for {
 		op, err := cp.GetOperation(id)
 		if err != nil {
@@ -344,13 +347,12 @@ func pollOperation(cp *api.Client, id string) (*api.Operation, error) {
 			}
 			return op, nil
 		}
-		if waited >= operationWaitBound {
+		if !operationNow().Before(deadline) {
 			return op, &stillPendingError{msg: fmt.Sprintf(
 				"operation %s is still %s after %s. It keeps running; its result shows once it finishes.",
 				id, op.Status, operationWaitBound)}
 		}
 		operationSleep(operationPollInterval)
-		waited += operationPollInterval
 	}
 }
 

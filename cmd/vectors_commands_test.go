@@ -748,7 +748,13 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 	const message = "Collection 'articles' not found"
 	versionedSchemaFile := writeSchemaFile(t, `{"schema":{"fields":{}},"etag":"v1"}`)
 	commands := map[string]func(r *vecRun) int{
-		"collections list":   func(r *vecRun) int { return collectionsList(r) },
+		"collections list": func(r *vecRun) int { return collectionsList(r) },
+		// Recovering a deleted collection: the list, and a restore by id (a name
+		// would list first, and the refusing server answers that too).
+		"collections deleted": func(r *vecRun) int { return collectionsDeleted(r) },
+		"collections restore": func(r *vecRun) int {
+			return collectionsRestore(r, "11111111-1111-4111-8111-111111111111", "", false)
+		},
 		"collections get":    func(r *vecRun) int { return collectionsGet(r, "articles") },
 		"collections create": func(r *vecRun) int { return collectionsCreate(r, "articles", 8, "cosine", nil) },
 		"collections delete": func(r *vecRun) int {
