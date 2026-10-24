@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -531,7 +530,7 @@ func confirmRaisedDefault(client *api.Client, name, level string, yes, interacti
 		prompt:   "Proceed? [y/N] ",
 		accept:   yesAnswer,
 		mismatch: fmt.Sprintf("workspace '%s' was not changed", name),
-	}, interactive, &prompter{in: bufio.NewReader(stdin), out: stderr})
+	}, interactive, prompterOn(stdin, stderr))
 }
 
 // --- AGENTS ---

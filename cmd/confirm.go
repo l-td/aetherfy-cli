@@ -110,7 +110,14 @@ func confirmDestructive(yes bool, ask destructiveAsk) error {
 // stderr, so --json keeps stdout to one object, and the answer is read from
 // the command's stdin.
 func vecPrompter(r *vecRun, stdin io.Reader) *prompter {
-	return &prompter{in: bufio.NewReader(stdin), out: r.stderr}
+	return prompterOn(stdin, r.stderr)
+}
+
+// prompterOn is the prompter of a command that has its own stdin and stderr: the
+// question goes to out and the answer is read from in. This file is where a
+// confirmation's reader is made (TestNoCommandReadsItsOwnConfirmation).
+func prompterOn(in io.Reader, out io.Writer) *prompter {
+	return &prompter{in: bufio.NewReader(in), out: out}
 }
 
 // typedName accepts only the exact name.
