@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 131
+      "count": 132
     },
     {
       "path": "api/routes/regions.py",
@@ -320,6 +320,10 @@
       "tier": "top-level"
     },
     "GITHUB_APP_NOT_CONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_CLONE_TIMEOUT": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

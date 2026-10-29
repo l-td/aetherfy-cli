@@ -433,6 +433,11 @@ var resumeCauses = map[string]resumeCauseWords{
 			"has no room to resume it, so Aetherfy recreates it from the current release%s.",
 		pending: "starting on a new machine (its host was full)",
 	},
+	"provider_slow": {
+		accepted: "Agent '%s' is being started by Aetherfy: the compute provider had not finished " +
+			"starting its machines when the request gave up, so Aetherfy carries the start out%s.",
+		pending: "starting (the compute provider was slow to start its machines)",
+	},
 }
 
 // resumePendingLine is `afy status`'s Pending line for a start under way:
