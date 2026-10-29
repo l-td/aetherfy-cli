@@ -435,7 +435,7 @@ var resumeCauses = map[string]resumeCauseWords{
 	},
 	"provider_slow": {
 		accepted: "Agent '%s' is being started by Aetherfy: the compute provider had not finished " +
-			"starting its machines when the request gave up, so Aetherfy carries the start out%s.",
+			"starting its machines when the request gave up, so Aetherfy finishes the start%s.",
 		pending: "starting (the compute provider was slow to start its machines)",
 	},
 }

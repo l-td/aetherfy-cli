@@ -311,7 +311,7 @@ func TestASlowProviderIsAnAcceptedStartThatNamesItsCause(t *testing.T) {
 			err, s.starts, s.reads, out)
 	}
 	if !strings.Contains(out, "had not finished starting its machines") ||
-		!strings.Contains(out, "(at most 159s)") {
+		!strings.Contains(out, "so aetherfy finishes the start (at most 159s)") {
 		t.Fatalf("the slow provider is not named, with the server's bound:\n%s", out)
 	}
 	if strings.Contains(out, "previous stop") || strings.Contains(out, "new machine") ||
