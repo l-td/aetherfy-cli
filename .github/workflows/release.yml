@@ -28,6 +28,9 @@ jobs:
           cache: true
 
       - name: Run tests
+        env:
+          # See the Test job of ci.yml: no 1 s sleep at every process exit.
+          GORACE: atexit_sleep_ms=0
         run: go test -v -race ./...
 
   release:
