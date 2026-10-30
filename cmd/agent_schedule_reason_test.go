@@ -21,7 +21,10 @@ func statusWithSchedule(t *testing.T, extra string) string {
 }
 
 // statusOf runs `afy status` against a server answering with one agent, whose
-// JSON is the base record plus `extra`.
+// JSON is the base record plus `extra`. The list endpoint answers the way the
+// API does, an array of agents: a job's status reads it to say who may spawn
+// it, and a body of the wrong shape fails to decode and is retried with real
+// waits (two of one second each, per test).
 func statusOf(t *testing.T, extra string) string {
 	t.Helper()
 	body := `{"id":"a1","user_id":"u1","name":"tick","status":"running",` +
@@ -31,6 +34,10 @@ func statusOf(t *testing.T, extra string) string {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/deployments") {
 			_, _ = w.Write([]byte(`[]`))
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "/agents") {
+			_, _ = w.Write([]byte(`[` + body + `]`))
 			return
 		}
 		_, _ = w.Write([]byte(body))
@@ -43,6 +50,11 @@ func statusOf(t *testing.T, extra string) string {
 	})
 	if err != nil {
 		t.Fatalf("afy status failed: %v", err)
+	}
+	// The list was read and understood: a job nothing may spawn says so. A
+	// failed read would print "(unavailable)" instead.
+	if line := lineWith(out, "Spawnable by"); !strings.Contains(line, "(none)") {
+		t.Errorf("the Spawnable by line is not the empty answer of a list that was read: %q\n%s", line, out)
 	}
 	return out
 }
