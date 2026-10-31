@@ -177,8 +177,15 @@ func allowanceLine(a vectors.RecoveryAllowance) string {
 
 var collectionsRestoreCmd = &cobra.Command{
 	Use:   "restore <id|name>",
-	Short: "Restore a deleted collection as a new collection",
+	Short: "Restore a deleted collection, or a day of a live one, as a new collection",
 	Long: `Restore a deleted collection from its backup, as a new collection.
+
+With --day, restore a LIVE collection instead: the argument is its name, --day is
+one of the days 'afy collections backups' lists, and --as names the new collection
+(required: a restore never goes over the live collection, and the live collection
+is not changed). The restore is of the daily backup, so it is as of a range of times,
+not one moment. It needs a plan that includes it (403 PLAN_LIMIT_EXCEEDED
+otherwise) and counts against the same restores and volume per month.
 
 Name it by the id 'afy collections deleted' shows, or by its old name when
 exactly one deleted collection in the workspace had it. The restored collection
@@ -196,10 +203,16 @@ still running after 30 minutes).`,
   afy collections restore articles --workspace research
 
   # Restore by id under another name, and wait for it
-  afy collections restore 3f2b0c1e-0c61-4c0e-9b53-2f9f6a7a4d10 --as articles-v2 --wait --json`,
+  afy collections restore 3f2b0c1e-0c61-4c0e-9b53-2f9f6a7a4d10 --as articles-v2 --wait --json
+
+  # Restore a live collection as it was on a day, into a new collection
+  afy collections restore articles --day 2026-10-30 --as articles-before --workspace research --wait`,
 	Args: refuseArgs(cobra.ExactArgs(1)),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runVec(cmd, func(r *vecRun) int {
+			if cmd.Flags().Changed("day") {
+				return collectionsRestoreDay(r, args[0], collectionRestoreDay, collectionRestoreAs, collectionRestoreWait)
+			}
 			return collectionsRestore(r, args[0], collectionRestoreAs, collectionRestoreWait)
 		})
 	},
@@ -207,6 +220,7 @@ still running after 30 minutes).`,
 
 var (
 	collectionRestoreAs   string
+	collectionRestoreDay  string
 	collectionRestoreWait bool
 )
 
@@ -258,7 +272,7 @@ func followRestore(client *vectors.Client, id string) (*vectors.RestoreProgress,
 		case "failed":
 			msg := p.Error
 			if msg == "" {
-				msg = "the restore failed; the deleted collection is still restorable"
+				msg = "the restore failed; nothing was changed"
 			}
 			return p, fmt.Errorf("restore %s failed: %s", id, msg)
 		}
@@ -285,6 +299,12 @@ func collectionsRestore(r *vecRun, arg, as string, wait bool) int {
 	if err != nil {
 		return r.fail(err)
 	}
+	return reportRestore(r, client, started, wait)
+}
+
+// reportRestore follows a started restore when asked and says how it stands: the same for a deleted
+// collection's restore and for a day of a live collection's.
+func reportRestore(r *vecRun, client *vectors.Client, started *vectors.RestoreStarted, wait bool) int {
 	final := &vectors.RestoreProgress{
 		ID: started.RestoreID, CollectionID: started.CollectionID, State: started.State,
 		RegionsReady: started.RegionsReady, RegionsTotal: started.RegionsTotal,
@@ -337,7 +357,8 @@ func collectionsRestore(r *vecRun, arg, as string, wait bool) int {
 }
 
 func init() {
-	collectionsRestoreCmd.Flags().StringVar(&collectionRestoreAs, "as", "", "Name for the restored collection (default: its old name)")
+	collectionsRestoreCmd.Flags().StringVar(&collectionRestoreAs, "as", "", "Name for the restored collection (default: its old name; required with --day)")
+	collectionsRestoreCmd.Flags().StringVar(&collectionRestoreDay, "day", "", "Restore this day (YYYY-MM-DD) of a live collection, from its daily backup, into a new collection")
 	collectionsRestoreCmd.Flags().BoolVar(&collectionRestoreWait, "wait", false, "Follow the restore to the end (exit 1 if it fails, 4 if still running after 30 minutes)")
 
 	collectionsCmd.AddCommand(collectionsDeletedCmd)

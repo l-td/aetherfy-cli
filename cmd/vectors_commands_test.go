@@ -755,6 +755,9 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 		"collections restore": func(r *vecRun) int {
 			return collectionsRestore(r, "11111111-1111-4111-8111-111111111111", "", false)
 		},
+		// Restoring a live collection from the daily backup: the days (the restore of one is the
+		// restore command's --day form, held in collection_backups_test.go).
+		"collections backups": func(r *vecRun) int { return collectionsBackups(r, "articles") },
 		"collections get":    func(r *vecRun) int { return collectionsGet(r, "articles") },
 		"collections create": func(r *vecRun) int { return collectionsCreate(r, "articles", 8, "cosine", nil) },
 		"collections delete": func(r *vecRun) int {

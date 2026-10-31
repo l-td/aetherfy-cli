@@ -281,7 +281,7 @@ func TestTheVectorGroupsHoldExactlyTheirCommands(t *testing.T) {
 	// (2026-10-20, approved with its design): the CLI's half of the workspace page's
 	// "Recently deleted" section, listing what a plan's window still keeps and restoring it.
 	want := []string{
-		"afy collections create", "afy collections delete", "afy collections deleted", "afy collections get",
+		"afy collections backups", "afy collections create", "afy collections delete", "afy collections deleted", "afy collections get",
 		"afy collections list", "afy collections move", "afy collections protect", "afy collections region-limits",
 		"afy collections regions", "afy collections restore", "afy collections schema analyze", "afy collections schema delete",
 		"afy collections schema get",

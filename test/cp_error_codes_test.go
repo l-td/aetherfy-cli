@@ -135,6 +135,10 @@ var notControlPlaneCodes = map[string]string{
 	"COLLECTION_BACKUP_EXPIRED":         "vectordb code: a restore past the plan's recovery window, 410 (restore.js)",
 	"COLLECTION_BACKUP_UNAVAILABLE":     "vectordb code: a restore of a backup that could not be completed (its data is kept), 409 (restore.js)",
 
+	// Restoring a live collection to a recent day from the daily backup (vectordb
+	// services/collectionBackups/service.js): printed as sent. In cmd/collection_backups_test.go.
+	"COLLECTION_BACKUP_DAY_NOT_FOUND": "vectordb code: a restore of a day the collection has no backup for within the plan's days, 404 (service.js)",
+
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.
 	"AETHERFY_AGENT_ID":        "reserved agent env var, not settable as a secret",

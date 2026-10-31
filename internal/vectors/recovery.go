@@ -112,3 +112,52 @@ func (c *Client) GetRestore(id string) (*RestoreProgress, error) {
 	}
 	return &out, nil
 }
+
+// Restoring a LIVE collection to one of the last days from the daily backup:
+// GET /workspaces/{ws}/collections/{name}/backups and POST .../backups/restore
+// (vectordb routes/collectionBackups.js; docs: vectordb
+// backend/docs/COLLECTION_BACKUP_RESTORE.md). The restore is always into a NEW
+// collection and is followed with GetRestore, as a deleted collection's. Only a
+// person's key may call these; an agent's is refused 403.
+
+// CollectionBackup is one restorable day of a collection: when its shards were
+// taken (first to last, since they are copied one after another), its points
+// and its bytes.
+type CollectionBackup struct {
+	Day       string `json:"day"`
+	TakenFrom string `json:"taken_from"`
+	TakenTo   string `json:"taken_to"`
+	Points    int64  `json:"points"`
+	Bytes     int64  `json:"bytes"`
+}
+
+// CollectionBackups is the answer of the list: the days, how far back the plan
+// goes, and what is left of this month's restores.
+type CollectionBackups struct {
+	CollectionID string             `json:"collection_id"`
+	DaysBack     int                `json:"days_back"`
+	Backups      []CollectionBackup `json:"backups"`
+	Allowance    RecoveryAllowance  `json:"allowance"`
+}
+
+// ListCollectionBackups lists the days a collection of the workspace can be
+// restored from.
+func (c *Client) ListCollectionBackups(collection string) (*CollectionBackups, error) {
+	var out CollectionBackups
+	if err := c.do(http.MethodGet, c.collectionPath(collection, "/backups"), nil, c.timeout, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// RestoreCollectionBackup starts restoring one day (YYYY-MM-DD) of a collection
+// into a NEW collection called as. The restore runs in the background: follow it
+// with GetRestore.
+func (c *Client) RestoreCollectionBackup(collection, day, as string) (*RestoreStarted, error) {
+	body := map[string]interface{}{"day": day, "as": as}
+	var out RestoreStarted
+	if err := c.do(http.MethodPost, c.collectionPath(collection, "/backups/restore"), body, c.timeout, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
