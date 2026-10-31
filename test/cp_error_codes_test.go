@@ -137,7 +137,8 @@ var notControlPlaneCodes = map[string]string{
 
 	// Restoring a live collection to a recent day from the daily backup (vectordb
 	// services/collectionBackups/service.js): printed as sent. In cmd/collection_backups_test.go.
-	"COLLECTION_BACKUP_DAY_NOT_FOUND": "vectordb code: a restore of a day the collection has no backup for within the plan's days, 404 (service.js)",
+	"COLLECTION_BACKUP_DAY_NOT_FOUND":        "vectordb code: a restore of a day the collection has no backup for within the plan's days, 404 (service.js)",
+	"COLLECTION_RESTORE_REGIONS_UNAVAILABLE": "vectordb code: a restore into a workspace that no longer covers a region the collection had, 409 (restore.js placeRestore)",
 
 	// Environment variables the CLI REFUSES to let a user set as an agent
 	// secret — reserved names, asserted in test/secrets_test.go.
