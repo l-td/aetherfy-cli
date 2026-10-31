@@ -25,6 +25,7 @@ import (
 type vecRequest struct {
 	Method string
 	Path   string // escaped, as sent
+	Query  string // the raw query string, "" when there is none
 	Auth   string
 	// IfMatch is the If-Match header, "" when not sent.
 	IfMatch string
@@ -47,7 +48,7 @@ func newVecServer(t *testing.T, handler func(r vecRequest) (int, string)) *vecSe
 	s := &vecServer{t: t, maxRequests: 50}
 	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		raw, _ := io.ReadAll(req.Body)
-		r := vecRequest{Method: req.Method, Path: req.URL.EscapedPath(), Auth: req.Header.Get("Authorization"), IfMatch: req.Header.Get("If-Match")}
+		r := vecRequest{Method: req.Method, Path: req.URL.EscapedPath(), Query: req.URL.RawQuery, Auth: req.Header.Get("Authorization"), IfMatch: req.Header.Get("If-Match")}
 		if len(raw) > 0 {
 			if err := json.Unmarshal(raw, &r.Body); err != nil {
 				t.Errorf("request body is not a JSON object: %s", raw)
@@ -749,17 +750,14 @@ func TestEveryVectorCommandReportsTheAPIsErrorAndExitsNonZero(t *testing.T) {
 	versionedSchemaFile := writeSchemaFile(t, `{"schema":{"fields":{}},"etag":"v1"}`)
 	commands := map[string]func(r *vecRun) int{
 		"collections list": func(r *vecRun) int { return collectionsList(r) },
-		// Recovering a deleted collection: the list, and a restore by id (a name
-		// would list first, and the refusing server answers that too).
-		"collections deleted": func(r *vecRun) int { return collectionsDeleted(r) },
+		// Restore points: the list of a live collection (the other two forms of the list are held in
+		// collection_restore_points_test.go) and a restore of a point, by the id as given.
+		"collections restore-points": func(r *vecRun) int { return collectionsRestorePoints(r, []string{"articles"}, "") },
 		"collections restore": func(r *vecRun) int {
 			return collectionsRestore(r, "11111111-1111-4111-8111-111111111111", "", false)
 		},
-		// Restoring a live collection from the daily backup: the days (the restore of one is the
-		// restore command's --day form, held in collection_backups_test.go).
-		"collections backups": func(r *vecRun) int { return collectionsBackups(r, "articles") },
-		"collections get":     func(r *vecRun) int { return collectionsGet(r, "articles") },
-		"collections create":  func(r *vecRun) int { return collectionsCreate(r, "articles", 8, "cosine", nil) },
+		"collections get":    func(r *vecRun) int { return collectionsGet(r, "articles") },
+		"collections create": func(r *vecRun) int { return collectionsCreate(r, "articles", 8, "cosine", nil) },
 		"collections delete": func(r *vecRun) int {
 			return collectionsDelete(r, "articles", true, strings.NewReader(""), false)
 		},

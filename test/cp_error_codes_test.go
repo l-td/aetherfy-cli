@@ -128,16 +128,14 @@ var notControlPlaneCodes = map[string]string{
 	"ADDRESSED_AN_ALIAS":      "vectordb code: a schema write through an alias, 409 (routes/schema.js, sheet 1.6), in cmd/collection_schema_test.go",
 	"SPARSE_FIELD":            "vectordb analyzer warning, not an error code (services/schemaAnalyzer.js), in cmd/collection_schema_test.go",
 
-	// Recovering a deleted collection (vectordb services/collectionRecovery/restore.js,
+	// Restore points (vectordb services/collectionRecovery/restore.js and services/restorePoints/service.js,
 	// RecoveryRefusal): the commands print the code they are sent, nothing branches
-	// on it. In cmd/collection_recovery_test.go.
+	// on it. In cmd/collection_restore_points_test.go.
 	"COLLECTION_NAME_TAKEN_FOR_RESTORE": "vectordb code: a restore under a name already used in the workspace, 409 (restore.js)",
 	"COLLECTION_BACKUP_EXPIRED":         "vectordb code: a restore past the plan's recovery window, 410 (restore.js)",
 	"COLLECTION_BACKUP_UNAVAILABLE":     "vectordb code: a restore of a backup that could not be completed (its data is kept), 409 (restore.js)",
 
-	// Restoring a live collection to a recent day from the daily backup (vectordb
-	// services/collectionBackups/service.js): printed as sent. In cmd/collection_backups_test.go.
-	"COLLECTION_BACKUP_DAY_NOT_FOUND":        "vectordb code: a restore of a day the collection has no backup for within the plan's days, 404 (service.js)",
+	"COLLECTION_BACKUP_NOT_FOUND":            "vectordb code: a restore point that names nothing of the account's (a day outside the plan, no copy, another account's, malformed), 404 (restorePoints/service.js)",
 	"COLLECTION_RESTORE_REGIONS_UNAVAILABLE": "vectordb code: a restore into a workspace that no longer covers a region the collection had, 409 (restore.js placeRestore)",
 
 	// Environment variables the CLI REFUSES to let a user set as an agent
