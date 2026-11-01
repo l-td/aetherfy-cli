@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 135
+      "count": 137
     },
     {
       "path": "api/routes/regions.py",
@@ -271,6 +271,10 @@
       "source": "api/routes/regions.py",
       "tier": "violation"
     },
+    "CONFIRM_HOLD_NOT_APPLICABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "DEPLOYMENT_ACCESS_DENIED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -328,6 +332,10 @@
       "tier": "top-level"
     },
     "GITHUB_APP_NOT_CONFIGURED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_CLONE_TIMEOUT": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
