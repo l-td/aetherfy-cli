@@ -55,6 +55,7 @@ func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
 	full := statusWith(t, "paused", resume(`"host_full"`))
 	stop := statusWith(t, "paused", resume(`null`))
 	unknown := statusWith(t, "paused", resume(`"some_future_cause"`))
+	slow := statusWith(t, "paused", resume(`"provider_slow"`))
 
 	if !strings.Contains(full, "starting on a new machine (its host was full)") ||
 		strings.Contains(full, "once its stop finishes") {
@@ -63,6 +64,10 @@ func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
 	if !strings.Contains(stop, "starting once its stop finishes") ||
 		strings.Contains(stop, "new machine") {
 		t.Errorf("a start during a stop is not named as one:\n%s", stop)
+	}
+	if !strings.Contains(slow, "starting (the compute provider was slow to start its machines)") ||
+		strings.Contains(slow, "stop finishes") || strings.Contains(slow, "new machine") {
+		t.Errorf("a start handed over for a slow provider is not named as one:\n%s", slow)
 	}
 	if !strings.Contains(unknown, "Pending") || strings.Contains(unknown, "stop finishes") ||
 		strings.Contains(unknown, "new machine") {

@@ -89,6 +89,13 @@ const acceptedOnAFullHost = `{"status":"paused","agent_id":"a","readiness":null,
 	`"resume":{"state":"queued","reason":null,"requested_at":"2026-09-30T10:00:00Z","cause":"host_full"},` +
 	`"stop_bound_seconds":0,"wait_bound_seconds":413}`
 
+// The control plane's 202 for a start whose provider calls had not finished when the request
+// gave up (QueueManager.API_START_DEADLINE_SECONDS): handed to the lifecycle worker, one
+// attempt's wait bound, resume.cause "provider_slow" -- not a stop, not a full host.
+const acceptedProviderSlow = `{"status":"paused","agent_id":"a","readiness":null,` +
+	`"resume":{"state":"queued","reason":null,"requested_at":"2026-09-30T10:00:00Z","cause":"provider_slow"},` +
+	`"stop_bound_seconds":0,"wait_bound_seconds":159}`
+
 // agentReadRecreated is a running agent whose latest start recreated n machines.
 func agentReadRecreated(n int) string {
 	return fmt.Sprintf(`{"id":"a","name":"api","status":"running","agent_type":"service",`+
@@ -288,6 +295,28 @@ func TestAFullHostIsAnAcceptedStartThatNamesItsCause(t *testing.T) {
 	}
 	if strings.Contains(out, "previous stop") || strings.Contains(out, "cold start") {
 		t.Fatalf("a full host read as a stop, or claimed a cold start before one happened:\n%s", out)
+	}
+}
+
+// A start handed over because the provider was slow says so: not "once its previous stop
+// finishes" (no stop is involved), not a new machine, and no cold start is claimed.
+func TestASlowProviderIsAnAcceptedStartThatNamesItsCause(t *testing.T) {
+	srv, s := newStartServer(t, acceptedProviderSlow, nil)
+	waits := recordStartWaits(t)
+
+	out, err := runStart(t, srv, false)
+
+	if err != nil || s.starts != 1 || s.reads != 0 || len(*waits) != 0 {
+		t.Fatalf("an accepted start is one request and no waiting (err=%v, %d starts, %d reads):\n%s",
+			err, s.starts, s.reads, out)
+	}
+	if !strings.Contains(out, "had not finished starting its machines") ||
+		!strings.Contains(out, "so aetherfy finishes the start (at most 159s)") {
+		t.Fatalf("the slow provider is not named, with the server's bound:\n%s", out)
+	}
+	if strings.Contains(out, "previous stop") || strings.Contains(out, "new machine") ||
+		strings.Contains(out, "cold start") {
+		t.Fatalf("a slow provider read as a stop or a full host:\n%s", out)
 	}
 }
 

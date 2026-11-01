@@ -16,7 +16,6 @@ package test
 
 import (
 	"debug/buildinfo"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -72,14 +71,6 @@ func releaseVersionSymbol(t *testing.T) string {
 		regexp.MustCompile(`-X\s+(\S+/pkg/version\.Version)=`))
 }
 
-// gitDirIsADirectory reports whether the repo root's .git is a directory, the
-// one shape of git checkout the toolchain stamps a version from.
-func gitDirIsADirectory(t *testing.T) bool {
-	t.Helper()
-	fi, err := os.Stat(filepath.Join("..", ".git"))
-	return err == nil && fi.IsDir()
-}
-
 func TestVersionReportsTheEmbeddedBuildStamp(t *testing.T) {
 	// The regression this change exists to prevent. An unstamped `go build` must
 	// report the version the toolchain embedded, not the "dev" sentinel.
@@ -92,20 +83,17 @@ func TestVersionReportsTheEmbeddedBuildStamp(t *testing.T) {
 
 		reported := mustMatch(t, stdout, "`afy version` Version field", reportedVersionField)
 
-		// WHAT THE TOOLCHAIN ACTUALLY EMBEDDED in this binary, read back from it.
-		// The toolchain stamps a version only from a VCS root it recognises, and
-		// for git that is a `.git` DIRECTORY (cmd/go/internal/vcs: isDir: true).
-		// A linked `git worktree` has a `.git` FILE, so a plain build there
-		// embeds "(devel)" and the only truthful answer is the sentinel. The
-		// fallback's own rules are pinned checkout-independently in
-		// pkg/version/version_test.go.
+		// WHAT THE TOOLCHAIN ACTUALLY EMBEDDED in this binary, read back from it, whatever
+		// toolchain built it and whatever shape the checkout has (a clone, a linked
+		// `git worktree`, a source archive): whether and when a toolchain stamps a
+		// version is the toolchain's business and has changed between Go releases.
+		// The property that is ours: `afy version` reports exactly what was embedded,
+		// and the sentinel only when nothing usable was.
 		info, err := buildinfo.ReadFile(bin)
 		require.NoError(t, err, "the built binary carries no readable build info")
-		if !gitDirIsADirectory(t) {
-			assert.Equal(t, info.Main.Version, "(devel)",
-				"this checkout's .git is not a directory, yet the toolchain embedded a version")
+		if version.Unset(info.Main.Version) {
 			assert.Equal(t, version.UnsetVersion, reported,
-				"with nothing embedded (%q) `afy version` must report the sentinel, not invent a version",
+				"with nothing usable embedded (%q) `afy version` must report the sentinel, not invent a version",
 				info.Main.Version)
 			return
 		}
@@ -113,16 +101,9 @@ func TestVersionReportsTheEmbeddedBuildStamp(t *testing.T) {
 			"`afy version` does not report the version the toolchain embedded in the binary")
 
 		assert.NotContains(t, reported, "dev",
-			"a plain `go build` reports Version %q. The build info the toolchain embeds "+
-				"(info.Main.Version plus the vcs.* settings) is supposed to fill the sentinel — "+
-				"see fillFromBuildInfo in pkg/version/version.go.\n\n"+
-				"MOST LIKELY CAUSE: the toolchain is older than Go 1.24. `go build` only "+
-				"stamps info.Main.Version with the module pseudo-version from 1.24 onward; "+
-				"before that it is \"(devel)\", which the fallback correctly refuses, so there "+
-				"is nothing left to recover. Check `go version` against go.mod's floor — "+
-				"TestWorkflowGoPinsAgreeWithTheModuleFloor guards that pair.\n\n"+
-				"LESS LIKELY: the build ran outside a VCS working tree, or with -buildvcs=false, "+
-				"which removes the same data by a different route.", reported)
+			"a plain `go build` that embedded %q reports Version %q. The build info the toolchain "+
+				"embeds (info.Main.Version plus the vcs.* settings) is supposed to fill the sentinel — "+
+				"see fillFromBuildInfo in pkg/version/version.go.", info.Main.Version, reported)
 
 		assert.True(t, strings.HasPrefix(reported, "v"),
 			"a plain `go build` reports Version %q, which is not version-shaped; expected the "+
