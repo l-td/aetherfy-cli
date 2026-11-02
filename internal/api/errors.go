@@ -26,7 +26,7 @@ package api
 // contract. The only path that does not produce a JSON object body is
 // a transport-level failure (e.g. Cloudflare returning a 502 HTML page,
 // an empty body, or a non-JSON gateway response) — for those we fall
-// back to a default status-code message via statusCodeMessage.
+// back to a default message for the status code (parseAPIError).
 
 import (
 	"encoding/json"
@@ -221,72 +221,4 @@ func IsRateLimited(err error) bool {
 		return apiErr.StatusCode == 429
 	}
 	return false
-}
-
-// ParseErrorResponse creates an APIError from status code and body
-func ParseErrorResponse(statusCode int, body []byte) *APIError {
-	apiErr := &APIError{
-		StatusCode: statusCode,
-		Message:    "Unknown error",
-	}
-
-	if len(body) == 0 {
-		apiErr.Message = statusCodeMessage(statusCode)
-		return apiErr
-	}
-
-	// Try to parse JSON. Non-JSON bodies are transport-level (Cloudflare
-	// HTML error pages, plain-text proxy errors, etc.) — pass them through.
-	var errBody map[string]interface{}
-	if err := json.Unmarshal(body, &errBody); err != nil {
-		apiErr.Message = string(body)
-		return apiErr
-	}
-
-	// Canonical control-plane envelope:
-	// {"detail": {"code": "...", "message": "...", **extras}}
-	switch v := errBody["detail"].(type) {
-	case map[string]interface{}:
-		if msg, ok := v["message"].(string); ok && msg != "" {
-			apiErr.Message = msg
-		} else if raw, err := json.Marshal(v); err == nil {
-			apiErr.Message = string(raw)
-		}
-		if code, ok := v["code"].(string); ok && code != "" {
-			apiErr.Code = code
-		}
-	default:
-		// Unexpected shape — serialize whatever we got so it isn't
-		// dropped silently. The control-plane should never emit this.
-		if v != nil {
-			if raw, err := json.Marshal(v); err == nil {
-				apiErr.Message = string(raw)
-			}
-		}
-	}
-
-	return apiErr
-}
-
-func statusCodeMessage(code int) string {
-	switch code {
-	case 400:
-		return "Bad Request"
-	case 401:
-		return "Unauthorized"
-	case 403:
-		return "Forbidden"
-	case 404:
-		return "Not Found"
-	case 429:
-		return "Rate Limited"
-	case 500:
-		return "Internal Server Error"
-	case 502:
-		return "Bad Gateway"
-	case 503:
-		return "Service Unavailable"
-	default:
-		return fmt.Sprintf("HTTP %d", code)
-	}
 }

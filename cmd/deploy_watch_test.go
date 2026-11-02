@@ -67,3 +67,9 @@ func TestTheDeployWatchCoversTheControlPlanesStageBudgets(t *testing.T) {
 		"the deploy watch (%s) is shorter than the build (%s) plus the health gate (%s) it waits on",
 		deploymentWatchTimeout, build, gate)
 }
+
+// The poll interval is a variable so a test can run the command with a short
+// one (afy_harness_test.go); what ships is the documented 5 seconds.
+func TestTheShippedPollIntervalIsFiveSeconds(t *testing.T) {
+	assert.Equal(t, 5*time.Second, deploymentPollInterval)
+}

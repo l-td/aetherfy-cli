@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
@@ -19,8 +20,20 @@ const deploymentsBody = `[` +
 
 func deploymentsOutput(t *testing.T) string {
 	t.Helper()
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	var mu sync.Mutex
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		paths = append(paths, r.URL.Path)
+		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
+		// The history is an array; the agent read that follows it (for the push
+		// waiting on the deploy) is one object. A body of the wrong shape fails
+		// to decode and is retried with real waits.
+		if !strings.HasSuffix(r.URL.Path, "/deployments") {
+			_, _ = w.Write([]byte(`{"id":"a1","user_id":"u1","name":"ticker","status":"running","agent_type":"job"}`))
+			return
+		}
 		_, _ = w.Write([]byte(deploymentsBody))
 	}))
 	t.Cleanup(srv.Close)
@@ -30,6 +43,17 @@ func deploymentsOutput(t *testing.T) string {
 	})
 	if err != nil {
 		t.Fatalf("afy deployments failed: %v", err)
+	}
+	// No read is made twice: a retried read is an answer the client could not
+	// decode, and costs real seconds of waiting.
+	mu.Lock()
+	defer mu.Unlock()
+	seen := map[string]bool{}
+	for _, p := range paths {
+		if seen[p] {
+			t.Errorf("%s was requested more than once (%v): an answer the client could not decode is retried", p, paths)
+		}
+		seen[p] = true
 	}
 	return out
 }

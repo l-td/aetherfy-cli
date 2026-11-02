@@ -1,10 +1,14 @@
 package test
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/l-td/aetherfy-cli/internal/api"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAPIError_Error(t *testing.T) {
@@ -57,7 +61,9 @@ func TestAPIError_IsServerError(t *testing.T) {
 	}
 }
 
-func TestParseErrorResponse(t *testing.T) {
+// What a failed request becomes is decided by the client's own parser, so these
+// cases send a real request to a stand-in and read the error the client returns.
+func TestAPIErrorsFromTheClientCarryTheServersWordsOrTheStatusDefault(t *testing.T) {
 	tests := []struct {
 		name       string
 		body       string
@@ -87,27 +93,41 @@ func TestParseErrorResponse(t *testing.T) {
 			wantCode:   "VALIDATION_ERROR",
 		},
 		{
-			name:       "plain text body (transport-level, e.g. proxy error)",
+			name:       "plain text body (transport-level, e.g. proxy error) gets the status default",
 			body:       "Bad Request",
 			statusCode: 400,
-			wantMsg:    "Bad Request",
+			wantMsg:    "Bad request",
 		},
 		{
-			name:       "empty body falls back to status-code message",
+			name:       "empty body gets the status default",
 			body:       "",
 			statusCode: 500,
-			wantMsg:    "Internal Server Error",
+			wantMsg:    "Server error - please try again later",
+		},
+		{
+			name:       "an HTML gateway page gets the status default",
+			body:       "<html>502 Bad Gateway</html>",
+			statusCode: 502,
+			wantMsg:    "Service temporarily unavailable",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := api.ParseErrorResponse(tt.statusCode, []byte(tt.body))
-			assert.Equal(t, tt.statusCode, err.StatusCode)
-			assert.Contains(t, err.Message, tt.wantMsg)
-			if tt.wantCode != "" {
-				assert.Equal(t, tt.wantCode, err.Code)
-			}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tt.statusCode)
+				_, _ = w.Write([]byte(tt.body))
+			}))
+			defer srv.Close()
+
+			var out map[string]interface{}
+			err := api.NewClientWithURL(srv.URL, "afy_test_key").Get("/agents/a1", &out)
+
+			var apiErr *api.APIError
+			require.True(t, errors.As(err, &apiErr), "want an *api.APIError, got %T: %v", err, err)
+			assert.Equal(t, tt.statusCode, apiErr.StatusCode)
+			assert.Equal(t, tt.wantMsg, apiErr.Message)
+			assert.Equal(t, tt.wantCode, apiErr.Code)
 		})
 	}
 }

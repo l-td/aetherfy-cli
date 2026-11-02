@@ -468,10 +468,12 @@ const (
 // How often a command waiting on a deployment re-reads it, and how long it
 // waits in all before giving up: every stage the control plane may spend, and
 // the part it does not bound.
-const (
-	deploymentPollInterval = 5 * time.Second
-	deploymentWatchTimeout = cpBuildTimeout + cpHealthGateTimeout + deploymentWatchSlack
-)
+const deploymentWatchTimeout = cpBuildTimeout + cpHealthGateTimeout + deploymentWatchSlack
+
+// A variable so a test that runs the command as its own process (afy_harness_test.go)
+// can set a short interval for that process; the shipped value is 5 seconds
+// and nothing else assigns it.
+var deploymentPollInterval = 5 * time.Second
 
 var (
 	errDeploymentFailed        = errors.New("deployment failed")

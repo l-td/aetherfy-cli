@@ -43,6 +43,12 @@ func configureRetries(client *resty.Client) {
 		if err == nil || resp == nil || resp.Request == nil {
 			return false
 		}
+		// Only a failure of the TRANSPORT (a failed connection, a timeout, a body cut off
+		// mid-read) can come out differently the second time. A body that arrived whole and
+		// did not decode is the same bytes again: fail at once (response_errors.go).
+		if isDecodeError(err) {
+			return false
+		}
 		return retryableMethods[resp.Request.Method]
 	})
 }
@@ -146,7 +152,7 @@ func (c *Client) Get(path string, result interface{}) error {
 		Get(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -158,7 +164,7 @@ func (c *Client) Get(path string, result interface{}) error {
 func (c *Client) GetRaw(path string) ([]byte, error) {
 	resp, err := c.http.R().Get(c.url(path))
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, requestError(err)
 	}
 	if err := c.handleResponse(resp); err != nil {
 		return nil, err
@@ -174,7 +180,7 @@ func (c *Client) Post(path string, body interface{}, result interface{}) error {
 		Post(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -188,7 +194,7 @@ func (c *Client) PostFile(path string, fileName string, fileBytes []byte, result
 		Post(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -202,7 +208,7 @@ func (c *Client) Patch(path string, body interface{}, result interface{}) error 
 		Patch(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -216,7 +222,7 @@ func (c *Client) Put(path string, body interface{}, result interface{}) error {
 		Put(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -228,7 +234,7 @@ func (c *Client) Delete(path string) error {
 		Delete(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -241,7 +247,7 @@ func (c *Client) DeleteWithResult(path string, result interface{}) error {
 		Delete(c.url(path))
 
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return requestError(err)
 	}
 
 	return c.handleResponse(resp)
@@ -251,6 +257,9 @@ func (c *Client) DeleteWithResult(path string, result interface{}) error {
 func (c *Client) handleResponse(resp *resty.Response) error {
 	if resp.IsError() {
 		return parseAPIError(resp)
+	}
+	if contentType, bad := notJSON(resp); bad {
+		return &NotAPIResponseError{ContentType: contentType}
 	}
 	return nil
 }

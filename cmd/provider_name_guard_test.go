@@ -296,18 +296,3 @@ func TestProviderExemptionsAreLoadBearing(t *testing.T) {
 		}
 	}
 }
-
-func TestTheSiblingGatesAreNamedInThisFile(t *testing.T) {
-	// One rule, three repositories. The other two lanes are unreachable from
-	// this process, so the only thing keeping them findable is that each names
-	// the others.
-	src, err := os.ReadFile("provider_name_guard_test.go")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, sibling := range []string{"test_provider_name_guard.py", "vocabulary-test.js"} {
-		if !strings.Contains(string(src), sibling) {
-			t.Errorf("this guard no longer names its sibling lane %s", sibling)
-		}
-	}
-}

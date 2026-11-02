@@ -180,12 +180,21 @@ const afyProcessArgs = "AFY_TEST_PROCESS_ARGS"
 // afyProcessBound is how long runAfyProcess lets one afy run.
 const afyProcessBound = 60 * time.Second
 
+// afyProcessPollInterval is the deployment poll interval of a re-executed afy.
+const afyProcessPollInterval = 10 * time.Millisecond
+
 // TestMain lets the test binary act as afy itself when re-executed by
 // runAfyProcess: some commands end the process (os.Exit with their exit code),
 // which in-process would end the whole test run.
 func TestMain(m *testing.M) {
 	if args, ok := os.LookupEnv(afyProcessArgs); ok {
 		argv := strings.Split(args, "\x1f")
+		// The command under test polls a deployment every deploymentPollInterval
+		// (5 s shipped), and a run that watches one waits out the first tick
+		// before it reads anything. Short here, in the re-executed process only:
+		// the cadence is not what these runs assert, and the shipped value is
+		// pinned by TestTheShippedPollIntervalIsFiveSeconds.
+		deploymentPollInterval = afyProcessPollInterval
 		// As a real process sees them: Execute reads os.Args for a --json
 		// typed after a flag cobra refused.
 		os.Args = append([]string{"afy"}, argv...)
