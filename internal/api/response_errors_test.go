@@ -2,7 +2,6 @@ package api
 
 import (
 	"errors"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -107,7 +106,7 @@ func TestABodyCutOffMidReadIsRetriedTwice(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id": "ab`))
 		conn, _, err := w.(http.Hijacker).Hijack()
 		if err == nil {
-			_ = conn.(net.Conn).Close()
+			_ = conn.Close()
 		}
 	})
 
@@ -133,7 +132,7 @@ func TestAMutatingRequestIsNeverRetriedWhateverFails(t *testing.T) {
 		_, _ = w.Write([]byte(`{"id": "ab`))
 		conn, _, err := w.(http.Hijacker).Hijack()
 		if err == nil {
-			_ = conn.(net.Conn).Close()
+			_ = conn.Close()
 		}
 	})
 
