@@ -120,7 +120,6 @@ var notControlPlaneCodes = map[string]string{
 	// internal/vectors/client.go). The commands print the code they are sent;
 	// only `afy collections schema set` branches, on SCHEMA_NOT_DEFINED and
 	// SCHEMA_VERSION_MISMATCH (contract sheet 1.5).
-	"NOT_FOUND":               "vectordb code: GET /collections/{name} for a missing collection (routes/proxy.js), in internal/vectors fixtures",
 	"PROXY_ERROR":             "vectordb code: a failed proxy to Qdrant (middleware/errorHandler.js), in internal/vectors fixtures",
 	"PAYLOAD_TOO_LARGE":       "vectordb code: an upsert body over the byte cap (middleware/streamingPointsParser.js), in cmd/points_upsert_test.go",
 	"SCHEMA_NOT_DEFINED":      "vectordb code: GET …/schema with no schema (routes/schema.js); schema set branches on it to set a first schema",
@@ -195,20 +194,6 @@ var notControlPlaneCodes = map[string]string{
 	// the CLI compares with its own copies; neither is ever sent as a code.
 	"BUILD_TIMEOUT_SECONDS":              "cpbudgets: orchestrator/fly_builder.py's build budget, not an error code",
 	"DEPLOY_HEALTH_GATE_TIMEOUT_SECONDS": "cpbudgets: workers/deploy_worker.py's health-gate budget, not an error code",
-
-	// Deliberately not a control-plane code — the only literal in shipped code
-	// that LOOKS like drift and is not.
-	//
-	// Two fixtures answer with it: internal/api/lifecycle_retry_test.go asserts a
-	// 500 carrying a code the retry does not recognise fails fast, and
-	// cmd/deploy_create_test.go's loop-bound server answers the second deploy
-	// with it. Both need a code that means "something the client has no branch
-	// for", and the control plane publishes no generic 500 code to borrow —
-	// main.py wraps only RequestValidationError and OperationalError — so an
-	// unrecognised string is the honest fixture. Pinning a REAL code here would
-	// be the lie: it would claim the server sends that code in this situation.
-	"INTERNAL_ERROR": "deliberately-unrecognised 500 body in internal/api/lifecycle_retry_test.go " +
-		"and cmd/deploy_create_test.go; the control plane publishes no generic 500 code",
 }
 
 func loadSnapshot(t *testing.T) *cperrors.Snapshot {
