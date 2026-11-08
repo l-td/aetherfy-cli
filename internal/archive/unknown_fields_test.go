@@ -62,7 +62,8 @@ func TestAFileWithEveryFieldIsAccepted(t *testing.T) {
 		"workspace: ws\nspawn:\n  enabled: true\n  workers: [a]\n" +
 		"regions: [us-east-1]\nmemory_mb: 512\nidle_timeout_minutes: 10\n" +
 		"keep_alive: false\nentrypoint: main.py\nschedule: '0 3 * * *'\n" +
-		"github_dependencies: ['o/r@v1']\n"
+		"github_dependencies: ['o/r@v1']\n" +
+		"writable_paths: [/data]\n"
 	require.NoError(t, CheckUnknownFields([]byte(full)))
 	for _, p := range KnownFields().Paths() {
 		leaf := p[strings.LastIndex(p, ".")+1:]
@@ -105,7 +106,7 @@ func TestParseAetherfyConfigRefusesBeforeAnyUpload(t *testing.T) {
 // approximation gets wrong: equal scores go to the larger string.
 func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 	top := []string{"name", "runtime", "type", "description", "workspace", "spawn", "regions",
-		"memory_mb", "idle_timeout_minutes", "keep_alive", "entrypoint", "schedule", "github_dependencies"}
+		"memory_mb", "idle_timeout_minutes", "keep_alive", "entrypoint", "schedule", "github_dependencies", "writable_paths"}
 	spawn := []string{"enabled", "workers"}
 	cases := []struct {
 		cands []string
