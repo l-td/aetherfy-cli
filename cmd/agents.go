@@ -434,10 +434,10 @@ var resumeCauses = map[string]resumeCauseWords{
 			"has no room to resume it, so Aetherfy recreates it from the current release%s.",
 		pending: "starting on a new machine (its host was full)",
 	},
-	"provider_slow": {
-		accepted: "Agent '%s' is being started by Aetherfy: the compute provider had not finished " +
-			"starting its machines when the request gave up, so Aetherfy finishes the start%s.",
-		pending: "starting (the compute provider was slow to start its machines)",
+	"machines_slow": {
+		accepted: "Agent '%s' is being started by Aetherfy: the machines had not finished " +
+			"starting when the request gave up, so Aetherfy finishes the start%s.",
+		pending: "starting (the machines were slow to start)",
 	},
 }
 

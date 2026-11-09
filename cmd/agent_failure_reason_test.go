@@ -55,7 +55,7 @@ func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
 	full := statusWith(t, "paused", resume(`"host_full"`))
 	stop := statusWith(t, "paused", resume(`null`))
 	unknown := statusWith(t, "paused", resume(`"some_future_cause"`))
-	slow := statusWith(t, "paused", resume(`"provider_slow"`))
+	slow := statusWith(t, "paused", resume(`"machines_slow"`))
 
 	if !strings.Contains(full, "starting on a new machine (its host was full)") ||
 		strings.Contains(full, "once its stop finishes") {
@@ -65,9 +65,9 @@ func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
 		strings.Contains(stop, "new machine") {
 		t.Errorf("a start during a stop is not named as one:\n%s", stop)
 	}
-	if !strings.Contains(slow, "starting (the compute provider was slow to start its machines)") ||
+	if !strings.Contains(slow, "starting (the machines were slow to start)") ||
 		strings.Contains(slow, "stop finishes") || strings.Contains(slow, "new machine") {
-		t.Errorf("a start handed over for a slow provider is not named as one:\n%s", slow)
+		t.Errorf("a start handed over for slow machines is not named as one:\n%s", slow)
 	}
 	if !strings.Contains(unknown, "Pending") || strings.Contains(unknown, "stop finishes") ||
 		strings.Contains(unknown, "new machine") {
@@ -76,7 +76,7 @@ func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
 }
 
 func TestStatusPrintsTheRecordedFailureReason(t *testing.T) {
-	out := statusWithFailure(t, `,"failure_code":"image_lost_on_provider",`+
+	out := statusWithFailure(t, `,"failure_code":"image_lost",`+
 		`"failure_message":"The image this agent runs is no longer available on the compute plane, so it cannot start. Deploy again to rebuild the image and bring it back."`)
 
 	if !strings.Contains(out, "Reason") {
