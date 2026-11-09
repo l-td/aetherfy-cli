@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 140
+      "count": 141
     },
     {
       "path": "api/routes/regions.py",
@@ -320,6 +320,10 @@
       "tier": "top-level"
     },
     "DEPLOY_REGIONS_NOT_IN_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOY_RESULT_NOT_RECORDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
