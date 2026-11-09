@@ -76,7 +76,7 @@ func TestStatusNamesAPendingStartByItsCause(t *testing.T) {
 }
 
 func TestStatusPrintsTheRecordedFailureReason(t *testing.T) {
-	out := statusWithFailure(t, `,"failure_code":"image_lost_on_provider",`+
+	out := statusWithFailure(t, `,"failure_code":"image_lost",`+
 		`"failure_message":"The image this agent runs is no longer available on the compute plane, so it cannot start. Deploy again to rebuild the image and bring it back."`)
 
 	if !strings.Contains(out, "Reason") {
