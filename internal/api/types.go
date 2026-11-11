@@ -107,7 +107,7 @@ type Agent struct {
 	CronLastRunAt  *time.Time `json:"cron_last_run_at,omitempty"`
 	CronLastStatus string     `json:"cron_last_status,omitempty"`
 	CronLastReason string     `json:"cron_last_reason,omitempty"`
-	// The agent's most recent scheduled or manual run, as `afy runs` lists it:
+	// The agent's most recent run, whatever started it, as `afy runs` lists it:
 	// what the RUN did, where CronLastStatus is what the schedule did. Nil when
 	// the agent has never run.
 	LastRun *LastRun `json:"last_run,omitempty"`
@@ -179,10 +179,6 @@ type Deployment struct {
 	BuildFailureDetail string     `json:"build_failure_detail,omitempty"`
 	CreatedAt          time.Time  `json:"created_at"`
 	DeployedAt         *time.Time `json:"deployed_at,omitempty"`
-	// True for spawn invocations (one Deployment row per spawn() call).
-	// CLI cancel filters these out — only user-initiated deploys
-	// (is_ephemeral=false) are user-cancellable.
-	IsEphemeral bool `json:"is_ephemeral,omitempty"`
 	// Set by the cancel route. For QUEUED the route returns state="failed"
 	// and CancellationRequested=true (synchronous path). For
 	// BUILDING/DEPLOYING the route returns the current in-flight state
@@ -305,10 +301,19 @@ type AgentRun struct {
 	MachineStartedAt *time.Time `json:"machine_started_at,omitempty"`
 	MachineStoppedAt *time.Time `json:"machine_stopped_at,omitempty"`
 	DurationSeconds  *float64   `json:"duration_seconds,omitempty"`
+	// The agent that spawned this run, on a spawned run (trigger_source "spawn"); null on a
+	// scheduled or manual one. No omitempty, for the reason ReleaseVersion has none.
+	SpawnedBy *RunSpawnedBy `json:"spawned_by"`
+}
+
+// RunSpawnedBy names the agent that spawned a run. Name is null when that agent's row is gone.
+type RunSpawnedBy struct {
+	ID   string  `json:"id"`
+	Name *string `json:"name"`
 }
 
 // RunsQuery bundles the GET /agents/{id}/runs query parameters. TriggerSource
-// narrows to 'cron' or 'manual' (empty = both); Before is the opaque `cursor`
+// narrows to 'cron', 'manual' or 'spawn' (empty = all three); Before is the opaque `cursor`
 // of the last run of the previous page, sent as it was received.
 type RunsQuery struct {
 	TriggerSource string

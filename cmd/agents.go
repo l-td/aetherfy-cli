@@ -707,11 +707,9 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient()
 
-	// list_deployments returns DESC by created_at. We scan for a pending
-	// user-initiated deploy — explicitly skipping ephemeral spawn rows
-	// (one Deployment per spawn() call from a parent SERVICE), which are
-	// system-managed and not user-cancellable. The backend cancel route
-	// would 404 on those anyway; filtering here gives a cleaner UX.
+	// The deployment list is releases, newest first (runs and spawn invocations are
+	// not on it), so every row is a user-initiated deploy and a cancellable one if it
+	// is pending.
 	deployments, err := client.ListDeployments(idOrName)
 	if err != nil {
 		sp.Stop()
@@ -720,9 +718,6 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 
 	var pending *api.Deployment
 	for i := range deployments {
-		if deployments[i].IsEphemeral {
-			continue
-		}
 		s := deployments[i].Status
 		if s == "queued" || s == "building" || s == "deploying" {
 			pending = &deployments[i]
@@ -785,8 +780,8 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 // or a refused restore; an ordinary failed deploy -- a push without
 // aetherfy.yaml, a frozen account's refused deploy -- is explained only on the
 // deployment (error_message), and the agent may still be serving its previous
-// release, so nothing else on this screen says it. Runs (ephemeral rows) are
-// skipped: `Last run` speaks for them. A deployments read that fails is said,
+// release, so nothing else on this screen says it. The deployment list holds
+// releases only: `Last run` speaks for the runs. A deployments read that fails is said,
 // and the rest of the status still prints.
 func printLastDeployFailure(client *api.Client, agent *api.Agent) {
 	deployments, err := client.ListDeployments(agent.ID)
@@ -795,9 +790,6 @@ func printLastDeployFailure(client *api.Client, agent *api.Agent) {
 		return
 	}
 	for _, d := range deployments {
-		if d.IsEphemeral {
-			continue
-		}
 		if !strings.EqualFold(d.Status, "failed") {
 			return
 		}
@@ -1195,10 +1187,9 @@ func watchRun(client *api.Client, agentName, deploymentID string) {
 var agentsRunsCmd = &cobra.Command{
 	Use:   "runs <name>",
 	Short: "Show run history for an agent",
-	Long: `List recent scheduled and manual runs for an agent, newest first.
-
-Only cron and manual runs are shown; spawned runs belong to the parent agent's
-history and are excluded.`,
+	Long: `List recent runs of an agent, newest first: the ones its schedule started, the
+ones started by hand, and the ones another agent spawned on it. The Trigger column says
+which, and a spawned run names the agent that spawned it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsRuns,
 }
@@ -1243,7 +1234,7 @@ func printAgentRuns(client *api.Client, name string) error {
 			// local time with no zone next to a JSON that says UTC, so the same
 			// run read two hours apart (benchmark runs 3 and 4).
 			formatUTCTime(&r.CreatedAt),
-			r.TriggerSource,
+			formatRunTrigger(r),
 			formatRunState(r.State),
 			formatReleaseVersion(r.ReleaseVersion),
 			formatRunDuration(r.DurationSeconds),
@@ -1255,6 +1246,18 @@ func printAgentRuns(client *api.Client, name string) error {
 	output.Println("")
 	output.Dim.Printf("Total: %d run(s)\n", len(runs))
 	return nil
+}
+
+// formatRunTrigger is the Trigger cell: the run's trigger, and for a spawned run the agent
+// that spawned it ("spawn (by reporter)"; by its id when that agent's row is gone).
+func formatRunTrigger(r api.AgentRun) string {
+	if r.TriggerSource != "spawn" || r.SpawnedBy == nil {
+		return r.TriggerSource
+	}
+	if r.SpawnedBy.Name != nil && *r.SpawnedBy.Name != "" {
+		return fmt.Sprintf("spawn (by %s)", *r.SpawnedBy.Name)
+	}
+	return fmt.Sprintf("spawn (by %s)", r.SpawnedBy.ID)
 }
 
 // --- SCHEDULE (pause / resume a cron schedule) ---

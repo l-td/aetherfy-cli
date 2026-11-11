@@ -11,38 +11,46 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
-// A RUN IS NOT A DEPLOYMENT (benchmark run 5, AFY-8). The server's history holds
-// both: a run is a row of its own, with a version number in the same sequence.
-// `afy deployments` lists the releases; a failed run used to be "the latest
-// deployment" and the hint beneath the table then offered a rollback to the
-// release the run had executed.
+// A RUN IS NOT A DEPLOYMENT (benchmark run 5, AFY-8). The control plane's
+// deployment lists hold releases only (runs are on the runs route), so the CLI
+// filters nothing: it prints the page it is given. What stays the CLI's is the
+// rollback hint beneath the table: it names the last release that went live and
+// can be rolled back to, never a release that failed, and nothing when there is
+// none.
 
-// A serving release and a completed run of it: the plain history.
-const deploymentsBody = `[` +
-	`{"id":"run-4","agent_id":"a1","version":4,"release_version":1,"state":"completed","is_ephemeral":true,"created_at":"2026-09-17T12:20:09Z"},` +
-	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"active","created_at":"2026-09-17T12:00:00Z"}]`
+// A serving release: the plain history, as a page.
+const deploymentsBody = `{"deployments":[` +
+	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"active","created_at":"2026-09-17T12:00:00Z"}],` +
+	`"next_before_id":null}`
 
-// A broken release v7 (it went active; its runs fail), two failed runs of it,
-// and the releases before it: v6 failed to build (and kept its archive, so the
-// server would accept a rollback to it), v5 is the last good one.
-const afterAFailedRunBody = `[` +
-	`{"id":"run-9","agent_id":"a1","version":9,"release_version":7,"state":"failed","is_ephemeral":true,"created_at":"2026-09-17T12:30:00Z","error_message":"run failed"},` +
-	`{"id":"run-8","agent_id":"a1","version":8,"release_version":7,"state":"failed","is_ephemeral":true,"created_at":"2026-09-17T12:20:00Z","error_message":"run failed"},` +
+// noDeploymentsPage is the deployment list of an agent with none: the envelope
+// the control plane answers (a page of rows and the id of the next page).
+const noDeploymentsPage = `{"deployments":[],"next_before_id":null}`
+
+// deploymentsPage wraps a JSON array of deployment rows in the envelope of a
+// last page.
+func deploymentsPage(rows string) string {
+	return `{"deployments":` + rows + `,"next_before_id":null}`
+}
+
+// The serving release v7 is newest (its runs may be failing, but they are not
+// deployments); v6 failed to build and kept its archive, so the server would
+// accept a rollback to it; v5 is the last good one.
+var servingNewestBody = deploymentsPage(`[` +
 	`{"id":"rel-7","agent_id":"a1","version":7,"release_version":null,"state":"active","can_rollback":false,"created_at":"2026-09-17T12:10:00Z"},` +
 	`{"id":"rel-6","agent_id":"a1","version":6,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:05:00Z"},` +
-	`{"id":"rel-5","agent_id":"a1","version":5,"release_version":null,"state":"superseded","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`
+	`{"id":"rel-5","agent_id":"a1","version":5,"release_version":null,"state":"superseded","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`)
 
-// The same, after v8 -- a RELEASE -- failed to deploy.
-const afterAFailedReleaseBody = `[` +
+// The newest release, v8, failed to deploy.
+var afterAFailedReleaseBody = deploymentsPage(`[` +
 	`{"id":"rel-8","agent_id":"a1","version":8,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:20:00Z","error_message":"build failed"},` +
-	`{"id":"run-7","agent_id":"a1","version":7,"release_version":6,"state":"completed","is_ephemeral":true,"created_at":"2026-09-17T12:10:00Z"},` +
 	`{"id":"rel-6","agent_id":"a1","version":6,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:05:00Z"},` +
-	`{"id":"rel-5","agent_id":"a1","version":5,"release_version":null,"state":"superseded","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`
+	`{"id":"rel-5","agent_id":"a1","version":5,"release_version":null,"state":"superseded","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`)
 
 // A failed release with nothing good to go back to.
-const noGoodReleaseBody = `[` +
+var noGoodReleaseBody = deploymentsPage(`[` +
 	`{"id":"rel-2","agent_id":"a1","version":2,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:20:00Z","error_message":"build failed"},` +
-	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`
+	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`)
 
 func deploymentsOutput(t *testing.T, body string) string {
 	t.Helper()
@@ -53,7 +61,7 @@ func deploymentsOutput(t *testing.T, body string) string {
 		paths = append(paths, r.URL.Path)
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		// The history is an array; the agent read that follows it (for the push
+		// The history is a page; the agent read that follows it (for the push
 		// waiting on the deploy) is one object. A body of the wrong shape fails
 		// to decode and is retried with real waits.
 		if !strings.HasSuffix(r.URL.Path, "/deployments") {
@@ -100,20 +108,17 @@ func rowVersions(out string) []string {
 	return versions
 }
 
-func TestAFailedRunIsNotListedAsADeploymentAndSuggestsNoRollback(t *testing.T) {
-	out := deploymentsOutput(t, afterAFailedRunBody)
+func TestAServingNewestReleaseSuggestsNoRollback(t *testing.T) {
+	out := deploymentsOutput(t, servingNewestBody)
 
 	if got := strings.Join(rowVersions(out), " "); got != "v7 v6 v5" {
-		t.Errorf("the table lists %q, want the releases v7 v6 v5 and no run:\n%s", got, out)
+		t.Errorf("the table lists %q, want the releases v7 v6 v5:\n%s", got, out)
 	}
-	if !strings.Contains(out, "Total: 3 deployment(s)") {
-		t.Errorf("the total counts the runs:\n%s", out)
-	}
-	// The newest RELEASE is serving: nothing failed to deploy, so nothing to
-	// roll back from. The run's failure is `afy runs`'s to show.
+	// The newest release is serving: nothing failed to deploy, so nothing to
+	// roll back from. A failing run is `afy runs`'s to show.
 	for _, unwanted := range []string{"Latest deployment failed", "Roll back to"} {
 		if strings.Contains(out, unwanted) {
-			t.Errorf("a failed RUN produced %q:\n%s", unwanted, out)
+			t.Errorf("a serving newest release produced %q:\n%s", unwanted, out)
 		}
 	}
 }
@@ -130,7 +135,7 @@ func TestTheSuggestionAfterAFailedReleaseIsTheLastGoodRelease(t *testing.T) {
 		t.Errorf("the suggestion names a release that failed:\n%s", out)
 	}
 	if got := strings.Join(rowVersions(out), " "); got != "v8 v6 v5" {
-		t.Errorf("the table lists %q, want v8 v6 v5 (the run v7 is not a deployment):\n%s", got, out)
+		t.Errorf("the table lists %q, want v8 v6 v5:\n%s", got, out)
 	}
 }
 
@@ -144,19 +149,20 @@ func TestNothingIsSuggestedWhenNoReleaseWentLive(t *testing.T) {
 	}
 }
 
-func TestDeploymentsJSONHoldsReleasesOnly(t *testing.T) {
+func TestDeploymentsJSONIsThePage(t *testing.T) {
 	jsonRun(t, true)
 
-	var rows []map[string]any
-	if err := json.Unmarshal([]byte(deploymentsOutput(t, afterAFailedRunBody)), &rows); err != nil {
+	var doc struct {
+		Deployments  []map[string]any `json:"deployments"`
+		NextBeforeID *string          `json:"next_before_id"`
+	}
+	if err := json.Unmarshal([]byte(deploymentsOutput(t, servingNewestBody)), &doc); err != nil {
 		t.Fatalf("afy deployments --json printed no JSON: %v", err)
 	}
-	if len(rows) != 3 {
-		t.Fatalf("want the 3 releases, got %d rows: %v", len(rows), rows)
+	if len(doc.Deployments) != 3 {
+		t.Fatalf("want the page's 3 releases, got %d rows: %v", len(doc.Deployments), doc.Deployments)
 	}
-	for _, row := range rows {
-		if row["is_ephemeral"] == true {
-			t.Errorf("a run is in the deployment history: %v", row)
-		}
+	if doc.NextBeforeID != nil {
+		t.Errorf("a last page carries next_before_id null, got %q", *doc.NextBeforeID)
 	}
 }

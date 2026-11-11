@@ -7,6 +7,10 @@ so an entry here is written for the version the owner tags next.
 
 ### Breaking
 
+- `afy deployments --json` prints one object, `{"deployments": [...], "next_before_id": null}`, where it
+  used to print the bare array of deployments. `next_before_id` is the id to pass as `--before` for the
+  next, older page, or `null` when there are no older deployments. The product is pre-launch and keeps
+  no compatibility form. Release this CLI after the control plane that answers the list as a page.
 - `afy logs --json` prints one object, `{"logs": [...], "retention_days": N, "since_clamped": false}`,
   where it used to print the bare array of lines. `retention_days` is the plan's log retention in days
   (`null` where it is negotiated per contract) and `since_clamped` is `true` when `--since` reached past
@@ -18,6 +22,14 @@ so an entry here is written for the version the owner tags next.
 
 ### Changed
 
+- The deployment history holds releases only: a run is not a deployment, and the control plane no
+  longer lists runs there (an agent's runs are `afy agents runs`). `afy status`, `afy redeploy` and
+  `afy cancel` no longer skip run rows, because none arrive.
+- `afy deployments` shows the 20 newest deployments and takes `--since` (30m, 24h, 7d), `--status`,
+  `--limit` (1 to 100) and `--before`. When older deployments exist its last line gives the `--before`
+  to pass for the next page. The "latest deployment" hints and the waiting push appear only on the
+  first unfiltered page. Every other command that reads the history (`afy status`, `afy rollback`,
+  `afy redeploy`, `afy cancel`) still reads all of it, page after page.
 - `afy logs --since` past the plan's retention shows what is kept and puts a note on stderr naming the
   retention. It is not an error.
 - `afy logs` notes on stderr when the plan's size cap removed older lines.

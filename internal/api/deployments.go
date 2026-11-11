@@ -63,26 +63,99 @@ func (c *Client) GetDeployment(deploymentID string) (*Deployment, error) {
 	return &deployment, nil
 }
 
-// ListDeployments returns all deployments for an agent
-//
-// NEWEST FIRST, BY VERSION, sorted here: every caller reads [0] as the newest
-// (afy status's failed deploy, the deployments table, redeploy's active
-// release, rollback's history), and the order the server happens to answer
-// in is not a contract. Versions are unique per agent; created_at breaks a
-// tie, should one ever occur.
-func (c *Client) ListDeployments(agentID string) ([]Deployment, error) {
-	var deployments []Deployment
-	err := c.Get(fmt.Sprintf("/agents/%s/deployments", agentID), &deployments)
-	if err != nil {
-		return nil, err
-	}
+// maxDeploymentsPageLimit is the most deployments the control plane answers in
+// one page (it clamps a larger limit to this).
+const maxDeploymentsPageLimit = 100
+
+// DeploymentsQuery bundles the query parameters of the deployment list. Since
+// is N followed by s, m, h or d (30m, 24h, 7d); Status is a deployment state;
+// Limit is the page size (0 = the server's default); BeforeID is the previous
+// page's NextBeforeID, sent as it was received.
+type DeploymentsQuery struct {
+	Since    string
+	Status   string
+	BeforeID string
+	Limit    int
+}
+
+// DeploymentsPage is one page of an agent's deployments, newest first.
+// NextBeforeID is the id to pass as BeforeID for the next, older page; nil
+// when there are no older deployments.
+type DeploymentsPage struct {
+	Deployments  []Deployment `json:"deployments"`
+	NextBeforeID *string      `json:"next_before_id"`
+}
+
+// sortNewestFirst orders deployments NEWEST FIRST, BY VERSION: every caller
+// reads [0] as the newest (afy status's failed deploy, the deployments table,
+// redeploy's active release, rollback's history), and the order the server
+// happens to answer in is not a contract. Versions are unique per agent;
+// created_at breaks a tie, should one ever occur.
+func sortNewestFirst(deployments []Deployment) {
 	sort.SliceStable(deployments, func(i, j int) bool {
 		if deployments[i].Version != deployments[j].Version {
 			return deployments[i].Version > deployments[j].Version
 		}
 		return deployments[i].CreatedAt.After(deployments[j].CreatedAt)
 	})
-	return deployments, nil
+}
+
+// ListDeploymentsPage reads one page of an agent's deployments (GET
+// /agents/{id}/deployments), newest first, filtered and positioned by q.
+func (c *Client) ListDeploymentsPage(agentID string, q DeploymentsQuery) (*DeploymentsPage, error) {
+	path := fmt.Sprintf("/agents/%s/deployments", agentID)
+	params := url.Values{}
+	if q.Since != "" {
+		params.Set("since", q.Since)
+	}
+	if q.Status != "" {
+		params.Set("status", q.Status)
+	}
+	if q.Limit > 0 {
+		params.Set("limit", fmt.Sprintf("%d", q.Limit))
+	}
+	if q.BeforeID != "" {
+		params.Set("before_id", q.BeforeID)
+	}
+	if encoded := params.Encode(); encoded != "" {
+		path = path + "?" + encoded
+	}
+
+	var page DeploymentsPage
+	if err := c.Get(path, &page); err != nil {
+		return nil, err
+	}
+	sortNewestFirst(page.Deployments)
+	return &page, nil
+}
+
+// ListDeployments returns ALL deployments for an agent, newest first: it
+// follows the pages of ListDeploymentsPage (the largest page each time) until
+// the server says there are no older ones. A server that answers a cursor it
+// has already given is refused rather than followed forever.
+func (c *Client) ListDeployments(agentID string) ([]Deployment, error) {
+	var all []Deployment
+	beforeID := ""
+	asked := map[string]bool{"": true}
+	for {
+		page, err := c.ListDeploymentsPage(agentID, DeploymentsQuery{Limit: maxDeploymentsPageLimit, BeforeID: beforeID})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, page.Deployments...)
+		if page.NextBeforeID == nil {
+			break
+		}
+		next := *page.NextBeforeID
+		if asked[next] {
+			return nil, &ResponseInvalidError{Message: fmt.Sprintf(
+				"the control plane's deployment list pointed to the same next page twice (%q), so the list was not followed further", next)}
+		}
+		asked[next] = true
+		beforeID = next
+	}
+	sortNewestFirst(all)
+	return all, nil
 }
 
 // CancelDeployment cancels an in-flight deployment by version.

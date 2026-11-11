@@ -10,7 +10,7 @@ import (
 // the folder links), so the hint must not send anyone to it.
 func TestNoDeploymentsHintNamesTheLinkThenDeploy(t *testing.T) {
 	cp := newFakeCP(t)
-	cp.on("GET", "/agents/bot/deployments", 200, `[]`)
+	cp.on("GET", "/agents/bot/deployments", 200, noDeploymentsPage)
 	stdout, _, err := runAfy(t, cp, "deployments", "bot")
 	if err != nil {
 		t.Fatalf("deployments: %v", err)

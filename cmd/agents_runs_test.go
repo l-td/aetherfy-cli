@@ -121,3 +121,57 @@ func TestRunsJSONCarriesTheReleaseAndSaysNullWhenThereIsNone(t *testing.T) {
 		t.Errorf("a run with no recorded release must say null, not drop the key: %v", runs[1])
 	}
 }
+
+// A RUN IS THE HISTORY OF THE AGENT THAT EXECUTED IT. The control plane lists every run an
+// agent executed, a spawned one included, and a spawned run names the agent that spawned it.
+// The Trigger column says which, so a spawned run is not read as a scheduled one.
+func TestRunsNamesTheAgentThatSpawnedASpawnedRun(t *testing.T) {
+	out := runsTable(t, `[`+
+		`{"id":"run-spawned","trigger_source":"spawn","state":"completed","created_at":"2026-09-16T04:00:00Z",`+
+		`"spawned_by":{"id":"11111111-1111-1111-1111-111111111111","name":"reporter"}},`+
+		`{"id":"run-cron","trigger_source":"cron","state":"completed","created_at":"2026-09-16T03:00:00Z","spawned_by":null}]`)
+
+	if !strings.Contains(out, "spawn (by reporter)") {
+		t.Errorf("a spawned run must name the agent that spawned it:\n%s", out)
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "run-cron") && strings.Contains(line, "by ") {
+			t.Errorf("a scheduled run was marked as spawned: %q", line)
+		}
+	}
+}
+
+// THE CONTROLS: a spawned run whose parent's row is gone names the parent by id (null name),
+// and one the server gave no parent at all prints a bare spawn rather than a crash.
+func TestRunsNamesAParentWhoseRowIsGoneByIDAndSurvivesNoParent(t *testing.T) {
+	out := runsTable(t, `[`+
+		`{"id":"run-orphan","trigger_source":"spawn","state":"completed","created_at":"2026-09-16T04:00:00Z",`+
+		`"spawned_by":{"id":"p-gone","name":null}},`+
+		`{"id":"run-bare","trigger_source":"spawn","state":"completed","created_at":"2026-09-16T05:00:00Z","spawned_by":null}]`)
+
+	if !strings.Contains(out, "spawn (by p-gone)") {
+		t.Errorf("a parent with no name must be named by its id:\n%s", out)
+	}
+	if !strings.Contains(out, "run-bare") {
+		t.Errorf("a spawned run with no parent must still print:\n%s", out)
+	}
+}
+
+// --json carries spawned_by as the server sent it, null included.
+func TestRunsJSONCarriesSpawnedBy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`[{"id":"a","trigger_source":"spawn","state":"completed","created_at":"2026-09-16T04:00:00Z",` +
+			`"spawned_by":{"id":"p1","name":"reporter"}},` +
+			`{"id":"b","trigger_source":"cron","state":"completed","created_at":"2026-09-16T03:00:00Z","spawned_by":null}]`))
+	}))
+	t.Cleanup(srv.Close)
+	runs, err := api.NewClientWithURL(srv.URL, "afy_test_key").ListAgentRuns("x", api.RunsQuery{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(runs)
+	if !strings.Contains(string(raw), `"spawned_by":{"id":"p1","name":"reporter"}`) || !strings.Contains(string(raw), `"spawned_by":null`) {
+		t.Errorf("--json lost spawned_by: %s", raw)
+	}
+}

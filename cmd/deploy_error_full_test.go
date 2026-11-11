@@ -20,7 +20,7 @@ func statusAgainst(t *testing.T, deployments string) string {
 	t.Helper()
 	cp := newFakeCP(t)
 	cp.on("GET", "/agents/bot", 200, `{"id":"a1","name":"bot","status":"running","agent_type":"service","created_at":"2026-09-01T10:00:00Z","updated_at":"2026-09-01T10:00:00Z"}`)
-	cp.on("GET", "/agents/a1/deployments", 200, deployments)
+	cp.on("GET", "/agents/a1/deployments", 200, deploymentsPage(deployments))
 	var err error
 	out := captureStdout(t, func() {
 		err = showAgentStatus(api.NewClientWithURL(cp.srv.URL+"/api/v1", "afy_test_key"), "bot")
@@ -41,10 +41,9 @@ func TestStatusShowsAPushDeployFailureInFull(t *testing.T) {
 }
 
 func TestStatusSaysNothingWhenTheNewestReleaseDeploySucceeded(t *testing.T) {
-	// A failed RUN (ephemeral) newer than a good release is `Last run`'s to
-	// report, not a failed deploy.
+	// The deployment list holds releases only; a failed RUN is `Last run`'s to report and
+	// is not on it, so a good newest release leaves nothing to say.
 	out := statusAgainst(t, `[
-		{"id":"r9","agent_id":"a1","version":9,"state":"failed","error_message":"run blew up","is_ephemeral":true,"created_at":"2026-10-14T11:00:00Z"},
 		{"id":"d3","agent_id":"a1","version":3,"state":"active","created_at":"2026-10-14T10:00:00Z"}]`)
 	if strings.Contains(out, "Last deploy") || strings.Contains(out, "Deploy error") {
 		t.Errorf("no failed deploy to report:\n%s", out)
@@ -53,9 +52,9 @@ func TestStatusSaysNothingWhenTheNewestReleaseDeploySucceeded(t *testing.T) {
 
 func TestDeploymentsPrintsEveryCutErrorInFull(t *testing.T) {
 	cp := newFakeCP(t)
-	cp.on("GET", "/agents/bot/deployments", 200, `[
+	cp.on("GET", "/agents/bot/deployments", 200, deploymentsPage(`[
 		{"id":"d3","agent_id":"a1","version":3,"state":"failed","error_message":"`+pushWithoutYAML+`","created_at":"2026-10-14T10:00:00Z"},
-		{"id":"d2","agent_id":"a1","version":2,"state":"failed","error_message":"short reason","created_at":"2026-10-13T10:00:00Z"}]`)
+		{"id":"d2","agent_id":"a1","version":2,"state":"failed","error_message":"short reason","created_at":"2026-10-13T10:00:00Z"}]`))
 	stdout, _, err := runAfy(t, cp, "deployments", "bot")
 	if err != nil {
 		t.Fatalf("deployments: %v", err)
@@ -91,7 +90,7 @@ func TestDeploymentsAreOrderedNewestFirstWhateverTheServersOrder(t *testing.T) {
 	}
 
 	cp := newFakeCP(t)
-	cp.on("GET", "/agents/bot/deployments", 200, reversed)
+	cp.on("GET", "/agents/bot/deployments", 200, deploymentsPage(reversed))
 	stdout, _, err := runAfy(t, cp, "deployments", "bot")
 	if err != nil {
 		t.Fatalf("deployments: %v", err)

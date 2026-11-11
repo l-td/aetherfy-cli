@@ -97,8 +97,8 @@ func jsonCases() []jsonCase {
 	return []jsonCase{
 		// --- list ---
 		{class: "list", args: []string{"list"}, ok: []route{{"GET", "/agents", 200, `[` + agentRow + `]`}}, refuse: []string{"GET /agents"}},
-		{class: "list", args: []string{"deployments", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[` + deploymentRw + `]`}}, refuse: []string{"GET /agents/bot/deployments"}},
-		{class: "list", args: []string{"deployments", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[]`}}},
+		{class: "list", args: []string{"deployments", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, deploymentsPage(`[` + deploymentRw + `]`)}}, refuse: []string{"GET /agents/bot/deployments"}},
+		{class: "list", args: []string{"deployments", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, noDeploymentsPage}}},
 		{class: "list", args: []string{"secrets", "list", "bot"}, ok: []route{{"GET", "/agents/bot/secrets", 200, `[]`}}, refuse: []string{"GET /agents/bot/secrets"}},
 		{class: "list", args: []string{"workspaces", "list"}, ok: []route{{"GET", "/workspaces", 200, `[` + wsRow + `]`}}, refuse: []string{"GET /workspaces"}},
 		{class: "list", args: []string{"runs", "bot"}, ok: []route{{"GET", "/agents/bot/runs", 200, `[]`}}, refuse: []string{"GET /agents/bot/runs"}},
@@ -109,7 +109,7 @@ func jsonCases() []jsonCase {
 		{class: "list", args: []string{"github", "repos"}, ok: []route{{"GET", "/auth/github/repositories", 200, `{"repositories":[]}`}}, refuse: []string{"GET /auth/github/repositories"}},
 
 		// --- show ---
-		{class: "show", args: []string{"status", "bot"}, ok: []route{{"GET", "/agents/bot", 200, agentRow}, {"GET", "/agents/bot/deployments", 200, `[]`}}, refuse: []string{"GET /agents/bot"}},
+		{class: "show", args: []string{"status", "bot"}, ok: []route{{"GET", "/agents/bot", 200, agentRow}, {"GET", "/agents/bot/deployments", 200, noDeploymentsPage}}, refuse: []string{"GET /agents/bot"}},
 		{class: "show", args: []string{"workspaces", "info", "acme"}, ok: []route{{"GET", "/workspaces/acme", 200, wsRow}}, refuse: []string{"GET /workspaces/acme"}},
 		{class: "show", args: []string{"github", "status"}, ok: []route{{"GET", "/auth/github/status", 200, `{"connected":false,"installations":[]}`}}, refuse: []string{"GET /auth/github/status"}},
 		{class: "show", args: []string{"whoami"}, ok: []route{{"GET", "/auth/me", 200, `{"user_id":"u-1","email":"dev@example.com","tier":"starter"}`}}, refuse: []string{"GET /auth/me"}},
@@ -123,7 +123,7 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"start", "bot"}, ok: []route{{"POST", "/agents/bot/start", 200, `{"readiness":"serving"}`}}, refuse: []string{"POST /agents/bot/start"}},
 		{class: "mutate", args: []string{"archive", "bot"}, ok: []route{{"POST", "/agents/bot/archive", 200, `{}`}}, refuse: []string{"POST /agents/bot/archive"}},
 		{class: "mutate", args: []string{"restore", "bot"}, ok: []route{{"POST", "/agents/bot/restore", 200, `{}`}}, refuse: []string{"POST /agents/bot/restore"}},
-		{class: "mutate", args: []string{"cancel", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[]`}}, refuse: []string{"GET /agents/bot/deployments"}},
+		{class: "mutate", args: []string{"cancel", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, noDeploymentsPage}}, refuse: []string{"GET /agents/bot/deployments"}},
 		{class: "mutate", args: []string{"update", "bot", "--description", "x"}, ok: []route{{"PATCH", "/agents/bot", 200, agentRow}}, refuse: []string{"PATCH /agents/bot"}},
 		{class: "mutate", args: []string{"schedule", "resume", "bot"}, ok: []route{{"POST", "/agents/bot/schedule/resume", 200, `{"changed":true,"cron_paused":false}`}}, refuse: []string{"POST /agents/bot/schedule/resume"}},
 		{class: "mutate", args: []string{"workspaces", "regions", "acme", "--regions", "eu-central-1"}, ok: []route{{"GET", "/deploy-options", 200, deployOptions}, {"PATCH", "/workspaces/acme/regions", 202, `{"operation_id":"op-1","status":"pending","from_regions":["eu-central-1"],"to_regions":["eu-central-1"]}`}}, refuse: []string{"PATCH /workspaces/acme/regions"}},
@@ -142,7 +142,7 @@ func jsonCases() []jsonCase {
 		// --- deploy ---
 		{class: "deploy", args: []string{"redeploy", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/redeploy", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/redeploy"}},
 		{class: "deploy", args: []string{"rollback", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/rollback", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/rollback"}},
-		{class: "deploy", args: []string{"rollback", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, `[` + deploymentRw + `]`}}, refuse: []string{"GET /agents/bot/deployments"}},
+		{class: "deploy", args: []string{"rollback", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, deploymentsPage(`[` + deploymentRw + `]`)}}, refuse: []string{"GET /agents/bot/deployments"}},
 	}
 }
 
@@ -583,8 +583,9 @@ func TestNoCommandWritesToStdoutOutsideTheOutputPackage(t *testing.T) {
 
 func TestEveryEmptyListIsAnEmptyJSONDocument(t *testing.T) {
 	// A list command with nothing to list still writes its JSON on stdout: []
-	// (an object with an empty list for `github repos`), never only a sentence
-	// on stderr. Each case answers the command's read with an empty list.
+	// (an object with an empty list for `github repos`, `logs` and `deployments`:
+	// the page of rows with what continues it), never only a sentence on stderr.
+	// Each case answers the command's read with an empty list.
 	cases := []struct {
 		args  []string
 		route route
@@ -592,8 +593,8 @@ func TestEveryEmptyListIsAnEmptyJSONDocument(t *testing.T) {
 	}{
 		{[]string{"list"}, route{"GET", "/agents", 200, `[]`}, "[]"},
 		{[]string{"workspaces", "list"}, route{"GET", "/workspaces", 200, `[]`}, "[]"},
-		{[]string{"deployments", "bot"}, route{"GET", "/agents/bot/deployments", 200, `[]`}, "[]"},
-		{[]string{"rollback", "bot"}, route{"GET", "/agents/bot/deployments", 200, `[]`}, "[]"},
+		{[]string{"deployments", "bot"}, route{"GET", "/agents/bot/deployments", 200, noDeploymentsPage}, `{"deployments":[],"next_before_id":null}`},
+		{[]string{"rollback", "bot"}, route{"GET", "/agents/bot/deployments", 200, noDeploymentsPage}, "[]"},
 		{[]string{"secrets", "list", "bot"}, route{"GET", "/agents/bot/secrets", 200, `[]`}, "[]"},
 		{[]string{"runs", "bot"}, route{"GET", "/agents/bot/runs", 200, `[]`}, "[]"},
 		{[]string{"logs", "bot"}, route{"GET", "/agents/bot/logs", 200, `[]`}, `{"logs":[],"retention_days":7,"since_clamped":false}`},
