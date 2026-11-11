@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 141
+      "count": 143
     },
     {
       "path": "api/routes/regions.py",
@@ -272,6 +272,14 @@
       "tier": "violation"
     },
     "CONFIRM_HOLD_NOT_APPLICABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENTS_INVALID_BEFORE_ID": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENTS_INVALID_STATUS": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
