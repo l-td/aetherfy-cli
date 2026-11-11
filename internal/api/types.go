@@ -107,7 +107,7 @@ type Agent struct {
 	CronLastRunAt  *time.Time `json:"cron_last_run_at,omitempty"`
 	CronLastStatus string     `json:"cron_last_status,omitempty"`
 	CronLastReason string     `json:"cron_last_reason,omitempty"`
-	// The agent's most recent scheduled or manual run, as `afy runs` lists it:
+	// The agent's most recent run, whatever started it, as `afy runs` lists it:
 	// what the RUN did, where CronLastStatus is what the schedule did. Nil when
 	// the agent has never run.
 	LastRun *LastRun `json:"last_run,omitempty"`
