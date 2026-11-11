@@ -53,7 +53,7 @@ func runStatus(t *testing.T, format, link string) (string, []string) {
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		if strings.HasSuffix(r.URL.Path, "/deployments") {
-			_, _ = w.Write([]byte(`[]`))
+			_, _ = w.Write([]byte(noDeploymentsPage))
 			return
 		}
 		_, _ = w.Write([]byte(statusAgentJSON(link)))

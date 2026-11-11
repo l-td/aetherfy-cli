@@ -14,9 +14,20 @@ import (
 // A RUN READ ON ITS OWN SAYS WHICH RELEASE IT RAN (benchmark run 4, N3).
 // `afy deployments` lists runs next to releases, and a run's Version is its
 // place in the sequence, not the release it executed.
-const deploymentsBody = `[` +
+const deploymentsBody = `{"deployments":[` +
 	`{"id":"run-4","agent_id":"a1","version":4,"release_version":1,"state":"completed","is_ephemeral":true,"created_at":"2026-09-17T12:20:09Z"},` +
-	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"active","created_at":"2026-09-17T12:00:00Z"}]`
+	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"active","created_at":"2026-09-17T12:00:00Z"}],` +
+	`"next_before_id":null}`
+
+// noDeploymentsPage is the deployment list of an agent with none: the envelope
+// the control plane answers (a page of rows and the id of the next page).
+const noDeploymentsPage = `{"deployments":[],"next_before_id":null}`
+
+// deploymentsPage wraps a JSON array of deployment rows in the envelope of a
+// last page.
+func deploymentsPage(rows string) string {
+	return `{"deployments":` + rows + `,"next_before_id":null}`
+}
 
 func deploymentsOutput(t *testing.T) string {
 	t.Helper()
@@ -85,9 +96,15 @@ func TestDeploymentsNameTheReleaseARunExecuted(t *testing.T) {
 func TestDeploymentsJSONCarriesReleaseVersionNullIncluded(t *testing.T) {
 	jsonRun(t, true)
 
-	var rows []map[string]any
-	if err := json.Unmarshal([]byte(deploymentsOutput(t)), &rows); err != nil {
+	var doc struct {
+		Deployments []map[string]any `json:"deployments"`
+	}
+	if err := json.Unmarshal([]byte(deploymentsOutput(t)), &doc); err != nil {
 		t.Fatalf("afy deployments --json printed no JSON: %v", err)
+	}
+	rows := doc.Deployments
+	if len(rows) != 2 {
+		t.Fatalf("want the two deployments in the document, got %v", rows)
 	}
 	if rows[0]["release_version"] != float64(1) {
 		t.Errorf("the run's release_version is missing: %v", rows[0])
