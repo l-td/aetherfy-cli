@@ -301,10 +301,19 @@ type AgentRun struct {
 	MachineStartedAt *time.Time `json:"machine_started_at,omitempty"`
 	MachineStoppedAt *time.Time `json:"machine_stopped_at,omitempty"`
 	DurationSeconds  *float64   `json:"duration_seconds,omitempty"`
+	// The agent that spawned this run, on a spawned run (trigger_source "spawn"); null on a
+	// scheduled or manual one. No omitempty, for the reason ReleaseVersion has none.
+	SpawnedBy *RunSpawnedBy `json:"spawned_by"`
+}
+
+// RunSpawnedBy names the agent that spawned a run. Name is null when that agent's row is gone.
+type RunSpawnedBy struct {
+	ID   string  `json:"id"`
+	Name *string `json:"name"`
 }
 
 // RunsQuery bundles the GET /agents/{id}/runs query parameters. TriggerSource
-// narrows to 'cron' or 'manual' (empty = both); Before is the opaque `cursor`
+// narrows to 'cron', 'manual' or 'spawn' (empty = all three); Before is the opaque `cursor`
 // of the last run of the previous page, sent as it was received.
 type RunsQuery struct {
 	TriggerSource string

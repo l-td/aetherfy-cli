@@ -248,9 +248,9 @@ func (c *Client) RunAgent(idOrName string, payload map[string]interface{}) (*Run
 	return &resp, nil
 }
 
-// ListAgentRuns returns the run history (GET /agents/{id}/runs). Spawn rows are
-// excluded server-side; only cron/manual runs are returned. Empty query returns
-// the server defaults (both trigger sources, newest first).
+// ListAgentRuns returns the run history (GET /agents/{id}/runs): every run the agent
+// executed, whatever started it (cron, manual, or spawned by another agent, which the row
+// names). Empty query returns the server defaults (all three triggers, newest first).
 func (c *Client) ListAgentRuns(idOrName string, q RunsQuery) ([]AgentRun, error) {
 	path := fmt.Sprintf("/agents/%s/runs", idOrName)
 	params := url.Values{}

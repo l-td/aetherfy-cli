@@ -1187,10 +1187,9 @@ func watchRun(client *api.Client, agentName, deploymentID string) {
 var agentsRunsCmd = &cobra.Command{
 	Use:   "runs <name>",
 	Short: "Show run history for an agent",
-	Long: `List recent scheduled and manual runs for an agent, newest first.
-
-Only cron and manual runs are shown; spawned runs belong to the parent agent's
-history and are excluded.`,
+	Long: `List recent runs of an agent, newest first: the ones its schedule started, the
+ones started by hand, and the ones another agent spawned on it. The Trigger column says
+which, and a spawned run names the agent that spawned it.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsRuns,
 }
@@ -1235,7 +1234,7 @@ func printAgentRuns(client *api.Client, name string) error {
 			// local time with no zone next to a JSON that says UTC, so the same
 			// run read two hours apart (benchmark runs 3 and 4).
 			formatUTCTime(&r.CreatedAt),
-			r.TriggerSource,
+			formatRunTrigger(r),
 			formatRunState(r.State),
 			formatReleaseVersion(r.ReleaseVersion),
 			formatRunDuration(r.DurationSeconds),
@@ -1247,6 +1246,18 @@ func printAgentRuns(client *api.Client, name string) error {
 	output.Println("")
 	output.Dim.Printf("Total: %d run(s)\n", len(runs))
 	return nil
+}
+
+// formatRunTrigger is the Trigger cell: the run's trigger, and for a spawned run the agent
+// that spawned it ("spawn (by reporter)"; by its id when that agent's row is gone).
+func formatRunTrigger(r api.AgentRun) string {
+	if r.TriggerSource != "spawn" || r.SpawnedBy == nil {
+		return r.TriggerSource
+	}
+	if r.SpawnedBy.Name != nil && *r.SpawnedBy.Name != "" {
+		return fmt.Sprintf("spawn (by %s)", *r.SpawnedBy.Name)
+	}
+	return fmt.Sprintf("spawn (by %s)", r.SpawnedBy.ID)
 }
 
 // --- SCHEDULE (pause / resume a cron schedule) ---

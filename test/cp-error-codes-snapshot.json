@@ -51,10 +51,6 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_LOGS_INVALID_SINCE": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "AGENT_NAME_TAKEN": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -404,6 +400,10 @@
       "tier": "top-level"
     },
     "INVALID_SCAN_KEY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "INVALID_SINCE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
