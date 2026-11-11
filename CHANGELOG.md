@@ -22,6 +22,9 @@ so an entry here is written for the version the owner tags next.
 
 ### Changed
 
+- The deployment history holds releases only: a run is not a deployment, and the control plane no
+  longer lists runs there (an agent's runs are `afy agents runs`). `afy status`, `afy redeploy` and
+  `afy cancel` no longer skip run rows, because none arrive.
 - `afy deployments` shows the 20 newest deployments and takes `--since` (30m, 24h, 7d), `--status`,
   `--limit` (1 to 100) and `--before`. When older deployments exist its last line gives the `--before`
   to pass for the next page. The "latest deployment" hints and the waiting push appear only on the

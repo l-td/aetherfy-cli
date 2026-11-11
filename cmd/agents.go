@@ -707,11 +707,9 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 
 	client := api.NewClient()
 
-	// list_deployments returns DESC by created_at. We scan for a pending
-	// user-initiated deploy — explicitly skipping ephemeral spawn rows
-	// (one Deployment per spawn() call from a parent SERVICE), which are
-	// system-managed and not user-cancellable. The backend cancel route
-	// would 404 on those anyway; filtering here gives a cleaner UX.
+	// The deployment list is releases, newest first (runs and spawn invocations are
+	// not on it), so every row is a user-initiated deploy and a cancellable one if it
+	// is pending.
 	deployments, err := client.ListDeployments(idOrName)
 	if err != nil {
 		sp.Stop()
@@ -720,9 +718,6 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 
 	var pending *api.Deployment
 	for i := range deployments {
-		if deployments[i].IsEphemeral {
-			continue
-		}
 		s := deployments[i].Status
 		if s == "queued" || s == "building" || s == "deploying" {
 			pending = &deployments[i]
@@ -785,8 +780,8 @@ func runAgentsStatus(cmd *cobra.Command, args []string) error {
 // or a refused restore; an ordinary failed deploy -- a push without
 // aetherfy.yaml, a frozen account's refused deploy -- is explained only on the
 // deployment (error_message), and the agent may still be serving its previous
-// release, so nothing else on this screen says it. Runs (ephemeral rows) are
-// skipped: `Last run` speaks for them. A deployments read that fails is said,
+// release, so nothing else on this screen says it. The deployment list holds
+// releases only: `Last run` speaks for the runs. A deployments read that fails is said,
 // and the rest of the status still prints.
 func printLastDeployFailure(client *api.Client, agent *api.Agent) {
 	deployments, err := client.ListDeployments(agent.ID)
@@ -795,9 +790,6 @@ func printLastDeployFailure(client *api.Client, agent *api.Agent) {
 		return
 	}
 	for _, d := range deployments {
-		if d.IsEphemeral {
-			continue
-		}
 		if !strings.EqualFold(d.Status, "failed") {
 			return
 		}

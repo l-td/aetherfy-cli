@@ -41,10 +41,9 @@ func TestStatusShowsAPushDeployFailureInFull(t *testing.T) {
 }
 
 func TestStatusSaysNothingWhenTheNewestReleaseDeploySucceeded(t *testing.T) {
-	// A failed RUN (ephemeral) newer than a good release is `Last run`'s to
-	// report, not a failed deploy.
+	// The deployment list holds releases only; a failed RUN is `Last run`'s to report and
+	// is not on it, so a good newest release leaves nothing to say.
 	out := statusAgainst(t, `[
-		{"id":"r9","agent_id":"a1","version":9,"state":"failed","error_message":"run blew up","is_ephemeral":true,"created_at":"2026-10-14T11:00:00Z"},
 		{"id":"d3","agent_id":"a1","version":3,"state":"active","created_at":"2026-10-14T10:00:00Z"}]`)
 	if strings.Contains(out, "Last deploy") || strings.Contains(out, "Deploy error") {
 		t.Errorf("no failed deploy to report:\n%s", out)

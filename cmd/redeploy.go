@@ -88,15 +88,15 @@ func redeployAgent(client *api.Client, args []string, detach bool, pollInterval,
 	} else {
 		// Default to the active deployment — the one whose environment a newly
 		// stored secret is missing from, which is the reason to reach for this
-		// command at all. Ephemeral rows are skipped: a spawned or scheduled
-		// run is an invocation of an already-built image, never its own build.
+		// command at all. The list holds releases only: a spawned or scheduled run is
+		// an invocation of an already-built image, never its own build, and is not on it.
 		deployments, err := client.ListDeployments(agentID)
 		if err != nil {
 			_ = printRefusal("Failed to list deployments", err)
 			return 1
 		}
 		for _, d := range deployments {
-			if d.Status == "active" && !d.IsEphemeral {
+			if d.Status == "active" {
 				version = d.Version
 				break
 			}
