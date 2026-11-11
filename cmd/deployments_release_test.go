@@ -11,14 +11,40 @@ import (
 	"github.com/l-td/aetherfy-cli/internal/api"
 )
 
-// A RUN READ ON ITS OWN SAYS WHICH RELEASE IT RAN (benchmark run 4, N3).
-// `afy deployments` lists runs next to releases, and a run's Version is its
-// place in the sequence, not the release it executed.
+// A RUN IS NOT A DEPLOYMENT (benchmark run 5, AFY-8). The server's history holds
+// both: a run is a row of its own, with a version number in the same sequence.
+// `afy deployments` lists the releases; a failed run used to be "the latest
+// deployment" and the hint beneath the table then offered a rollback to the
+// release the run had executed.
+
+// A serving release and a completed run of it: the plain history.
 const deploymentsBody = `[` +
 	`{"id":"run-4","agent_id":"a1","version":4,"release_version":1,"state":"completed","is_ephemeral":true,"created_at":"2026-09-17T12:20:09Z"},` +
 	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"active","created_at":"2026-09-17T12:00:00Z"}]`
 
-func deploymentsOutput(t *testing.T) string {
+// A broken release v7 (it went active; its runs fail), two failed runs of it,
+// and the releases before it: v6 failed to build (and kept its archive, so the
+// server would accept a rollback to it), v5 is the last good one.
+const afterAFailedRunBody = `[` +
+	`{"id":"run-9","agent_id":"a1","version":9,"release_version":7,"state":"failed","is_ephemeral":true,"created_at":"2026-09-17T12:30:00Z","error_message":"run failed"},` +
+	`{"id":"run-8","agent_id":"a1","version":8,"release_version":7,"state":"failed","is_ephemeral":true,"created_at":"2026-09-17T12:20:00Z","error_message":"run failed"},` +
+	`{"id":"rel-7","agent_id":"a1","version":7,"release_version":null,"state":"active","can_rollback":false,"created_at":"2026-09-17T12:10:00Z"},` +
+	`{"id":"rel-6","agent_id":"a1","version":6,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:05:00Z"},` +
+	`{"id":"rel-5","agent_id":"a1","version":5,"release_version":null,"state":"superseded","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`
+
+// The same, after v8 -- a RELEASE -- failed to deploy.
+const afterAFailedReleaseBody = `[` +
+	`{"id":"rel-8","agent_id":"a1","version":8,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:20:00Z","error_message":"build failed"},` +
+	`{"id":"run-7","agent_id":"a1","version":7,"release_version":6,"state":"completed","is_ephemeral":true,"created_at":"2026-09-17T12:10:00Z"},` +
+	`{"id":"rel-6","agent_id":"a1","version":6,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:05:00Z"},` +
+	`{"id":"rel-5","agent_id":"a1","version":5,"release_version":null,"state":"superseded","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`
+
+// A failed release with nothing good to go back to.
+const noGoodReleaseBody = `[` +
+	`{"id":"rel-2","agent_id":"a1","version":2,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:20:00Z","error_message":"build failed"},` +
+	`{"id":"rel-1","agent_id":"a1","version":1,"release_version":null,"state":"failed","can_rollback":true,"created_at":"2026-09-17T12:00:00Z"}]`
+
+func deploymentsOutput(t *testing.T, body string) string {
 	t.Helper()
 	var mu sync.Mutex
 	var paths []string
@@ -34,7 +60,7 @@ func deploymentsOutput(t *testing.T) string {
 			_, _ = w.Write([]byte(`{"id":"a1","user_id":"u1","name":"ticker","status":"running","agent_type":"job"}`))
 			return
 		}
-		_, _ = w.Write([]byte(deploymentsBody))
+		_, _ = w.Write([]byte(body))
 	}))
 	t.Cleanup(srv.Close)
 	var err error
@@ -58,41 +84,79 @@ func deploymentsOutput(t *testing.T) string {
 	return out
 }
 
-func TestDeploymentsNameTheReleaseARunExecuted(t *testing.T) {
-	out := deploymentsOutput(t)
-	var run, release string
+// rowVersions: the first cell of each table row ("v7"), in order.
+func rowVersions(out string) []string {
+	var versions []string
 	for _, line := range strings.Split(out, "\n") {
 		fields := strings.Fields(line)
-		if len(fields) < 3 {
+		if len(fields) < 2 {
 			continue
 		}
-		switch fields[0] {
-		case "v4":
-			run = line
-		case "v1":
-			release = line
+		first := fields[0]
+		if len(first) >= 2 && first[0] == 'v' && first[1] >= '0' && first[1] <= '9' && !strings.HasSuffix(first, ":") {
+			versions = append(versions, first)
 		}
 	}
-	// A row is Version, the state cell (its mark and its word), then Release.
-	if f := strings.Fields(run); len(f) < 4 || f[3] != "v1" {
-		t.Errorf("the run's Release cell is not v1: %q\n%s", run, out)
+	return versions
+}
+
+func TestAFailedRunIsNotListedAsADeploymentAndSuggestsNoRollback(t *testing.T) {
+	out := deploymentsOutput(t, afterAFailedRunBody)
+
+	if got := strings.Join(rowVersions(out), " "); got != "v7 v6 v5" {
+		t.Errorf("the table lists %q, want the releases v7 v6 v5 and no run:\n%s", got, out)
 	}
-	if f := strings.Fields(release); len(f) < 4 || f[3] != "-" {
-		t.Errorf("a release row must print a dash for Release: %q\n%s", release, out)
+	if !strings.Contains(out, "Total: 3 deployment(s)") {
+		t.Errorf("the total counts the runs:\n%s", out)
+	}
+	// The newest RELEASE is serving: nothing failed to deploy, so nothing to
+	// roll back from. The run's failure is `afy runs`'s to show.
+	for _, unwanted := range []string{"Latest deployment failed", "Roll back to"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("a failed RUN produced %q:\n%s", unwanted, out)
+		}
 	}
 }
 
-func TestDeploymentsJSONCarriesReleaseVersionNullIncluded(t *testing.T) {
+func TestTheSuggestionAfterAFailedReleaseIsTheLastGoodRelease(t *testing.T) {
+	out := deploymentsOutput(t, afterAFailedReleaseBody)
+
+	if !strings.Contains(out, "Roll back to v5: afy rollback ticker 5") {
+		t.Errorf("want the last good release, v5:\n%s", out)
+	}
+	// v6 failed to deploy: the server would accept it (it kept its archive), and
+	// it is not a release to go back to.
+	if strings.Contains(out, "Roll back to v6") || strings.Contains(out, "Roll back to v8") {
+		t.Errorf("the suggestion names a release that failed:\n%s", out)
+	}
+	if got := strings.Join(rowVersions(out), " "); got != "v8 v6 v5" {
+		t.Errorf("the table lists %q, want v8 v6 v5 (the run v7 is not a deployment):\n%s", got, out)
+	}
+}
+
+func TestNothingIsSuggestedWhenNoReleaseWentLive(t *testing.T) {
+	out := deploymentsOutput(t, noGoodReleaseBody)
+	if !strings.Contains(out, "Latest deployment failed") {
+		t.Fatalf("the failed release must still be called out:\n%s", out)
+	}
+	if strings.Contains(out, "Roll back to") {
+		t.Errorf("a rollback is suggested with no good release to go to:\n%s", out)
+	}
+}
+
+func TestDeploymentsJSONHoldsReleasesOnly(t *testing.T) {
 	jsonRun(t, true)
 
 	var rows []map[string]any
-	if err := json.Unmarshal([]byte(deploymentsOutput(t)), &rows); err != nil {
+	if err := json.Unmarshal([]byte(deploymentsOutput(t, afterAFailedRunBody)), &rows); err != nil {
 		t.Fatalf("afy deployments --json printed no JSON: %v", err)
 	}
-	if rows[0]["release_version"] != float64(1) {
-		t.Errorf("the run's release_version is missing: %v", rows[0])
+	if len(rows) != 3 {
+		t.Fatalf("want the 3 releases, got %d rows: %v", len(rows), rows)
 	}
-	if value, present := rows[1]["release_version"]; !present || value != nil {
-		t.Errorf("a release row must say release_version null: %v", rows[1])
+	for _, row := range rows {
+		if row["is_ephemeral"] == true {
+			t.Errorf("a run is in the deployment history: %v", row)
+		}
 	}
 }

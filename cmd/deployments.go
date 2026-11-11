@@ -12,10 +12,10 @@ import (
 var deploymentsCmd = &cobra.Command{
 	Use:   "deployments <agent>",
 	Short: "List deployment history for an agent",
-	Long: `List all deployments for an agent, ordered newest first.
+	Long: `List the deployments (releases) of an agent, ordered newest first.
 
-Shows version, state, the release a run executed, creation time, and error
-message for failed deployments.
+Shows version, state, creation time, and error message for failed deployments.
+A run is not a deployment: list the agent's runs with 'afy runs'.
 Use --json for machine-readable output.`,
 	Example: `  # List deployments for an agent
   afy deployments my-agent
@@ -39,12 +39,13 @@ func runDeployments(cmd *cobra.Command, args []string) error {
 func printDeployments(client *api.Client, agentID string) error {
 	sp := output.NewSpinner("Fetching deployment history...")
 	sp.Start()
-	deployments, err := client.ListDeployments(agentID)
+	all, err := client.ListDeployments(agentID)
 	sp.Stop()
 
 	if err != nil {
 		return printRefusal("Failed to list deployments", err)
 	}
+	deployments := releasesOnly(all)
 
 	if output.IsJSON() {
 		return output.JSON(deployments)
@@ -58,7 +59,7 @@ func printDeployments(client *api.Client, agentID string) error {
 		return nil
 	}
 
-	table := output.Table([]string{"Version", "State", "Release", "Created", "Error"})
+	table := output.Table([]string{"Version", "State", "Created", "Error"})
 	var cut []api.Deployment // rows whose error the table shortened
 	for _, d := range deployments {
 		errMsg, shortened := shortenError(d.ErrorMessage)
@@ -76,9 +77,6 @@ func printDeployments(client *api.Client, agentID string) error {
 		table.Append([]string{
 			fmt.Sprintf("v%d", d.Version),
 			stateCell,
-			// The release a RUN executed (a dash on a release row, whose own
-			// number is Version), as `afy runs` prints it.
-			formatReleaseVersion(d.ReleaseVersion),
 			d.CreatedAt.Format("2006-01-02 15:04"),
 			errMsg,
 		})
@@ -149,17 +147,47 @@ func printWaitingPushLine(client *api.Client, agentID string) {
 	output.KeyValue("Push waiting", formatWaitingPush(agent.GitHub.WaitingPush))
 }
 
-// newestRollbackTarget is the first (newest) deployment the server says a
-// rollback can target, or nil. The server's can_rollback is the rule -- its
-// image or its stored code archive still exists -- so the suggestion is never a
-// version `afy rollback` would refuse, and never skips one it would accept.
+// releasesOnly drops the runs from a history. A run is one Deployment row on the
+// server (is_ephemeral) with a version number of its own in the same sequence,
+// but it is not a deployment: it executes a release, and its failure says
+// nothing about the release that would be better to run. Listed here, a failed
+// run was "the latest deployment", and the hint beneath the table then offered
+// a rollback to the newest release before it -- the release the run had
+// executed (benchmark run 5, AFY-8). `afy runs` lists runs.
+func releasesOnly(deployments []api.Deployment) []api.Deployment {
+	releases := make([]api.Deployment, 0, len(deployments))
+	for _, d := range deployments {
+		if !d.IsEphemeral {
+			releases = append(releases, d)
+		}
+	}
+	return releases
+}
+
+// newestRollbackTarget is the last good release, or nil: the first (newest) of
+// the releases given that the server says a rollback can target AND that did
+// not fail. The server's can_rollback is the rule for whether `afy rollback`
+// accepts a version -- its image or its stored code archive still exists -- but
+// it accepts a failed release that kept its archive, and a release that failed
+// is not one to go back to. The caller passes the releases OLDER than the one
+// that failed, so the failed release itself is never offered.
 func newestRollbackTarget(deployments []api.Deployment) *api.Deployment {
 	for i := range deployments {
-		if deployments[i].CanRollback {
+		if deployments[i].CanRollback && wentLive(deployments[i].Status) {
 			return &deployments[i]
 		}
 	}
 	return nil
+}
+
+// wentLive: the release served at some point (it is serving, or something has
+// replaced it), as opposed to one that failed or never finished.
+func wentLive(state string) bool {
+	switch strings.ToLower(state) {
+	case "active", "superseded", "rolled_back":
+		return true
+	}
+	return false
 }
 
 // formatDeployState adds color/symbols to deployment states for table output.

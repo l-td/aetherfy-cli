@@ -321,7 +321,7 @@ func printSecretEffectNote(target string, workspace bool) {
 	} else {
 		output.Dim.Printf("Takes effect the next time '%s' is deployed: 'afy deploy', 'afy redeploy %s', or a push to a linked repository.\n", target, target)
 	}
-	output.Dim.Println("A running machine keeps the values it was created with; 'afy rollback' re-deploys an already-built image and does not apply new secrets.")
+	output.Dim.Println("A running machine keeps the values it was created with; every new deployment, 'afy rollback' included, creates new machines and reads the secrets as they are now.")
 	output.Dim.Println("A 'type: job' agent gets the value on its next run without a deploy, but pays a cold start on every run until you deploy it.")
 }
 

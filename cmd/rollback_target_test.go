@@ -9,8 +9,9 @@ import (
 // `afy deployments` suggests a rollback after a failed deploy. The suggestion
 // used to be the newest active or superseded version, which named versions the
 // server would refuse (image and archive both gone) and skipped ones it would
-// accept (a rolled_back or failed release that still has its image or archive).
-// The server's can_rollback is the rule.
+// accept (a rolled_back release that still has its image or archive). The
+// server's can_rollback is the rule for what it accepts; a release that FAILED
+// is not offered even when it would (deployments_release_test.go).
 func TestTheRollbackSuggestionFollowsTheServer(t *testing.T) {
 	history := []api.Deployment{
 		{Version: 5, Status: "superseded", CanRollback: false},
