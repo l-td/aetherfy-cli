@@ -46,12 +46,35 @@ Windows on ARM has no published build. The script says so rather than
 downloading something that does not exist — run the amd64 build under x64
 emulation, or build from source.
 
-### GitHub Releases
+### GitHub Releases (the fallback)
 
-Download the archive for your platform from
-[the releases page](https://github.com/l-td/aetherfy-cli/releases), extract it,
-and put `afy` somewhere on your `PATH`. Use this to pin a version by hand, or to
-install somewhere the scripts above do not reach.
+The install script is the recommended path. Use the releases when the script
+cannot run: a locked-down machine, a coding agent's harness that refuses a piped
+command (you can approve the script's command yourself instead), or an
+architecture the scripts do not serve. Download the archive for your platform from
+[the releases page](https://github.com/l-td/aetherfy-cli/releases)
+(`afy-linux-amd64.tar.gz`, `afy-darwin-arm64.tar.gz`, `afy-windows-amd64.zip`, ...)
+and extract it. Extracting is not installing: put `afy` in a directory on your
+`PATH`, or a terminal answers `afy: command not found`.
+
+```bash
+# Linux and macOS
+tar -xzf afy-linux-amd64.tar.gz
+mkdir -p "$HOME/.local/bin" && mv afy "$HOME/.local/bin/afy"
+export PATH="$HOME/.local/bin:$PATH"   # and add this line to your shell's startup file
+```
+
+```powershell
+# Windows (PowerShell); open a new terminal afterwards
+Expand-Archive afy-windows-amd64.zip -DestinationPath "$env:LOCALAPPDATA\Programs\afy"
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\afy", "User")
+```
+
+## Building from source
+
+The customer documentation at docs.aetherfy.com installs the CLI from the script or
+the releases only. Building it yourself is for contributors and for platforms the
+releases do not carry.
 
 ### go install
 
