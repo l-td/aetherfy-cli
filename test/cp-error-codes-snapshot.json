@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 143
+      "count": 145
     },
     {
       "path": "api/routes/regions.py",
@@ -32,6 +32,10 @@
       "tier": "top-level"
     },
     "AGENT_DEPLOYMENT_OUTSIDE_NEW_WORKSPACE_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_DRAINING": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -164,6 +168,10 @@
       "tier": "top-level"
     },
     "AGENT_SPAWN_WORKERS_REQUIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_UNAVAILABLE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

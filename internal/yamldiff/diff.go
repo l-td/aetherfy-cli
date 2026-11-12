@@ -30,16 +30,17 @@ import (
 // a default changed there turns this repo's tests red. runtime is required and
 // has none.
 var Defaults = map[string]interface{}{
-	"type":                 "service",
-	"spawn":                nil,
-	"regions":              nil,
-	"memory_mb":            256,
-	"idle_timeout_minutes": 5,
-	"keep_alive":           false,
-	"entrypoint":           nil,
-	"schedule":             nil,
-	"github_dependencies":  []interface{}{},
-	"writable_paths":       []interface{}{},
+	"type":                  "service",
+	"spawn":                 nil,
+	"regions":               nil,
+	"memory_mb":             256,
+	"idle_timeout_minutes":  5,
+	"drain_timeout_minutes": 30,
+	"keep_alive":            false,
+	"entrypoint":            nil,
+	"schedule":              nil,
+	"github_dependencies":   []interface{}{},
+	"writable_paths":        []interface{}{},
 }
 
 // Kind classifies what `afy deploy` would do to a field.
@@ -69,7 +70,7 @@ type FieldDiff struct {
 // canonicalOrder mirrors serialize_agent_to_yaml so the diff reads
 // top-to-bottom like the file. Unknown keys follow, sorted.
 var canonicalOrder = []string{
-	"runtime", "type", "memory_mb", "idle_timeout_minutes", "keep_alive",
+	"runtime", "type", "memory_mb", "idle_timeout_minutes", "drain_timeout_minutes", "keep_alive",
 	"entrypoint", "schedule", "spawn", "regions", "github_dependencies",
 }
 

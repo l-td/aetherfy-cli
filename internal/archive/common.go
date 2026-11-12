@@ -37,7 +37,10 @@ type AetherfyConfig struct {
 	// here would refuse a value it accepts (a quoted "5" for an int, say)
 	// before the server ever saw it.
 	IdleTimeoutMinutes any `yaml:"idle_timeout_minutes,omitempty"`
-	GithubDependencies any `yaml:"github_dependencies,omitempty"`
+	// How long a replaced version of a service keeps running to let its open
+	// calls end (a service's only: the server refuses it on a task).
+	DrainTimeoutMinutes any `yaml:"drain_timeout_minutes,omitempty"`
+	GithubDependencies  any `yaml:"github_dependencies,omitempty"`
 	// The paths a runtime: dockerfile agent writes; the server validates them.
 	WritablePaths any          `yaml:"writable_paths,omitempty"`
 	Spawn         *SpawnConfig `yaml:"spawn,omitempty"`
