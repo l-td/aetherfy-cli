@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 145
+      "count": 152
     },
     {
       "path": "api/routes/regions.py",
@@ -191,6 +191,14 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "API_KEY_LIMIT_REACHED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "API_KEY_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AUTHENTICATION_ERROR": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -336,6 +344,26 @@
       "tier": "top-level"
     },
     "DEPLOY_RESULT_NOT_RECORDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_ACCESS_DENIED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_CODE_ALREADY_USED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_CODE_EXPIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_CODE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_POLLING_TOO_FAST": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

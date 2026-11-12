@@ -112,6 +112,16 @@ func NewClientWithURL(baseURL, apiKey string) *Client {
 	}
 }
 
+// NewAnonymousClient creates a client that sends NO credentials, whatever key
+// the CLI holds. The device sign-in uses it: the two calls that start and
+// collect a sign-in are answered for the person who approves the code in the
+// dashboard, never for a key (a key can never mint a key).
+func NewAnonymousClient() *Client {
+	c := NewClientWithURL(config.Get().APIURL, "")
+	c.verbose = config.Get().Verbose
+	return c
+}
+
 // NewClientWithKey creates a client with a specific API key (for login validation)
 func NewClientWithKey(apiKey string) *Client {
 	cfg := config.Get()

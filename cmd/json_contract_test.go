@@ -143,6 +143,11 @@ func jsonCases() []jsonCase {
 		{class: "deploy", args: []string{"redeploy", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/redeploy", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/redeploy"}},
 		{class: "deploy", args: []string{"rollback", "bot", "3", "--detach"}, ok: []route{{"POST", "/agents/bot/deployments/3/rollback", 202, `{"id":"d-9","version":4}`}}, refuse: []string{"POST /agents/bot/deployments/3/rollback"}},
 		{class: "deploy", args: []string{"rollback", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, deploymentsPage(`[` + deploymentRw + `]`)}}, refuse: []string{"GET /agents/bot/deployments"}},
+
+		// --- keys and usage ---
+		{class: "list", args: []string{"keys", "list"}, ok: []route{{"GET", "/keys", 200, keysDoc}}, refuse: []string{"GET /keys"}},
+		{class: "mutate", args: []string{"keys", "revoke", "k-1", "--yes"}, ok: []route{{"DELETE", "/keys/k-1", 200, `{"revoked":true,"id":"k-1"}`}}, refuse: []string{"DELETE /keys/k-1"}},
+		{class: "show", args: []string{"usage"}, ok: []route{{"GET", "/usage", 200, `{"hasActivePeriod":false,"reason":"no_subscription","tier":null}`}}, refuse: []string{"GET /usage"}},
 	}
 }
 
@@ -488,6 +493,7 @@ func TestEveryLeafCommandHasAJSONContract(t *testing.T) {
 	}
 	for _, p := range []string{
 		"deploy", "init", "upgrade", "redeploy", "login", "diff", "access", "github connect", "github link",
+		"keys create", // TestJSONContractDeviceCommands
 	} {
 		covered[p] = true
 	}

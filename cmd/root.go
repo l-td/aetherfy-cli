@@ -40,7 +40,7 @@ A bare verb is an AGENT verb: 'afy list' lists your agents, 'afy logs <name>'
 reads one agent's logs. Only the other nouns are grouped.
 
 Quick start:
-  afy login                    # Authenticate with your API key
+  afy login                    # Sign in by approving a code in the dashboard
   afy init                     # Create an agent for this folder (or --agent <name> to link one)
   afy deploy                   # Deploy this folder to the agent it is linked to
   afy list                     # List your agents
@@ -202,7 +202,7 @@ func init() {
 	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, collectionsCmd, indexCmd, pointsCmd} {
 		c.GroupID = groupResources
 	}
-	for _, c := range []*cobra.Command{initCmd, versionCmd, loginCmd, logoutCmd, whoamiCmd} {
+	for _, c := range []*cobra.Command{initCmd, versionCmd, loginCmd, logoutCmd, whoamiCmd, keysCmd, usageCmd} {
 		c.GroupID = groupAccount
 	}
 
@@ -226,6 +226,8 @@ func init() {
 	rootCmd.AddCommand(loginCmd)
 	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(whoamiCmd)
+	rootCmd.AddCommand(keysCmd)
+	rootCmd.AddCommand(usageCmd)
 	// Deliberately NOT behind checkAuth(): replacing the CLI binary needs no
 	// Aetherfy account, and a logged-out user is exactly who might be stuck on
 	// an old build. Spelled `upgrade` since the flatten — see cmd/update.go.

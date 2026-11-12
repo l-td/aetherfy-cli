@@ -31,6 +31,9 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 )
@@ -46,9 +49,9 @@ type APIError struct {
 	// "+$X/mo, continue?" prompt. nil for every other error.
 	AdditionalMonthlyUSD *float64 `json:"-"`
 	// RetryAfterSeconds carries the `retry_after_seconds` extra from the 429
-	// RATE_LIMIT_EXCEEDED envelope. Read from the BODY, not the Retry-After
-	// header, because the header does not survive this type. A caller that
-	// polls (github connect) must honour it or it spends the rest of its
+	// RATE_LIMIT_EXCEEDED envelope, read from the BODY. (The Retry-After HEADER
+	// is RetryAfter below; the two are different answers' contracts.) A caller
+	// that polls (github connect) must honour it or it spends the rest of its
 	// budget being refused. nil for every other error.
 	RetryAfterSeconds *int `json:"-"`
 	// RegionsInUse carries the `regions_in_use` extra of a narrow refused with
@@ -63,6 +66,12 @@ type APIError struct {
 	// every other error, and for the VALIDATION_ERROR form, whose summary
 	// already joins its entries.
 	Violations []string `json:"-"`
+	// RetryAfter is the wait the answer's Retry-After header asks for, in whole
+	// seconds. Zero when the header is absent or is not a number of seconds. The
+	// device sign-in reads it on the two answers that carry it (429
+	// DEVICE_POLLING_TOO_FAST, 503 SERVICE_UNAVAILABLE): the header is the
+	// contract there, and the body says nothing of it.
+	RetryAfter time.Duration `json:"-"`
 }
 
 // ResponseInvalidError is an answer the control plane gave successfully but
@@ -108,6 +117,7 @@ func parseAPIError(resp *resty.Response) error {
 	apiErr := &APIError{
 		StatusCode: resp.StatusCode(),
 		Message:    "Unknown error",
+		RetryAfter: retryAfterHeader(resp),
 	}
 
 	// Try to parse error body
@@ -197,6 +207,18 @@ func parseAPIError(resp *resty.Response) error {
 	}
 
 	return apiErr
+}
+
+// retryAfterHeader reads a Retry-After given as a number of seconds. The date
+// form is not read: the control plane sends seconds, and a value that is not a
+// positive whole number is no instruction.
+func retryAfterHeader(resp *resty.Response) time.Duration {
+	v := strings.TrimSpace(resp.Header().Get("Retry-After"))
+	secs, err := strconv.Atoi(v)
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // IsNotFound returns true if the error is a 404

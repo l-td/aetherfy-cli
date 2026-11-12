@@ -1,0 +1,79 @@
+{
+  "hasActivePeriod": true,
+  "tier": "starter",
+  "periodStart": "2026-11-01T00:00:00Z",
+  "periodEnd": "2026-12-01T00:00:00Z",
+  "gaugePercent": 125,
+  "gaugeLabel": "+$2.50 this period",
+  "awakeBudgetNote": "Awake budget: 75% of the time an agent exists in the billing period. A running agent's budget runs to the end of the period; for a deleted or archived agent, or a removed region, it covers only the time it existed, so a short-lived agent can read past 100%. Awake time beyond it counts toward your plan.",
+  "meteredNote": "Usage is booked once a day, overnight. Today shows only the flat price so far; awake time is added overnight.",
+  "inOverage": true,
+  "overageDollars": 2.5,
+  "overageLabel": "+$2.50 this period",
+  "showDollars": true,
+  "planBaseDollars": 25,
+  "currentTotalDollars": 27.5,
+  "currentTotalLabel": "$27.50",
+  "totalCompositionLabel": "This period's total: $27.50 ($25 plan + $2.50 usage)",
+  "forecast": {
+    "available": true,
+    "projectedDollars": 40,
+    "projectedLabel": "$40",
+    "crossesLimit": false,
+    "limitKind": null,
+    "reachDateLabel": null,
+    "message": null
+  },
+  "today": {
+    "inOverage": true,
+    "percent": 4,
+    "dollars": 0.4,
+    "label": "+$0.40 today"
+  },
+  "spendCap": {
+    "enabled": false,
+    "amountDollars": null,
+    "systemCeilingDollars": null,
+    "effectiveLimitDollars": null,
+    "isUserCap": false,
+    "blocked": false,
+    "progressPercent": null
+  },
+  "agents": [
+    {
+      "agentId": "a-1",
+      "agentName": "invoice-parser",
+      "state": null,
+      "display": "$1.90",
+      "dollars": 1.9,
+      "percent": null,
+      "sortKey": 9.5,
+      "usagePaused": false,
+      "awakeTime": [
+        {
+          "region": "eu-central-1",
+          "percent": 10,
+          "share": 10,
+          "label": "Awake time in eu-central-1: 10% of this month's budget"
+        },
+        {
+          "region": "us-east-1",
+          "percent": 40,
+          "share": 40,
+          "label": "Awake time in us-east-1: 40% of this month's budget"
+        }
+      ]
+    },
+    {
+      "agentId": "a-2",
+      "agentName": "old-bot",
+      "state": "archived",
+      "display": "$0.60",
+      "dollars": 0.6,
+      "percent": null,
+      "sortKey": 3,
+      "usagePaused": false,
+      "awakeTime": []
+    }
+  ]
+}
