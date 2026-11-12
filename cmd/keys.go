@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -119,7 +120,7 @@ func runKeysList(cmd *cobra.Command, args []string) error {
 	list, err := api.NewClient().ListKeys()
 	sp.Stop()
 	if err != nil {
-		return printRefusal("Failed to list keys", err)
+		return printKeysRefusal("Failed to list keys", err)
 	}
 
 	// The server's document, unchanged.
@@ -203,7 +204,7 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 		}
 		list, err := client.ListKeys()
 		if err != nil {
-			return printRefusal("Failed to read the keys before asking", err)
+			return printKeysRefusal("Failed to read the keys before asking", err)
 		}
 		if row, relation := currentKeyRelation(list.Keys, id, config.GetCredentials().APIKey); row != nil {
 			ask.prompt = fmt.Sprintf("Revoke API key '%s' (%s, %s)? [y/N] ", id, row.Name, row.KeyPrefix)
@@ -224,11 +225,52 @@ func runKeysRevoke(cmd *cobra.Command, args []string) error {
 	err := client.RevokeKey(id)
 	sp.Stop()
 	if err != nil {
-		return printRefusal("Failed to revoke key", err)
+		return printKeysRefusal("Failed to revoke key", err)
 	}
 
 	output.PrintSuccess("API key '%s' revoked", id)
 	return output.Result(map[string]interface{}{"revoked": true, "id": id})
+}
+
+// The two refusals of an account that is not in good standing (suspended for unpaid bills, or a
+// subscription that is not active). The API refuses every request made with the account's keys then,
+// so the CLI cannot list or revoke; the dashboard can, and a key that may be leaked must always be
+// revocable.
+const (
+	codeAccountSuspended     = "ACCOUNT_SUSPENDED"
+	codeSubscriptionInactive = "AUTH_SUBSCRIPTION_INACTIVE"
+)
+
+// accountStandingSentence is the plain sentence for those two refusals, naming where keys can still
+// be revoked. ok is false for any other error.
+func accountStandingSentence(err error) (sentence string, ok bool) {
+	var apiErr *api.APIError
+	if !errors.As(err, &apiErr) {
+		return "", false
+	}
+	var why string
+	switch apiErr.Code {
+	case codeAccountSuspended:
+		why = "Your account is suspended"
+	case codeSubscriptionInactive:
+		why = "Your subscription is not active"
+	default:
+		return "", false
+	}
+	return why + ", so the API refuses requests made with your keys, this one included. " +
+		"You can still list and revoke your keys in the dashboard, so a key you fear is leaked can be revoked now: " +
+		apiKeysPage, true
+}
+
+// printKeysRefusal prints the end of a keys command the server refused: the standing sentence when the
+// account is not in good standing, the server's own words otherwise. The code and status stay the server's.
+func printKeysRefusal(what string, err error) error {
+	if sentence, ok := accountStandingSentence(err); ok {
+		status, code, _, _ := serverRefusal(err)
+		output.PrintAPIError(status, code, sentence)
+		return shown(err)
+	}
+	return printRefusal(what, err)
 }
 
 const (

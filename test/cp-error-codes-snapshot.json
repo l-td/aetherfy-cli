@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 152
+      "count": 153
     },
     {
       "path": "api/routes/regions.py",
@@ -488,6 +488,10 @@
       "tier": "top-level"
     },
     "NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "NO_ACTIVE_SUBSCRIPTION": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

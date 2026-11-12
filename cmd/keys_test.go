@@ -474,3 +474,62 @@ func TestTheDeviceSentencesNameCommandsThatExist(t *testing.T) {
 		t.Error("a code the flow does not know got a sentence")
 	}
 }
+
+// A key that may be leaked must always be revocable. An account that is suspended, or whose subscription is
+// not active, is refused by the API on every request made with its keys; the dashboard still lets it list
+// and revoke, and the CLI says so instead of leaving the person with a bare 403.
+func TestKeysListAndRevokeNameTheDashboardWhenTheAccountIsNotInGoodStanding(t *testing.T) {
+	for _, tc := range []struct {
+		code string
+		want string
+	}{
+		{"ACCOUNT_SUSPENDED", "Your account is suspended"},
+		{"AUTH_SUBSCRIPTION_INACTIVE", "Your subscription is not active"},
+	} {
+		for _, argv := range [][]string{{"keys", "list", "--json"}, {"keys", "revoke", "k-1", "--yes", "--json"}} {
+			tc, argv := tc, argv
+			t.Run(tc.code+"/"+argv[1], func(t *testing.T) {
+				onTerminal(t, false, "")
+				cp := newFakeCP(t)
+				method, path := "GET", "/keys"
+				if argv[1] == "revoke" {
+					method, path = "DELETE", "/keys/k-1"
+				}
+				cp.on(method, path, 403, errAnswer(403, tc.code, "The server's own words.", nil).body)
+				stdout, stderr, err := runAfy(t, cp, argv...)
+				if err == nil || ExitCode(err) != exitRequestFailed {
+					t.Fatalf("want exit %d, got %v", exitRequestFailed, err)
+				}
+				if strings.TrimSpace(stdout) != "" {
+					t.Errorf("a refusal wrote to stdout: %q", stdout)
+				}
+				e := jsonErrorOnStderr(t, argv[1], stderr)
+				if e["code"] != tc.code || e["status"] != 403.0 {
+					t.Errorf("error = %v, want the server's code and status", e)
+				}
+				msg, _ := e["message"].(string)
+				for _, w := range []string{tc.want, "revoke your keys in the dashboard", "settings/api-keys"} {
+					if !strings.Contains(msg, w) {
+						t.Errorf("message %q lacks %q", msg, w)
+					}
+				}
+			})
+		}
+	}
+}
+
+// CONTROL of the test above: a 403 for another reason keeps the server's own words, with no talk of the dashboard.
+func TestKeysRefusalsOfOtherKindsKeepTheServersWords(t *testing.T) {
+	onTerminal(t, false, "")
+	cp := newFakeCP(t)
+	cp.on("GET", "/keys", 403, errAnswer(403, "AUTH_AGENT_KEY_OUT_OF_SCOPE", "An agent key cannot list keys.", nil).body)
+	_, stderr, err := runAfy(t, cp, "keys", "list", "--json")
+	if err == nil {
+		t.Fatal("want a refusal")
+	}
+	e := jsonErrorOnStderr(t, "keys list", stderr)
+	msg, _ := e["message"].(string)
+	if !strings.Contains(msg, "An agent key cannot list keys.") || strings.Contains(msg, "dashboard") {
+		t.Errorf("message = %q, want the server's words only", msg)
+	}
+}
