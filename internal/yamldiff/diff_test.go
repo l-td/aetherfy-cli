@@ -186,3 +186,25 @@ func TestNullOnAbsentServerFieldIsNoOp(t *testing.T) {
 		t.Errorf("schedule = %+v, want NoOp (already unset)", d)
 	}
 }
+
+// drain_timeout_minutes is a yaml-owned field whose default is 30: an omitted line
+// is the default, so a service running 30 shows no change, one running 90 shows
+// the file would reset it, and a declared value that differs is a change.
+func TestTheDrainTimeoutIsComparedAsItsDefault(t *testing.T) {
+	base := "runtime: python3.11\ntype: service\n"
+
+	d := find(t, Diff(mustMap(t, base), mustMap(t, base+"drain_timeout_minutes: 30\n")), "drain_timeout_minutes")
+	if d.Kind != NoOp || !d.Defaulted {
+		t.Errorf("an omitted line against a running 30 = %+v, want NoOp (the default)", d)
+	}
+
+	d = find(t, Diff(mustMap(t, base), mustMap(t, base+"drain_timeout_minutes: 90\n")), "drain_timeout_minutes")
+	if d.Kind != Change || d.Declared != "30" || !d.Defaulted {
+		t.Errorf("an omitted line against a running 90 = %+v, want Change 90→30 (default)", d)
+	}
+
+	d = find(t, Diff(mustMap(t, base+"drain_timeout_minutes: 120\n"), mustMap(t, base+"drain_timeout_minutes: 30\n")), "drain_timeout_minutes")
+	if d.Kind != Change || d.Declared != "120" || d.Defaulted {
+		t.Errorf("a declared 120 against a running 30 = %+v, want Change 30→120", d)
+	}
+}
