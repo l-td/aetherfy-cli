@@ -88,9 +88,19 @@ type deviceResult struct {
 	Key    *api.APIKey
 }
 
-// deviceName names this machine in the dashboard's approval page.
+// deviceNameMaxRunes is the longest device name the sign-in accepts (1 to 64 characters). It is the control
+// plane's and the dashboard's number, copied here because this module cannot import theirs, and held equal
+// by aetherfy-e2e-tests tests/pyunit/test_device_signin_values_pair.py.
+const deviceNameMaxRunes = 64
+
+// deviceName names this machine in the dashboard's approval page: its host name, cut to what the sign-in
+// accepts. A fully qualified host name can be 253 characters, and a longer one than the limit is refused
+// 422, which would be a login that never starts.
 func deviceName() string {
 	if h, err := deviceHostname(); err == nil && h != "" {
+		if r := []rune(h); len(r) > deviceNameMaxRunes {
+			return string(r[:deviceNameMaxRunes])
+		}
 		return h
 	}
 	return "afy CLI"

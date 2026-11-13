@@ -636,6 +636,50 @@ func TestTheShippedWaitStopsWhenTheContextEnds(t *testing.T) {
 	}
 }
 
+func TestAHostNameLongerThanTheSignInAcceptsIsCutToIt(t *testing.T) {
+	long := strings.Repeat("build-box-", 20) + ".internal.example.com" // 221 characters, a legal FQDN
+	multibyte := strings.Repeat("é", 100)                           // 100 characters, 200 bytes
+	for name, host := range map[string]string{"an fqdn": long, "multibyte characters": multibyte} {
+		t.Run(name, func(t *testing.T) {
+			pipeStdin(t, "")
+			recordBrowser(t, nil)
+			recordWaits(t, 0)
+			saved := deviceHostname
+			deviceHostname = func() (string, error) { return host, nil }
+			t.Cleanup(func() { deviceHostname = saved })
+			cp := deviceCP(t, approvedAnswer)
+
+			if _, _, err := runAfy(t, cp, "login"); err != nil {
+				t.Fatal(err)
+			}
+
+			sent, _ := cp.called("POST", "/auth/device")[0].Body["device_name"].(string)
+			if len([]rune(sent)) != deviceNameMaxRunes || !strings.HasPrefix(host, sent) {
+				t.Errorf("sent %d characters (%q), want the first %d of the host name", len([]rune(sent)), sent, deviceNameMaxRunes)
+			}
+		})
+	}
+}
+
+func TestAHostNameWithinTheLimitIsSentAsItIs(t *testing.T) {
+	exact := strings.Repeat("h", deviceNameMaxRunes)
+	pipeStdin(t, "")
+	recordBrowser(t, nil)
+	recordWaits(t, 0)
+	saved := deviceHostname
+	deviceHostname = func() (string, error) { return exact, nil }
+	t.Cleanup(func() { deviceHostname = saved })
+	cp := deviceCP(t, approvedAnswer)
+
+	if _, _, err := runAfy(t, cp, "login"); err != nil {
+		t.Fatal(err)
+	}
+
+	if sent := cp.called("POST", "/auth/device")[0].Body["device_name"]; sent != exact {
+		t.Errorf("sent %v, want the host name untouched", sent)
+	}
+}
+
 func TestTheStartRequestNamesTheMachineAndNothingElse(t *testing.T) {
 	pipeStdin(t, "")
 	recordBrowser(t, nil)
