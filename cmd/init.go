@@ -501,7 +501,13 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 
 	// --- Billing mode ---
 	keepAlive := initKeepAlive
-	if !cmd.Flags().Changed("keep-alive") && interactive {
+	// A task (type: job) is suspended between runs and has nothing for always-on to keep awake: the platform
+	// rejects keep_alive on it. So the choice is a service's alone, and --keep-alive on a task is refused here
+	// instead of writing an aetherfy.yaml the first deploy would reject.
+	if agentType == "job" && keepAlive {
+		return nil, fmt.Errorf("--keep-alive is for a service: a task (type: job) is suspended between runs, so there is nothing for always-on to keep awake")
+	}
+	if agentType != "job" && !cmd.Flags().Changed("keep-alive") && interactive {
 		billingIdx, err := p.choose("Billing mode", []string{billingModeAutoSleep, billingModeAlwaysOn}, 0)
 		if err != nil {
 			return nil, err

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -67,5 +68,62 @@ func TestTheCheckRejectsTheOldBillingLines(t *testing.T) {
 		if m := priceOrMilliseconds.FindString(fine); m != "" {
 			t.Errorf("the check flags %q in %q", m, fine)
 		}
+	}
+}
+
+// ALWAYS-ON IS A SERVICE'S. A task (type: job) is suspended between runs and has nothing for always-on to keep awake, so the
+// platform rejects keep_alive on it. Interactive init used to ask a task for its billing mode too, and --keep-alive on a task
+// wrote an aetherfy.yaml the first deploy refused.
+func TestOnlyAServiceIsOfferedAlwaysOn(t *testing.T) {
+	answers := func(agentType string, billing ...string) string {
+		return strings.Join(append([]string{"invoice-parser", "acme", "python3.12", agentType, "", "eu-central-1", "2"},
+			append(billing, "worker.py")...), "\n") + "\n"
+	}
+	run := func(t *testing.T, input string) (string, string) {
+		dir := t.TempDir()
+		cp := twoWorkspaceInitCP(t)
+		asked := scriptPrompts(t, input)
+		if _, stderr, err := runAfy(t, cp, "init", dir); err != nil {
+			t.Fatalf("init: %v\n%s\nasked:\n%s", err, stderr, asked)
+		}
+		return asked.String(), readFile(t, filepath.Join(dir, "aetherfy.yaml"))
+	}
+
+	// A task: no billing question, and the file says keep_alive: false.
+	shown, yamlFile := run(t, answers("2"))
+	if strings.Contains(shown, "Billing mode") || strings.Contains(shown, billingModeAlwaysOn) {
+		t.Errorf("a task was asked its billing mode:\n%s", shown)
+	}
+	if !strings.Contains(yamlFile, "keep_alive: false") || !strings.Contains(yamlFile, "type: job") {
+		t.Errorf("a task's file:\n%s", yamlFile)
+	}
+
+	// CONTROL: a service is asked, and its answer lands in the file.
+	shown, yamlFile = run(t, answers("1", "2"))
+	if !strings.Contains(shown, "Billing mode") || !strings.Contains(shown, billingModeAlwaysOn) {
+		t.Errorf("a service was not asked its billing mode:\n%s", shown)
+	}
+	if !strings.Contains(yamlFile, "keep_alive: true") || !strings.Contains(yamlFile, "type: service") {
+		t.Errorf("a service's file:\n%s", yamlFile)
+	}
+}
+
+func TestKeepAliveOnATaskIsRefusedBeforeAnythingIsWritten(t *testing.T) {
+	dir := t.TempDir()
+	cp := initCP(t)
+	_, stderr, err := runAfy(t, cp, "init", dir, "-y", "--runtime", "python3.12", "--type", "job", "--keep-alive", "--name", "invoice-parser")
+	if err == nil || !strings.Contains(stderr+err.Error(), "--keep-alive is for a service") {
+		t.Fatalf("a task with --keep-alive was not refused: err=%v\n%s", err, stderr)
+	}
+	if fileExists(filepath.Join(dir, "aetherfy.yaml")) || len(cp.called("POST", "/agents")) != 0 {
+		t.Errorf("something was written or created before the refusal")
+	}
+	// CONTROL: the same flag on a service is accepted.
+	dir2 := t.TempDir()
+	if _, stderr, err := runAfy(t, initCP(t), "init", dir2, "-y", "--runtime", "python3.12", "--type", "service", "--keep-alive", "--name", "invoice-parser"); err != nil {
+		t.Fatalf("--keep-alive on a service: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(readFile(t, filepath.Join(dir2, "aetherfy.yaml")), "keep_alive: true") {
+		t.Errorf("a service with --keep-alive did not get keep_alive: true")
 	}
 }
