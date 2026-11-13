@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 153
+      "count": 154
     },
     {
       "path": "api/routes/regions.py",
@@ -500,6 +500,10 @@
       "tier": "top-level"
     },
     "OVERAGE_CONFIRM_REQUIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "PEER_HAS_NO_URL": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
