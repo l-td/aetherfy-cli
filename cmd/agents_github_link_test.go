@@ -254,7 +254,7 @@ func TestStatusJSONCarriesTheLinkWithTheServersFieldNames(t *testing.T) {
 		}
 	}
 	// The server's spellings, not Go's.
-	for _, key := range []string{"repo", "branch", "root_dir", "webhook_id", "branch_deleted_at"} {
+	for _, key := range []string{"repo", "branch", "root_dir", "webhook_id", "branch_deleted_at", "auto_deploy_paused_at"} {
 		if _, present := gh[key]; !present {
 			t.Errorf("github.%s is missing from %s", key, raw)
 		}
@@ -342,5 +342,77 @@ func TestStatusJSONCarriesTheAccountAndInstallation(t *testing.T) {
 	}
 	if gh["installation_id"] != float64(4242) {
 		t.Errorf("github.installation_id = %v (%T), want the number 4242: %s", gh["installation_id"], gh["installation_id"], raw)
+	}
+}
+
+// PAUSED BY CHOICE, NOT BY FAULT. The link is intact and the account connected,
+// and pushes still deploy nothing: that is `afy github pause`, and `afy status`
+// is the one place a person who forgot can read it.
+func TestStatusWarnsWhenAutoDeployIsPaused(t *testing.T) {
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,`+
+		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z"}`)
+
+	for _, want := range []string{
+		"Auto-deploy paused since 2026-11-14 09:30 UTC",
+		"pushes are not deploying",
+		"afy github resume reporter",
+		"myorg/agents", // the link is still printed
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the paused warning is missing %q; got:\n%s", want, out)
+		}
+	}
+	// Not the two faults: they are separate facts with separate remedies.
+	for _, unwanted := range []string{"no longer connected", "branch was deleted", "afy github connect"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("a paused link also printed %q:\n%s", unwanted, out)
+		}
+	}
+}
+
+// THE CONTROL: a link that is on says nothing about a pause, whether the server
+// sent null or an older one sent no field at all.
+func TestStatusSaysNothingAboutAutoDeployWhenItIsOn(t *testing.T) {
+	for name, link := range map[string]string{
+		"null": `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,` +
+			`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,"auto_deploy_paused_at":null}`,
+		"absent": linkedJSON,
+	} {
+		out, _ := runStatus(t, "text", link)
+		if !strings.Contains(out, "myorg/agents") {
+			t.Fatalf("%s: the status block did not print the link; got:\n%s", name, out)
+		}
+		if strings.Contains(out, "Auto-deploy paused") || strings.Contains(out, "afy github resume") {
+			t.Errorf("%s: a link with auto-deploy on printed the paused warning:\n%s", name, out)
+		}
+	}
+}
+
+// Independent facts: a paused link whose branch was also deleted says both.
+func TestStatusPausedPrintsBesideTheFaultsNotInsteadOfThem(t *testing.T) {
+	out, _ := runStatus(t, "text", `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,`+
+		`"webhook_id":"1","account_connected":false,"branch_deleted_at":"2026-09-10T14:32:00Z",`+
+		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z"}`)
+
+	for _, want := range []string{"no longer connected", "branch was deleted", "Auto-deploy paused since"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("with all three facts true, %q is missing; got:\n%s", want, out)
+		}
+	}
+}
+
+func TestStatusJSONCarriesWhenAutoDeployWasPaused(t *testing.T) {
+	raw, _ := runStatus(t, "json", `{"linked":true,"repo":"myorg/agents","branch":"main","root_dir":null,`+
+		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,`+
+		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z"}`)
+
+	var got map[string]interface{}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatalf("`afy status --json` is not JSON: %v\n%s", err, raw)
+	}
+	gh, _ := got["github"].(map[string]interface{})
+	if gh["auto_deploy_paused_at"] != "2026-11-14T09:30:00Z" {
+		t.Errorf("github.auto_deploy_paused_at = %v, want the server's timestamp: %s", gh["auto_deploy_paused_at"], raw)
 	}
 }

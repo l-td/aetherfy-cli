@@ -914,7 +914,7 @@ func showAgentStatus(client *api.Client, name string) error {
 	printSpawnRelationships(client, agent)
 
 	// Where the agent's code comes from, and whether pushes to it still land.
-	printAgentGitHubLink(agent.GitHub)
+	printAgentGitHubLink(agent.Name, agent.GitHub)
 
 	return nil
 }
@@ -951,8 +951,8 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 }
 
 // printAgentGitHubLink renders the GitHub section of `afy status`: what the
-// agent's link points at, and the two states in which that link is intact and
-// deploying nothing.
+// agent's link points at, and the three states in which that link is intact and
+// deploying nothing (an account disconnected, a branch deleted, auto-deploy paused).
 //
 // SILENT FOR AN UNLINKED AGENT. Most agents have no link, and a permanent
 // "GitHub: not linked" line would be a fact about nothing on every status
@@ -960,12 +960,12 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 // which is a control plane older than the nested field: it said nothing, so
 // there is nothing to report.
 //
-// THE TWO WARNINGS SAY WHAT THE DASHBOARD SAYS, deliberately: they describe one
+// THE FAULT WARNINGS (disconnected, branch deleted) SAY WHAT THE DASHBOARD SAYS, deliberately: they describe one
 // server-side fact each, and two surfaces wording it differently is two surfaces
 // that can be read as disagreeing about what is wrong. The CLI names a command
 // where the dashboard names a settings page — that is the one difference, and
 // it is the remedy being spelled for the surface the reader is on.
-func printAgentGitHubLink(link *api.GitHubLinkStatus) {
+func printAgentGitHubLink(agentName string, link *api.GitHubLinkStatus) {
 	if link == nil || !link.Linked {
 		return
 	}
@@ -1023,6 +1023,14 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 			derefString(link.Branch), derefString(link.Repo), formatUTCTime(link.BranchDeletedAt))
 		output.Println("This agent is still linked, and pushes will not deploy until that branch exists again.")
 		output.Println("Recreate it and push — the link is kept, so deploys resume with nothing to set up again.")
+	}
+	// A third way a link deploys nothing, and the one that is a choice rather
+	// than a fault: independent of the two above, so it prints beside them. Its
+	// remedy names the agent, because a pause is turned off per agent.
+	if link.AutoDeployPausedAt != nil {
+		output.Println("")
+		output.PrintWarning("Auto-deploy paused since %s — pushes are not deploying.", formatUTCTime(link.AutoDeployPausedAt))
+		output.Printf("Run 'afy github resume %s' to turn it back on. The link is kept, and 'afy deploy' still deploys your code.\n", agentName)
 	}
 }
 
