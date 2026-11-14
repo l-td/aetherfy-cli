@@ -391,6 +391,8 @@ Connect your GitHub account to deploy on every push.
 | `afy github disconnect` | Remove the GitHub App installation |
 | `afy github status` | Show connection status |
 | `afy github link <agent> <owner/repo[@branch]>` | Link an agent to a repo (default branch: `main`). Add `--root-dir <path>` when several agents share one repository — only that folder is uploaded on a push |
+| `afy github pause <agent>` | Stop pushes from deploying the agent, keeping its link. A push that arrives while auto-deploy is paused builds nothing and is not deployed later; `afy deploy` still deploys |
+| `afy github resume <agent>` | Let pushes deploy the agent again. Deploys nothing by itself: the next push deploys, or run `afy deploy` |
 | `afy github unlink <agent>` | Remove the webhook link |
 
 ### Utilities

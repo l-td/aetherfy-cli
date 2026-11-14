@@ -22,6 +22,23 @@ so an entry here is written for the version the owner tags next.
 
 ### Changed
 
+- `afy github pause <agent>` and `afy github resume <agent>` turn auto-deploy off and on for an agent's
+  GitHub link without unlinking it. While auto-deploy is paused a push builds nothing and says so on its
+  commit, and it is not deployed later, not even after a resume; a push already being built finishes, and
+  `afy deploy` still deploys. Resuming deploys nothing by itself: the next push deploys, or run
+  `afy deploy`. Both are idempotent, like `afy schedule pause` and `resume`: a call that
+  finds the state already set says `Auto-deploy for <agent> was already paused.` or `was already on.`, and
+  `--json` prints the whole answer, as the schedule commands do: the link (with `auto_deploy_paused_at`) and
+  `changed`, false for that no-op. An agent with no link is refused with
+  `GITHUB_NOT_LINKED`. `afy status` shows `Auto-deploy paused since <time>` for a paused link, and
+  `--json` carries it as `github.auto_deploy_paused_at` (`null` when auto-deploy is on). Unlinking clears
+  the pause and re-linking keeps it. Release this CLI after the control plane that sends the field.
+- `afy status` and `afy deployments` show a push that is being prepared, fetched from GitHub and checked
+  before it becomes the agent's deployment, as a `Push preparing` line ahead of `Push waiting`; both can show
+  at once. `afy status --json` carries it under `github.push_in_clone` (`id`, `sha` and `since`, or `null`).
+  While it is prepared, a deploy, a rollback, a redeploy and a move are refused with `DEPLOYMENT_IN_PROGRESS`,
+  and a delete, pause or archive with `AGENT_HAS_PENDING_DEPLOYMENTS`. Release this CLI after the control
+  plane that sends the field.
 - The deployment history holds releases only: a run is not a deployment, and the control plane no
   longer lists runs there (an agent's runs are `afy agents runs`). `afy status`, `afy redeploy` and
   `afy cancel` no longer skip run rows, because none arrive.

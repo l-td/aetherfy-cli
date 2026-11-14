@@ -2,9 +2,11 @@ package test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -425,6 +427,110 @@ func TestGitHubUnlinkAgent_NotLinked_Idempotent(t *testing.T) {
 	client := api.NewClientWithURL(srv.URL, "test-key")
 	if err := client.GitHubUnlinkAgent("never-linked-agent"); err != nil {
 		t.Fatalf("expected idempotent 204, got error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Auto-deploy pause: POST /agents/{id}/github/pause and /resume
+// ---------------------------------------------------------------------------
+
+// Both routes are a POST with NO body (the verb is the path), and the answer is
+// the link plus `changed`, whichever way it went: changed=false is an
+// idempotent no-op, which the caller must be able to tell from a change.
+func TestGitHubAutoDeploy_PostsToTheVerbRouteWithNoBodyAndDecodesTheLink(t *testing.T) {
+	cases := []struct {
+		name       string
+		call       func(c *api.Client) (*api.GitHubAutoDeployResponse, error)
+		wantPath   string
+		pausedAt   string
+		changed    bool
+		wantPaused bool
+	}{
+		{"pause changed", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubPauseAutoDeploy("agent-1") },
+			"/agents/agent-1/github/pause", `"2026-11-14T09:30:00Z"`, true, true},
+		{"pause unchanged", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubPauseAutoDeploy("agent-1") },
+			"/agents/agent-1/github/pause", `"2026-11-14T09:30:00Z"`, false, true},
+		{"resume changed", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubResumeAutoDeploy("agent-1") },
+			"/agents/agent-1/github/resume", `null`, true, false},
+		{"resume unchanged", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubResumeAutoDeploy("agent-1") },
+			"/agents/agent-1/github/resume", `null`, false, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			var gotBody []byte
+			requests := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
+				gotMethod, gotPath = r.Method, r.URL.Path
+				gotBody, _ = io.ReadAll(r.Body)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"linked":true,"repo":"myorg/myrepo","branch":"main","root_dir":null,` +
+					`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
+					`"auto_deploy_paused_at":` + tc.pausedAt + `,"changed":` + strconv.FormatBool(tc.changed) + `}`))
+			}))
+			defer srv.Close()
+
+			client := api.NewClientWithURL(srv.URL, "test-key")
+			resp, err := tc.call(client)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if requests != 1 || gotMethod != http.MethodPost || gotPath != tc.wantPath {
+				t.Errorf("sent %d request(s), last %s %s, want one POST %s", requests, gotMethod, gotPath, tc.wantPath)
+			}
+			if len(gotBody) != 0 {
+				t.Errorf("sent body %q, want none", gotBody)
+			}
+			if resp.Changed != tc.changed {
+				t.Errorf("decoded changed = %v, want %v", resp.Changed, tc.changed)
+			}
+			if (resp.AutoDeployPausedAt != nil) != tc.wantPaused {
+				t.Errorf("decoded auto_deploy_paused_at = %v, want set=%v", resp.AutoDeployPausedAt, tc.wantPaused)
+			}
+			if tc.wantPaused && resp.AutoDeployPausedAt.UTC().Format(time.RFC3339) != "2026-11-14T09:30:00Z" {
+				t.Errorf("decoded auto_deploy_paused_at = %v, want 2026-11-14T09:30:00Z", resp.AutoDeployPausedAt)
+			}
+			if resp.Branch == nil || *resp.Branch != "main" {
+				t.Errorf("the rest of the link did not decode: %+v", resp)
+			}
+		})
+	}
+}
+
+// The agent has no GitHub link: 422 GITHUB_NOT_LINKED, and the code reaches the
+// caller, because `afy github pause` and `resume` key their "link it first" hint
+// on it.
+func TestGitHubAutoDeploy_NotLinked_Returns422WithItsCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"detail": map[string]interface{}{
+				"code":    "GITHUB_NOT_LINKED",
+				"message": "This agent is not linked to a GitHub repository.",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := api.NewClientWithURL(srv.URL, "test-key")
+	for name, call := range map[string]func() (*api.GitHubAutoDeployResponse, error){
+		"pause":  func() (*api.GitHubAutoDeployResponse, error) { return client.GitHubPauseAutoDeploy("agent-1") },
+		"resume": func() (*api.GitHubAutoDeployResponse, error) { return client.GitHubResumeAutoDeploy("agent-1") },
+	} {
+		resp, err := call()
+		if err == nil {
+			t.Fatalf("%s: expected an error, got %+v", name, resp)
+		}
+		apiErr, ok := err.(*api.APIError)
+		if !ok {
+			t.Fatalf("%s: expected *api.APIError, got %T", name, err)
+		}
+		if apiErr.StatusCode != 422 || apiErr.Code != "GITHUB_NOT_LINKED" {
+			t.Errorf("%s: got %d %q, want 422 GITHUB_NOT_LINKED", name, apiErr.StatusCode, apiErr.Code)
+		}
 	}
 }
 

@@ -12,10 +12,12 @@
   "fields": [
     "account_connected",
     "account_login",
+    "auto_deploy_paused_at",
     "branch",
     "branch_deleted_at",
     "installation_id",
     "linked",
+    "push_in_clone",
     "repo",
     "root_dir",
     "waiting_push",

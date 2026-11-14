@@ -532,18 +532,52 @@ type GitHubLinkStatus struct {
 	// they find their agent inert. Null covers both a branch that was never
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
+	// When auto-deploy was paused on this link, or null: null means pushes
+	// deploy. Set by `afy github pause`, cleared by `afy github resume` and by
+	// unlinking, and kept across a re-link. A TIMESTAMP for the same reason as
+	// BranchDeletedAt: "since when" is what someone asks of an agent that stopped
+	// deploying. Unlike the two inert states above it is a choice, not a fault.
+	AutoDeployPausedAt *time.Time `json:"auto_deploy_paused_at"`
 	// The push WAITING for the deploy in progress, or null. An agent deploys
 	// one push at a time; a push that arrives while a deployment of the agent
 	// is in flight waits, and has no deployment row until it starts, so this
 	// is the only place a terminal can see it. Where several wait, it is the
 	// one that will deploy (the newest); the others end skipped.
 	WaitingPush *WaitingPush `json:"waiting_push"`
+	// The push IN ITS CLONE, or null: admitted to deploy, still being fetched
+	// from GitHub and checked, with no deployment row until it has been (then
+	// it is the agent's queued deployment and this is null). It is the other
+	// half of what the agent is busy with that no deployment shows, and it can
+	// be set together with WaitingPush: a newer push waits behind it. While it
+	// is set a deploy, a rollback, a redeploy and a move answer 409
+	// DEPLOYMENT_IN_PROGRESS, and a delete, pause or archive answers 409
+	// AGENT_HAS_PENDING_DEPLOYMENTS.
+	PushInClone *PushInClone `json:"push_in_clone"`
+}
+
+// GitHubAutoDeployResponse is the body from POST /agents/{id}/github/pause and
+// /github/resume: the link as GET /agents/{id}/github serves it, plus Changed,
+// which is false when the link already had the requested state (an idempotent
+// no-op). Changed belongs to this answer, not to the link: the `github` object
+// on an agent has no such field.
+type GitHubAutoDeployResponse struct {
+	GitHubLinkStatus
+	Changed bool `json:"changed"`
 }
 
 // WaitingPush is a push waiting for the deploy of its agent in progress.
 type WaitingPush struct {
 	SHA        string    `json:"sha"`
 	ReceivedAt time.Time `json:"received_at"`
+}
+
+// PushInClone is a push of an agent that is being fetched and checked before it
+// becomes the agent's deployment. ID is the control plane's own id for the push
+// (not GitHub's delivery header); Since is when it was admitted.
+type PushInClone struct {
+	ID    string    `json:"id"`
+	SHA   string    `json:"sha"`
+	Since time.Time `json:"since"`
 }
 
 // ResumeState is a start asked for while the agent's previous stop was still

@@ -914,7 +914,7 @@ func showAgentStatus(client *api.Client, name string) error {
 	printSpawnRelationships(client, agent)
 
 	// Where the agent's code comes from, and whether pushes to it still land.
-	printAgentGitHubLink(agent.GitHub)
+	printAgentGitHubLink(agent.Name, agent.GitHub)
 
 	return nil
 }
@@ -951,8 +951,8 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 }
 
 // printAgentGitHubLink renders the GitHub section of `afy status`: what the
-// agent's link points at, and the two states in which that link is intact and
-// deploying nothing.
+// agent's link points at, and the three states in which that link is intact and
+// deploying nothing (an account disconnected, a branch deleted, auto-deploy paused).
 //
 // SILENT FOR AN UNLINKED AGENT. Most agents have no link, and a permanent
 // "GitHub: not linked" line would be a fact about nothing on every status
@@ -960,12 +960,12 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 // which is a control plane older than the nested field: it said nothing, so
 // there is nothing to report.
 //
-// THE TWO WARNINGS SAY WHAT THE DASHBOARD SAYS, deliberately: they describe one
+// THE FAULT WARNINGS (disconnected, branch deleted) SAY WHAT THE DASHBOARD SAYS, deliberately: they describe one
 // server-side fact each, and two surfaces wording it differently is two surfaces
 // that can be read as disagreeing about what is wrong. The CLI names a command
 // where the dashboard names a settings page — that is the one difference, and
 // it is the remedy being spelled for the surface the reader is on.
-func printAgentGitHubLink(link *api.GitHubLinkStatus) {
+func printAgentGitHubLink(agentName string, link *api.GitHubLinkStatus) {
 	if link == nil || !link.Linked {
 		return
 	}
@@ -985,6 +985,10 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.KeyValue("Directory", "repository root")
 	}
 	output.KeyValue("Webhook id", derefString(link.WebhookID))
+	// The push in its clone comes first: it is ahead of the one waiting behind it.
+	if link.PushInClone != nil {
+		output.KeyValue("Push preparing", formatPushInClone(link.PushInClone))
+	}
 	if link.WaitingPush != nil {
 		output.KeyValue("Push waiting", formatWaitingPush(link.WaitingPush))
 	}
@@ -1020,18 +1024,40 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.Println("This agent is still linked, and pushes will not deploy until that branch exists again.")
 		output.Println("Recreate it and push — the link is kept, so deploys resume with nothing to set up again.")
 	}
+	// A third way a link deploys nothing, and the one that is a choice rather
+	// than a fault: independent of the two above, so it prints beside them. Its
+	// remedy names the agent, because a pause is turned off per agent.
+	if link.AutoDeployPausedAt != nil {
+		output.Println("")
+		output.PrintWarning("Auto-deploy paused since %s — pushes are not deploying.", formatUTCTime(link.AutoDeployPausedAt))
+		output.Printf("Run 'afy github resume %s' to turn it back on. The link is kept, and 'afy deploy' still deploys your code.\n", agentName)
+	}
 }
 
 // formatWaitingPush is one line for a push waiting for the deploy in progress,
 // the same words on `afy status` and `afy deployments`, and as the dashboard's
 // PUSH WAITING badge says them.
 func formatWaitingPush(w *api.WaitingPush) string {
-	sha := w.SHA
-	if len(sha) > 7 {
-		sha = sha[:7]
-	}
 	return fmt.Sprintf("%s, received %s — deploys when the deploy in progress ends",
-		sha, formatUTCTime(&w.ReceivedAt))
+		shortSHA(w.SHA), formatUTCTime(&w.ReceivedAt))
+}
+
+// formatPushInClone is one line for a push that is being fetched and checked
+// before it becomes the agent's deployment, the same words on `afy status` and
+// `afy deployments`, and as the dashboard's PUSH PREPARING badge says them. The
+// control plane calls the state `push_in_clone`; a person is told what is
+// happening to the push, not where.
+func formatPushInClone(p *api.PushInClone) string {
+	return fmt.Sprintf("%s, since %s — becomes the next deployment when it is ready",
+		shortSHA(p.SHA), formatUTCTime(&p.Since))
+}
+
+// shortSHA is the seven-character form of a commit, as the dashboard shows it.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }
 
 // derefString reads a nullable server string. The API's link fields are null
