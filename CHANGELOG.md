@@ -26,8 +26,10 @@ so an entry here is written for the version the owner tags next.
   GitHub link without unlinking it. While auto-deploy is paused a push builds nothing and says so on its
   commit, and it is not deployed later, not even after a resume; a push already being built finishes, and
   `afy deploy` still deploys. Resuming deploys nothing by itself: the next push deploys, or run
-  `afy deploy`. Both are idempotent and print the resulting state; `--json` prints
-  `{"agent", "auto_deploy_paused", "auto_deploy_paused_at"}`. An agent with no link is refused with
+  `afy deploy`. Both are idempotent, like `afy schedule pause` and `resume`: a call that
+  finds the state already set says `Auto-deploy for <agent> was already paused.` or `was already on.`, and
+  `--json` prints `{"agent", "auto_deploy_paused", "auto_deploy_paused_at", "changed"}`, with
+  `changed` false for that no-op. An agent with no link is refused with
   `GITHUB_NOT_LINKED`. `afy status` shows `Auto-deploy paused since <time>` for a paused link, and
   `--json` carries it as `github.auto_deploy_paused_at` (`null` when auto-deploy is on). Unlinking clears
   the pause and re-linking keeps it. Release this CLI after the control plane that sends the field.
