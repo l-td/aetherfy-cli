@@ -22,6 +22,12 @@ so an entry here is written for the version the owner tags next.
 
 ### Changed
 
+- `afy status` and `afy deployments` show a push that is being prepared, fetched from GitHub and checked
+  before it becomes the agent's deployment, as a `Push preparing` line ahead of `Push waiting`; both can show
+  at once. `afy status --json` carries it under `github.push_in_clone` (`id`, `sha` and `since`, or `null`).
+  While it is prepared, a deploy, a rollback, a redeploy and a move are refused with `DEPLOYMENT_IN_PROGRESS`,
+  and a delete, pause or archive with `AGENT_HAS_PENDING_DEPLOYMENTS`. Release this CLI after the control
+  plane that sends the field.
 - The deployment history holds releases only: a run is not a deployment, and the control plane no
   longer lists runs there (an agent's runs are `afy agents runs`). `afy status`, `afy redeploy` and
   `afy cancel` no longer skip run rows, because none arrive.

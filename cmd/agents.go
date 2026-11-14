@@ -985,6 +985,10 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 		output.KeyValue("Directory", "repository root")
 	}
 	output.KeyValue("Webhook id", derefString(link.WebhookID))
+	// The push in its clone comes first: it is ahead of the one waiting behind it.
+	if link.PushInClone != nil {
+		output.KeyValue("Push preparing", formatPushInClone(link.PushInClone))
+	}
 	if link.WaitingPush != nil {
 		output.KeyValue("Push waiting", formatWaitingPush(link.WaitingPush))
 	}
@@ -1026,12 +1030,26 @@ func printAgentGitHubLink(link *api.GitHubLinkStatus) {
 // the same words on `afy status` and `afy deployments`, and as the dashboard's
 // PUSH WAITING badge says them.
 func formatWaitingPush(w *api.WaitingPush) string {
-	sha := w.SHA
-	if len(sha) > 7 {
-		sha = sha[:7]
-	}
 	return fmt.Sprintf("%s, received %s — deploys when the deploy in progress ends",
-		sha, formatUTCTime(&w.ReceivedAt))
+		shortSHA(w.SHA), formatUTCTime(&w.ReceivedAt))
+}
+
+// formatPushInClone is one line for a push that is being fetched and checked
+// before it becomes the agent's deployment, the same words on `afy status` and
+// `afy deployments`, and as the dashboard's PUSH PREPARING badge says them. The
+// control plane calls the state `push_in_clone`; a person is told what is
+// happening to the push, not where.
+func formatPushInClone(p *api.PushInClone) string {
+	return fmt.Sprintf("%s, since %s — becomes the next deployment when it is ready",
+		shortSHA(p.SHA), formatUTCTime(&p.Since))
+}
+
+// shortSHA is the seven-character form of a commit, as the dashboard shows it.
+func shortSHA(sha string) string {
+	if len(sha) > 7 {
+		return sha[:7]
+	}
+	return sha
 }
 
 // derefString reads a nullable server string. The API's link fields are null

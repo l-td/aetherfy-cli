@@ -16,6 +16,7 @@
     "branch_deleted_at",
     "installation_id",
     "linked",
+    "push_in_clone",
     "repo",
     "root_dir",
     "waiting_push",

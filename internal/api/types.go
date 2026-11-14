@@ -538,12 +538,30 @@ type GitHubLinkStatus struct {
 	// is the only place a terminal can see it. Where several wait, it is the
 	// one that will deploy (the newest); the others end skipped.
 	WaitingPush *WaitingPush `json:"waiting_push"`
+	// The push IN ITS CLONE, or null: admitted to deploy, still being fetched
+	// from GitHub and checked, with no deployment row until it has been (then
+	// it is the agent's queued deployment and this is null). It is the other
+	// half of what the agent is busy with that no deployment shows, and it can
+	// be set together with WaitingPush: a newer push waits behind it. While it
+	// is set a deploy, a rollback, a redeploy and a move answer 409
+	// DEPLOYMENT_IN_PROGRESS, and a delete, pause or archive answers 409
+	// AGENT_HAS_PENDING_DEPLOYMENTS.
+	PushInClone *PushInClone `json:"push_in_clone"`
 }
 
 // WaitingPush is a push waiting for the deploy of its agent in progress.
 type WaitingPush struct {
 	SHA        string    `json:"sha"`
 	ReceivedAt time.Time `json:"received_at"`
+}
+
+// PushInClone is a push of an agent that is being fetched and checked before it
+// becomes the agent's deployment. ID is the control plane's own id for the push
+// (not GitHub's delivery header); Since is when it was admitted.
+type PushInClone struct {
+	ID    string    `json:"id"`
+	SHA   string    `json:"sha"`
+	Since time.Time `json:"since"`
 }
 
 // ResumeState is a start asked for while the agent's previous stop was still

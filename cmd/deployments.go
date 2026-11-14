@@ -207,7 +207,7 @@ func printDeployments(client *api.Client, agentID string) error {
 	}
 
 	if firstPage {
-		printWaitingPushLine(client, agentID)
+		printPushLines(client, agentID)
 	}
 
 	// The last line, as `afy points list` ends its page.
@@ -218,18 +218,28 @@ func printDeployments(client *api.Client, agentID string) error {
 	return nil
 }
 
-// printWaitingPushLine names the push waiting for the deploy in progress, if
-// any. It is the next entry of this history, and it has no deployment row yet,
-// so without this line `afy deployments` would not show it at all. One read of
-// the agent, which carries it (`github.waiting_push`); a read that fails only
-// leaves the line out — the history above is already printed.
-func printWaitingPushLine(client *api.Client, agentID string) {
+// printPushLines names the pushes of the agent that have no deployment row yet,
+// if any: the push in its clone (being fetched and checked), then the push
+// waiting behind it or behind the deploy in progress. They are the next entries
+// of this history, so without these lines `afy deployments` would not show them
+// at all. One read of the agent, which carries both (`github.push_in_clone`,
+// `github.waiting_push`); a read that fails only leaves the lines out — the
+// history above is already printed.
+func printPushLines(client *api.Client, agentID string) {
 	agent, err := client.GetAgent(agentID)
-	if err != nil || agent == nil || agent.GitHub == nil || agent.GitHub.WaitingPush == nil {
+	if err != nil || agent == nil || agent.GitHub == nil {
+		return
+	}
+	if agent.GitHub.PushInClone == nil && agent.GitHub.WaitingPush == nil {
 		return
 	}
 	output.Println("")
-	output.KeyValue("Push waiting", formatWaitingPush(agent.GitHub.WaitingPush))
+	if agent.GitHub.PushInClone != nil {
+		output.KeyValue("Push preparing", formatPushInClone(agent.GitHub.PushInClone))
+	}
+	if agent.GitHub.WaitingPush != nil {
+		output.KeyValue("Push waiting", formatWaitingPush(agent.GitHub.WaitingPush))
+	}
 }
 
 // newestRollbackTarget is the last good release, or nil: the first (newest) of
