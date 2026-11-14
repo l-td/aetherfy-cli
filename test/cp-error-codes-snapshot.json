@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 143
+      "count": 148
     },
     {
       "path": "api/routes/regions.py",
@@ -183,6 +183,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "ARCHIVE_STORAGE_DEFECT": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AUTHENTICATION_ERROR": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -212,6 +216,18 @@
       "tier": "top-level"
     },
     "AUTH_SUBSCRIPTION_INACTIVE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "BUILD_FAILED_UNEXPECTEDLY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "BUILD_JOB_RELEASED_DATABASE_UNAVAILABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "BUILD_RESULT_NOT_RECORDED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -315,11 +331,15 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "DEPLOYMENT_UPLOAD_FAILED": {
+    "DEPLOYMENT_WAIT_TIMEOUT_INVALID": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "DEPLOYMENT_WAIT_TIMEOUT_INVALID": {
+    "DEPLOY_FAILED_UNEXPECTEDLY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOY_JOB_RELEASED_DATABASE_UNAVAILABLE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
