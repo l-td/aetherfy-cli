@@ -52,8 +52,7 @@ func TestInteractiveInitAnswersEveryQuestionFromOneInput(t *testing.T) {
 		"0 3 * * *",      // schedule
 		"eu-central-1",   // region, by name
 		"2",              // memory: 1024 MB
-		"2",              // billing: always-on
-		"worker.py",      // entrypoint
+		"worker.py",      // entrypoint (a task is asked no billing mode: always-on is a service's)
 	}, "\n")+"\n")
 
 	if _, stderr, err := runAfy(t, cp, "init", dir); err != nil {
@@ -69,7 +68,7 @@ func TestInteractiveInitAnswersEveryQuestionFromOneInput(t *testing.T) {
 	}
 	want := map[string]interface{}{
 		"runtime": "python3.12", "type": "job", "schedule": "0 3 * * *", "memory_mb": 1024,
-		"keep_alive": true, "entrypoint": "worker.py",
+		"keep_alive": false, "entrypoint": "worker.py",
 	}
 	for k, v := range want {
 		if doc[k] != v {

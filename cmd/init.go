@@ -19,6 +19,15 @@ import (
 // yamlSchemaModeline is aetherfy.yaml's first line: an editor that speaks the
 // yaml-language-server protocol validates and completes the file against the
 // published schema. The control plane's export starts with the same line.
+// The two billing modes `afy init` offers, and the flag that picks the second. None of them quotes a price or a
+// delay in milliseconds: what always-on costs depends on the plan and the memory (and Free bills nothing for it),
+// so the line points at the billing page, and a wake-up is a resume of about half a second, not a cold start.
+const (
+	billingModeAutoSleep = "auto-sleep  (suspended when idle; the first request after that waits about half a second)"
+	billingModeAlwaysOn  = "always-on   (never sleeps, no wake-up delay; what it costs depends on your plan and memory: docs.aetherfy.com/platform/billing)"
+	keepAliveFlagHelp    = "Make the agent always-on: it never sleeps (what it costs depends on your plan and memory: docs.aetherfy.com/platform/billing; skips the billing prompt)"
+)
+
 const yamlSchemaModeline = "# yaml-language-server: $schema=https://docs.aetherfy.com/aetherfy-yaml.schema.json"
 
 var initCmd = &cobra.Command{
@@ -86,7 +95,7 @@ func init() {
 	initCmd.Flags().StringVar(&initType, "type", "", "Agent type: service or job (skips prompt)")
 	initCmd.Flags().StringVar(&initRegion, "region", "", "Region, one your plan allows (skips prompt)")
 	initCmd.Flags().IntVar(&initMemory, "memory", 0, "Memory in MB, a size your plan allows (skips prompt)")
-	initCmd.Flags().BoolVar(&initKeepAlive, "keep-alive", false, "Enable always-on billing (skips billing prompt)")
+	initCmd.Flags().BoolVar(&initKeepAlive, "keep-alive", false, keepAliveFlagHelp)
 	initCmd.Flags().BoolVarP(&initForce, "force", "f", false, "Overwrite an existing aetherfy.yaml without asking")
 	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "Accept every prompt's default (non-interactive)")
 	initCmd.Flags().StringVar(&initSchedule, "schedule", "", "Schedule — runs the agent as a scheduled task on a 5-field cron expression in UTC, min every 5 minutes, e.g. '0 3 * * *'")
@@ -492,11 +501,14 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 
 	// --- Billing mode ---
 	keepAlive := initKeepAlive
-	if !cmd.Flags().Changed("keep-alive") && interactive {
-		billingIdx, err := p.choose("Billing mode", []string{
-			"auto-sleep  ($0 when idle, ~500ms cold start)",
-			"always-on   (+$10/mo, 0ms cold start)",
-		}, 0)
+	// A task (type: job) is suspended between runs and has nothing for always-on to keep awake: the platform
+	// rejects keep_alive on it. So the choice is a service's alone, and --keep-alive on a task is refused here
+	// instead of writing an aetherfy.yaml the first deploy would reject.
+	if agentType == "job" && keepAlive {
+		return nil, fmt.Errorf("--keep-alive is for a service: a task (type: job) is suspended between runs, so there is nothing for always-on to keep awake")
+	}
+	if agentType != "job" && !cmd.Flags().Changed("keep-alive") && interactive {
+		billingIdx, err := p.choose("Billing mode", []string{billingModeAutoSleep, billingModeAlwaysOn}, 0)
 		if err != nil {
 			return nil, err
 		}
