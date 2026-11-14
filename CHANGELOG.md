@@ -28,8 +28,8 @@ so an entry here is written for the version the owner tags next.
   `afy deploy` still deploys. Resuming deploys nothing by itself: the next push deploys, or run
   `afy deploy`. Both are idempotent, like `afy schedule pause` and `resume`: a call that
   finds the state already set says `Auto-deploy for <agent> was already paused.` or `was already on.`, and
-  `--json` prints `{"agent", "auto_deploy_paused", "auto_deploy_paused_at", "changed"}`, with
-  `changed` false for that no-op. An agent with no link is refused with
+  `--json` prints the whole answer, as the schedule commands do: the link (with `auto_deploy_paused_at`) and
+  `changed`, false for that no-op. An agent with no link is refused with
   `GITHUB_NOT_LINKED`. `afy status` shows `Auto-deploy paused since <time>` for a paused link, and
   `--json` carries it as `github.auto_deploy_paused_at` (`null` when auto-deploy is on). Unlinking clears
   the pause and re-linking keeps it. Release this CLI after the control plane that sends the field.

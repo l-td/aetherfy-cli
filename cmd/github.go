@@ -770,6 +770,11 @@ func setGitHubAutoDeploy(agentID string, paused bool) error {
 		os.Exit(1)
 	}
 
+	// --json prints the whole answer, as the schedule's pause and resume do: the link as GET serves it, and `changed`.
+	if output.IsJSON() {
+		return output.JSON(resp)
+	}
+
 	// What is said follows the answer, not the verb: the state is the link's.
 	isPaused := resp.AutoDeployPausedAt != nil
 	branch := derefString(resp.Branch)
@@ -789,12 +794,7 @@ func setGitHubAutoDeploy(agentID string, paused bool) error {
 		output.PrintSuccess("Auto-deploy is on for %s.", agentID)
 		output.Println(fmt.Sprintf("Resuming deploys nothing by itself: the next push to %s deploys, or run `afy deploy` to ship the latest code now.", branch))
 	}
-	return output.Result(map[string]interface{}{
-		"agent":                 agentID,
-		"auto_deploy_paused":    isPaused,
-		"auto_deploy_paused_at": resp.AutoDeployPausedAt,
-		"changed":               resp.Changed,
-	})
+	return nil
 }
 
 // ---------------------------------------------------------------------------

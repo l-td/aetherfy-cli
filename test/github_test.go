@@ -499,13 +499,13 @@ func TestGitHubAutoDeploy_PostsToTheVerbRouteWithNoBodyAndDecodesTheLink(t *test
 	}
 }
 
-// The agent has no GitHub link: 409 GITHUB_NOT_LINKED, and the code reaches the
+// The agent has no GitHub link: 422 GITHUB_NOT_LINKED, and the code reaches the
 // caller, because `afy github pause` and `resume` key their "link it first" hint
 // on it.
-func TestGitHubAutoDeploy_NotLinked_Returns409WithItsCode(t *testing.T) {
+func TestGitHubAutoDeploy_NotLinked_Returns422WithItsCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusConflict)
+		w.WriteHeader(http.StatusUnprocessableEntity)
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"detail": map[string]interface{}{
 				"code":    "GITHUB_NOT_LINKED",
@@ -528,8 +528,8 @@ func TestGitHubAutoDeploy_NotLinked_Returns409WithItsCode(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: expected *api.APIError, got %T", name, err)
 		}
-		if apiErr.StatusCode != 409 || apiErr.Code != "GITHUB_NOT_LINKED" {
-			t.Errorf("%s: got %d %q, want 409 GITHUB_NOT_LINKED", name, apiErr.StatusCode, apiErr.Code)
+		if apiErr.StatusCode != 422 || apiErr.Code != "GITHUB_NOT_LINKED" {
+			t.Errorf("%s: got %d %q, want 422 GITHUB_NOT_LINKED", name, apiErr.StatusCode, apiErr.Code)
 		}
 	}
 }

@@ -148,17 +148,16 @@ func TestGitHubPauseReportsTheStateTheServerAnswersWith(t *testing.T) {
 	}
 }
 
-func TestGitHubPauseAndResumeJSONCarryTheStateAndWhetherItChanged(t *testing.T) {
+func TestGitHubPauseAndResumeJSONPrintTheWholeAnswerLikeTheSchedulesDo(t *testing.T) {
 	cases := []struct {
 		verb, answer string
-		wantPaused   bool
 		wantAt       interface{}
 		wantChanged  bool
 	}{
-		{"pause", pausedLinkBody, true, "2026-11-14T09:30:00Z", true},
-		{"resume", runningLinkBody, false, nil, true},
-		{"pause", alreadyPausedLinkBody, true, "2026-11-14T09:30:00Z", false},
-		{"resume", alreadyOnLinkBody, false, nil, false},
+		{"pause", pausedLinkBody, "2026-11-14T09:30:00Z", true},
+		{"resume", runningLinkBody, nil, true},
+		{"pause", alreadyPausedLinkBody, "2026-11-14T09:30:00Z", false},
+		{"resume", alreadyOnLinkBody, nil, false},
 	}
 	for _, tc := range cases {
 		tc := tc
@@ -169,21 +168,30 @@ func TestGitHubPauseAndResumeJSONCarryTheStateAndWhetherItChanged(t *testing.T) 
 			if code != 0 {
 				t.Fatalf("exit %d\nstdout:\n%s\nstderr:\n%s", code, stdout, stderr)
 			}
-			var got map[string]interface{}
+			var got, served map[string]interface{}
 			if err := json.Unmarshal([]byte(stdout), &got); err != nil {
 				t.Fatalf("stdout is not one JSON object: %v\n%s", err, stdout)
 			}
-			if got["agent"] != "bot" || got["auto_deploy_paused"] != tc.wantPaused {
-				t.Errorf("got %v, want agent bot and auto_deploy_paused %v", got, tc.wantPaused)
+			if err := json.Unmarshal([]byte(tc.answer), &served); err != nil {
+				t.Fatalf("the fixture is not JSON: %v", err)
 			}
-			// Present, and null when on: a script cannot read a key that is absent.
-			at, present := got["auto_deploy_paused_at"]
-			if !present || at != tc.wantAt {
+			// The whole answer, as the server gave it: every field of the link, and changed.
+			for key, want := range served {
+				if got[key] != want {
+					t.Errorf("%s = %v, want the server's %v: %s", key, got[key], want, stdout)
+				}
+			}
+			if at, present := got["auto_deploy_paused_at"]; !present || at != tc.wantAt {
 				t.Errorf("auto_deploy_paused_at = %v (present %v), want %v", at, present, tc.wantAt)
 			}
-			// changed is the server's answer, true and false alike.
 			if changed, present := got["changed"]; !present || changed != tc.wantChanged {
 				t.Errorf("changed = %v (present %v), want %v", changed, present, tc.wantChanged)
+			}
+			// Nothing the command made up: the schedule commands print the answer and nothing beside it.
+			for _, invented := range []string{"agent", "auto_deploy_paused"} {
+				if _, present := got[invented]; present {
+					t.Errorf("--json carries %q, which the control plane did not answer: %s", invented, stdout)
+				}
 			}
 		})
 	}
@@ -193,7 +201,7 @@ func TestGitHubPauseAndResumeJSONCarryTheStateAndWhetherItChanged(t *testing.T) 
 // fixes it.
 func TestGitHubPauseOnAnUnlinkedAgentNamesTheLinkCommand(t *testing.T) {
 	cp := newFakeCP(t)
-	cp.on("POST", "/agents/bot/github/pause", 409,
+	cp.on("POST", "/agents/bot/github/pause", 422,
 		`{"detail":{"code":"GITHUB_NOT_LINKED","message":"This agent is not linked to a GitHub repository."}}`)
 
 	stdout, stderr, code := runAfyProcess(t, cp, nil, "github", "pause", "bot")

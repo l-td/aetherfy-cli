@@ -86,7 +86,7 @@ func (c *Client) GitHubUnlinkAgent(agentID string) error {
 // GitHubPauseAutoDeploy pauses auto-deploy on an agent's GitHub link (POST
 // /agents/{id}/github/pause, no body) and returns the link as it stands
 // afterwards. Idempotent: Changed is false when it was already paused, and a
-// pause keeps the time it was first set. 409 GITHUB_NOT_LINKED when the agent
+// pause keeps the time it was first set. 422 GITHUB_NOT_LINKED when the agent
 // has no link.
 func (c *Client) GitHubPauseAutoDeploy(agentID string) (*GitHubAutoDeployResponse, error) {
 	var resp GitHubAutoDeployResponse
@@ -98,7 +98,7 @@ func (c *Client) GitHubPauseAutoDeploy(agentID string) (*GitHubAutoDeployRespons
 
 // GitHubResumeAutoDeploy resumes auto-deploy on an agent's GitHub link (POST
 // /agents/{id}/github/resume, no body). Idempotent: Changed is false when it
-// was already on. Resuming deploys nothing by itself. 409 GITHUB_NOT_LINKED
+// was already on. Resuming deploys nothing by itself. 422 GITHUB_NOT_LINKED
 // when the agent has no link.
 func (c *Client) GitHubResumeAutoDeploy(agentID string) (*GitHubAutoDeployResponse, error) {
 	var resp GitHubAutoDeployResponse
