@@ -429,6 +429,91 @@ func TestGitHubUnlinkAgent_NotLinked_Idempotent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Auto-deploy pause: PATCH /agents/{id}/github
+// ---------------------------------------------------------------------------
+
+// Both states are asserted on the wire, FALSE INCLUDED: a body that drops
+// auto_deploy_paused when it is false would send {} and the control plane would
+// refuse a resume that looked right on the screen.
+func TestGitHubSetAutoDeploy_SendsThePatchBodyAndDecodesTheLink(t *testing.T) {
+	cases := []struct {
+		name       string
+		paused     bool
+		answer     string
+		wantPaused bool
+	}{
+		{"pause", true, `"2026-11-14T09:30:00Z"`, true},
+		{"resume", false, `null`, false},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			var gotMethod, gotPath string
+			var gotBody map[string]interface{}
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotMethod, gotPath = r.Method, r.URL.Path
+				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"linked":true,"repo":"myorg/myrepo","branch":"main","root_dir":null,` +
+					`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
+					`"auto_deploy_paused_at":` + tc.answer + `}`))
+			}))
+			defer srv.Close()
+
+			client := api.NewClientWithURL(srv.URL, "test-key")
+			link, err := client.GitHubSetAutoDeploy("agent-1", tc.paused)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if gotMethod != http.MethodPatch || gotPath != "/agents/agent-1/github" {
+				t.Errorf("sent %s %s, want PATCH /agents/agent-1/github", gotMethod, gotPath)
+			}
+			if len(gotBody) != 1 || gotBody["auto_deploy_paused"] != tc.paused {
+				t.Errorf("sent body %v, want exactly {auto_deploy_paused: %v}", gotBody, tc.paused)
+			}
+			if (link.AutoDeployPausedAt != nil) != tc.wantPaused {
+				t.Errorf("decoded auto_deploy_paused_at = %v, want set=%v", link.AutoDeployPausedAt, tc.wantPaused)
+			}
+			if tc.wantPaused && link.AutoDeployPausedAt.UTC().Format(time.RFC3339) != "2026-11-14T09:30:00Z" {
+				t.Errorf("decoded auto_deploy_paused_at = %v, want 2026-11-14T09:30:00Z", link.AutoDeployPausedAt)
+			}
+			if link.Branch == nil || *link.Branch != "main" {
+				t.Errorf("the rest of the link did not decode: %+v", link)
+			}
+		})
+	}
+}
+
+// The agent has no GitHub link: 409 GITHUB_NOT_LINKED, and the code reaches the
+// caller, because `afy github pause` keys its "link it first" hint on it.
+func TestGitHubSetAutoDeploy_NotLinked_Returns409WithItsCode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"detail": map[string]interface{}{
+				"code":    "GITHUB_NOT_LINKED",
+				"message": "This agent is not linked to a GitHub repository.",
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := api.NewClientWithURL(srv.URL, "test-key")
+	link, err := client.GitHubSetAutoDeploy("agent-1", true)
+	if err == nil {
+		t.Fatalf("expected an error, got link %+v", link)
+	}
+	apiErr, ok := err.(*api.APIError)
+	if !ok {
+		t.Fatalf("expected *api.APIError, got %T", err)
+	}
+	if apiErr.StatusCode != 409 || apiErr.Code != "GITHUB_NOT_LINKED" {
+		t.Errorf("got %d %q, want 409 GITHUB_NOT_LINKED", apiErr.StatusCode, apiErr.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // --from-github repo@ref format validation (regex used in deploy.go)
 // ---------------------------------------------------------------------------
 

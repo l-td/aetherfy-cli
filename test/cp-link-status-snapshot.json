@@ -12,6 +12,7 @@
   "fields": [
     "account_connected",
     "account_login",
+    "auto_deploy_paused_at",
     "branch",
     "branch_deleted_at",
     "installation_id",

@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 148
+      "count": 149
     },
     {
       "path": "api/routes/regions.py",
@@ -376,6 +376,10 @@
       "tier": "top-level"
     },
     "GITHUB_NOT_CONNECTED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "GITHUB_NOT_LINKED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

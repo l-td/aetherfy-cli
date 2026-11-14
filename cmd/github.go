@@ -33,6 +33,8 @@ Subcommands:
   disconnect [account] Disconnect one GitHub account, or all of them
   status               Show which GitHub accounts are connected
   link <agent> <repo>  Link an agent to a GitHub repo for auto-deploy
+  pause <agent>        Stop pushes from deploying, keeping the link
+  resume <agent>       Let pushes deploy again
   unlink <agent>       Remove the GitHub link from an agent
 
 Several agents can share one repository — give each its own folder with
@@ -42,6 +44,8 @@ Several agents can share one repository — give each its own folder with
   afy github link my-bot myorg/my-agent
   afy github link my-bot myorg/my-agent@develop
   afy github link my-bot myorg/monorepo --root-dir agents/my-bot
+  afy github pause my-bot
+  afy github resume my-bot
   afy github unlink my-bot
   afy github disconnect acme-corp
   afy github disconnect`,
@@ -464,7 +468,10 @@ and is the recovery path for two situations:
 
 Re-linking creates the new webhook on GitHub first, commits, then
 removes the old one — your existing auto-deploy keeps working until
-the new link is live.`,
+the new link is live.
+
+Re-linking keeps a pause: if auto-deploy is paused for the agent, it stays
+paused until 'afy github resume'.`,
 	Example: `  afy github link my-bot myorg/my-agent
   afy github link my-bot myorg/my-agent --branch develop
   afy github link my-bot myorg/my-agent@develop
@@ -683,6 +690,99 @@ is not currently linked.`,
 }
 
 // ---------------------------------------------------------------------------
+// github pause / resume
+// ---------------------------------------------------------------------------
+
+// The word is always "auto-deploy" here. "Pause" already names the agent
+// lifecycle elsewhere ('afy stop', the dashboard's agent pause), and this
+// switch touches none of it: the agent keeps running, and so does the link.
+
+var githubPauseCmd = &cobra.Command{
+	Use:   "pause <agent>",
+	Short: "Stop pushes from deploying an agent, keeping its GitHub link",
+	Long: `Pause auto-deploy on an agent's GitHub link.
+
+While auto-deploy is paused, a push to the linked branch builds nothing and
+says so on its commit. Such a push is not deployed later, not even after you
+resume. A push already being built when you pause finishes.
+
+The link, its webhook and the running agent are untouched, and
+'afy deploy' still deploys your code. Pausing an agent that is already
+paused changes nothing.
+
+Turn it back on with 'afy github resume <agent>'.`,
+	Example: `  afy github pause my-bot`,
+	Args:    cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return setGitHubAutoDeploy(args[0], true)
+	},
+}
+
+var githubResumeCmd = &cobra.Command{
+	Use:   "resume <agent>",
+	Short: "Let pushes deploy an agent again",
+	Long: `Resume auto-deploy on an agent's GitHub link.
+
+Resuming deploys nothing by itself: the next push to the linked branch
+deploys, or run 'afy deploy' to ship your code now. A push that arrived
+while auto-deploy was paused is not deployed. Resuming an agent whose
+auto-deploy is already on changes nothing.`,
+	Example: `  afy github resume my-bot`,
+	Args:    cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return setGitHubAutoDeploy(args[0], false)
+	},
+}
+
+// setGitHubAutoDeploy turns auto-deploy off (paused) or on for an agent's link
+// and says the state the control plane reports back: the same call and the same
+// words whether it changed anything or not, since the answer does not say.
+func setGitHubAutoDeploy(agentID string, paused bool) error {
+	if err := checkAuth(); err != nil {
+		return err
+	}
+
+	client := api.NewClient()
+	what := "Resuming auto-deploy for"
+	if paused {
+		what = "Pausing auto-deploy for"
+	}
+	sp := output.NewSpinner(fmt.Sprintf("%s %s...", what, agentID))
+	sp.Start()
+	link, err := client.GitHubSetAutoDeploy(agentID, paused)
+	sp.Stop()
+
+	if err != nil {
+		_ = printRefusal("Failed to change auto-deploy", err)
+		var apiErr *api.APIError
+		if errors.As(err, &apiErr) && apiErr.Code == "GITHUB_NOT_LINKED" {
+			output.Println("")
+			output.Println("Auto-deploy belongs to the GitHub link. Link the agent first:")
+			output.Println("  afy github link " + agentID + " <owner/repo>")
+		}
+		os.Exit(1)
+	}
+
+	branch := derefString(link.Branch)
+	if branch == "" {
+		branch = "the linked branch"
+	}
+	if link.AutoDeployPausedAt != nil {
+		output.PrintSuccess("Auto-deploy is paused for %s.", agentID)
+		output.Println(fmt.Sprintf("Pushes to %s build nothing until you run `afy github resume %s`.", branch, agentID))
+		output.Println("`afy deploy` still deploys your code.")
+	} else {
+		output.PrintSuccess("Auto-deploy is on for %s.", agentID)
+		output.Println(fmt.Sprintf("Resuming deploys nothing by itself: the next push to %s deploys, or run `afy deploy` to ship the latest code now.", branch))
+	}
+	return output.Result(map[string]interface{}{
+		"agent":                 agentID,
+		"auto_deploy_paused":    link.AutoDeployPausedAt != nil,
+		"auto_deploy_paused_at": link.AutoDeployPausedAt,
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Registration and helpers
 // ---------------------------------------------------------------------------
 
@@ -695,6 +795,8 @@ func init() {
 	githubCmd.AddCommand(githubStatusCmd)
 	githubCmd.AddCommand(githubReposCmd)
 	githubCmd.AddCommand(githubLinkCmd)
+	githubCmd.AddCommand(githubPauseCmd)
+	githubCmd.AddCommand(githubResumeCmd)
 	githubCmd.AddCommand(githubUnlinkCmd)
 }
 
