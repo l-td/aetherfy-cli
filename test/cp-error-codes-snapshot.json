@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 149
+      "count": 160
     },
     {
       "path": "api/routes/regions.py",
@@ -32,6 +32,10 @@
       "tier": "top-level"
     },
     "AGENT_DEPLOYMENT_OUTSIDE_NEW_WORKSPACE_SCOPE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_DRAINING": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -167,6 +171,10 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_UNAVAILABLE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AGENT_WORKER_NOT_ALLOWED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -180,6 +188,14 @@
       "tier": "top-level"
     },
     "ALIAS_NAME_TAKEN": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "API_KEY_LIMIT_REACHED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "API_KEY_NOT_FOUND": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -351,6 +367,26 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "DEVICE_ACCESS_DENIED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_CODE_ALREADY_USED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_CODE_EXPIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_CODE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEVICE_POLLING_TOO_FAST": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "DUNNING_FROZEN": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
@@ -479,11 +515,19 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "NO_ACTIVE_SUBSCRIPTION": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "OPERATION_NOT_FOUND": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
     "OVERAGE_CONFIRM_REQUIRED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "PEER_HAS_NO_URL": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
