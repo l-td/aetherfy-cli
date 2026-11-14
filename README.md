@@ -150,7 +150,7 @@ removed on the next update if Windows still had it open at the end of this one.
 ## Quick Start
 
 ```bash
-# Authenticate with your API key
+# Sign in: afy prints a code, you approve it in the dashboard
 afy login
 
 # Create an agent for this folder: writes aetherfy.yaml and the link
@@ -178,9 +178,18 @@ afy runs my-job
 
 | Command | Description |
 |---------|-------------|
-| `afy login` | Authenticate with your API key (stored in `credentials.yaml` in the [config directory](#config-file), mode 0600) |
+| `afy login` | Sign in by approving a code in the dashboard: afy prints a code and a page (and tries to open it; `--no-browser` does not), you approve the code there, and afy stores the new key in `credentials.yaml` in the [config directory](#config-file), mode 0600. `--api-key <key>`, a key piped on stdin and `AETHERFY_API_KEY` sign in with a key you already have |
 | `afy logout` | Remove stored credentials |
 | `afy whoami` | Show current authentication status and account info |
+| `afy keys create [--name <n>]` | Create an API key by approving a code in the dashboard. The key is printed once ("This is the only time the full key is shown.") and stored nowhere. Needs no key of its own: a key can never mint a key |
+| `afy keys list` | List the account's keys: id, name, the first characters of the key, created, last used. `--json` prints the control plane's document unchanged |
+| `afy keys revoke <id>` | Revoke a key (asks `[y/N]`, and says so when it is the key this CLI is using; `--yes` from a script. Declining exits 1) |
+| `afy usage` | This billing period's usage: period, plan, the percent of the plan used so far, any overage in dollars, and each agent's awake time. `--json` prints the control plane's document unchanged |
+
+Keys are created by approving a code in the dashboard, not by a command that
+holds a key. While `afy login` or `afy keys create` waits, it asks the control
+plane every few seconds whether the code was approved, and stops when the code
+expires (Ctrl-C stops it sooner).
 
 ### Project Initialization
 
@@ -460,7 +469,7 @@ from the config directory — set `AETHERFY_CONFIG_DIR` to relocate both.
 
 | Variable | Description |
 |----------|-------------|
-| `AETHERFY_API_KEY` | API key (overrides stored credentials) |
+| `AETHERFY_API_KEY` | API key (overrides stored credentials; `afy login` does not read it) |
 | `AETHERFY_API_URL` | API base URL (overrides config) |
 | `AETHERFY_CONFIG_DIR` | Overrides the config directory (see resolution order above) |
 | `NO_COLOR` | Disable colored output |

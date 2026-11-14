@@ -30,6 +30,9 @@ import (
 // they curl, and the release metadata that becomes the Homebrew cask.
 var userFacingSources = []string{
 	"cmd/login.go",
+	"cmd/device_login.go",
+	"cmd/keys.go",
+	"cmd/usage.go",
 	"cmd/root.go",
 	"README.md",
 	"scripts/install.sh",

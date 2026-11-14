@@ -30,6 +30,8 @@ type cpCall struct {
 	Path   string
 	Query  string
 	Body   map[string]interface{}
+	// Authorization is the request's Authorization header ("" when it sent none).
+	Authorization string
 }
 
 // fakeCP answers by "METHOD /path" (the path after /api/v1) and records every
@@ -40,6 +42,9 @@ type fakeCP struct {
 	mu     sync.Mutex
 	calls  []cpCall
 	routes map[string]cpAnswer
+	// sequences answer "METHOD /path" one answer per request, in order, the last
+	// one repeating (onSequence): a poll that is pending twice and then approved.
+	sequences map[string][]cpAnswer
 }
 
 type cpAnswer struct {
@@ -51,15 +56,21 @@ type cpAnswer struct {
 
 func newFakeCP(t *testing.T) *fakeCP {
 	t.Helper()
-	f := &fakeCP{routes: map[string]cpAnswer{}}
+	f := &fakeCP{routes: map[string]cpAnswer{}, sequences: map[string][]cpAnswer{}}
 	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/v1")
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]interface{}
 		_ = json.Unmarshal(raw, &body)
 		f.mu.Lock()
-		f.calls = append(f.calls, cpCall{Method: r.Method, Path: path, Query: r.URL.RawQuery, Body: body})
+		f.calls = append(f.calls, cpCall{Method: r.Method, Path: path, Query: r.URL.RawQuery, Body: body, Authorization: r.Header.Get("Authorization")})
 		a, ok := f.routes[r.Method+" "+path]
+		if seq := f.sequences[r.Method+" "+path]; len(seq) > 0 {
+			a, ok = seq[0], true
+			if len(seq) > 1 {
+				f.sequences[r.Method+" "+path] = seq[1:]
+			}
+		}
 		f.mu.Unlock()
 		if !ok {
 			a = cpAnswer{status: 599, body: `{"detail":{"code":"stand-in-unrouted","message":"the stand-in has no answer for ` + r.Method + " " + path + `"}}`}
@@ -92,6 +103,14 @@ func (f *fakeCP) onWithHeaders(method, path string, status int, body string, hea
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.routes[method+" "+path] = cpAnswer{status: status, body: body, headers: headers}
+}
+
+// onSequence answers the requests to method+path one answer each, in order; the
+// last answer repeats once the rest are used.
+func (f *fakeCP) onSequence(method, path string, answers ...cpAnswer) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.sequences[method+" "+path] = append([]cpAnswer(nil), answers...)
 }
 
 // all returns every request received, in order, under the lock (the server
@@ -187,6 +206,12 @@ const afyProcessPollInterval = 10 * time.Millisecond
 // runAfyProcess: some commands end the process (os.Exit with their exit code),
 // which in-process would end the whole test run.
 func TestMain(m *testing.M) {
+	// The device sign-in never waits between polls and never opens a browser from
+	// a test, in this process or in the re-executed afy: a test that cares about
+	// either replaces the seam and says what it saw (see device_login_test.go).
+	deviceWait = func(ctx context.Context, d time.Duration) error { return ctx.Err() }
+	deviceOpenBrowser = func(string) error { return errors.New("no browser in tests") }
+	deviceHostname = func() (string, error) { return "test-host", nil }
 	if args, ok := os.LookupEnv(afyProcessArgs); ok {
 		argv := strings.Split(args, "\x1f")
 		// The command under test polls a deployment every deploymentPollInterval

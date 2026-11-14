@@ -29,7 +29,7 @@ var stdinReaders = regexp.MustCompile(
 var stdinReadAllowed = map[string]string{
 	"confirm.go": "the helper itself: vecPrompter wraps a vector command's stdin for the question askToConfirm asks",
 	"prompt.go":  "the one prompter over stdin that the helper's callers, init's pickers and the workspace picker share",
-	"login.go":   "the API key entry: a secret typed or piped, not a confirmation",
+	"login.go":   "an API key piped on stdin (afy login < key): a secret, not a confirmation",
 	"secrets.go": "a secret's value read from stdin (--stdin), not a confirmation",
 	"spawn.go":   "the spawn payload read from stdin: data, not a question",
 	"vectors.go": "the workspace picker of the vector commands: a choice among workspaces, not a confirmation",

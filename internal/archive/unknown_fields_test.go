@@ -61,6 +61,7 @@ func TestAFileWithEveryFieldIsAccepted(t *testing.T) {
 	full := "name: full\nruntime: python3.11\ntype: service\ndescription: d\n" +
 		"workspace: ws\nspawn:\n  enabled: true\n  workers: [a]\n" +
 		"regions: [us-east-1]\nmemory_mb: 512\nidle_timeout_minutes: 10\n" +
+		"drain_timeout_minutes: 30\n" +
 		"keep_alive: false\nentrypoint: main.py\nschedule: '0 3 * * *'\n" +
 		"github_dependencies: ['o/r@v1']\n" +
 		"writable_paths: [/data]\n"

@@ -1,0 +1,59 @@
+{
+  "hasActivePeriod": true,
+  "tier": "free",
+  "periodStart": "2026-11-01T00:00:00Z",
+  "periodEnd": "2026-12-01T00:00:00Z",
+  "gaugePercent": 5,
+  "gaugeLabel": "5% of this month's awake budget",
+  "awakeBudgetNote": "Awake budget: 75% of the time an agent exists in the billing period. A running agent's budget runs to the end of the period; for a deleted or archived agent, or a removed region, it covers only the time it existed, so a short-lived agent can read past 100%. Past it, the agent is paused until it resumes within a day of the new month starting (UTC).",
+  "meteredNote": "Awake time is booked once a day, overnight.",
+  "inOverage": false,
+  "overageDollars": 0,
+  "overageLabel": null,
+  "showDollars": false,
+  "planBaseDollars": null,
+  "currentTotalDollars": 0,
+  "currentTotalLabel": null,
+  "totalCompositionLabel": null,
+  "forecast": {
+    "available": false,
+    "projectedLabel": null,
+    "crossesLimit": false,
+    "message": null
+  },
+  "today": {
+    "inOverage": false,
+    "percent": null,
+    "dollars": 0,
+    "label": null
+  },
+  "spendCap": {
+    "enabled": false,
+    "amountDollars": null,
+    "systemCeilingDollars": null,
+    "effectiveLimitDollars": null,
+    "isUserCap": false,
+    "blocked": false,
+    "progressPercent": null
+  },
+  "agents": [
+    {
+      "agentId": "a-3",
+      "agentName": "hello",
+      "state": null,
+      "display": "5% of budget",
+      "dollars": null,
+      "percent": 5,
+      "sortKey": 0.2,
+      "usagePaused": false,
+      "awakeTime": [
+        {
+          "region": "us-east-1",
+          "percent": 5,
+          "share": 5,
+          "label": "Awake time: 5% of this month's budget"
+        }
+      ]
+    }
+  ]
+}

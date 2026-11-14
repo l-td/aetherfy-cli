@@ -640,7 +640,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 		output.Dim.Println("Agents living in the same workspace can:")
 		output.Dim.Println("  • Share secrets (workspace-scoped)")
 		output.Dim.Println("  • Share vector collections")
-		output.Dim.Println("  • Communicate via HTTP (AETHERFY_AGENT_<NAME>_URL)")
+		output.Dim.Println("  • Find each other by name when a call is made (agent_url in the SDKs)")
 	}
 
 	return nil

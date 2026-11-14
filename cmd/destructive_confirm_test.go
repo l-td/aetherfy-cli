@@ -38,24 +38,32 @@ type destructiveCase struct {
 	reply    string
 	confirms string // what a person types to confirm
 	deletes  string // the sentence the refusal names
+	// also are the reads the command makes before it asks (afy keys revoke names the key).
+	also []route
 }
 
 func destructiveCases() []destructiveCase {
 	return []destructiveCase{
 		{"afy delete", []string{"delete", "bot"}, "DELETE", "/agents/bot", `{}`, "bot",
-			"This deletes agent 'bot' and all its deployments; pass --yes to confirm without a prompt."},
+			"This deletes agent 'bot' and all its deployments; pass --yes to confirm without a prompt.", nil},
 		{"afy workspaces delete", []string{"workspaces", "delete", "acme"}, "DELETE", "/workspaces/acme", `{"secrets_deleted":0}`, "acme",
-			"This deletes workspace 'acme' and all its secrets; pass --yes to confirm without a prompt."},
+			"This deletes workspace 'acme' and all its secrets; pass --yes to confirm without a prompt.", nil},
 		{"afy secrets delete (agent)", []string{"secrets", "delete", "bot", "K"}, "DELETE", "/agents/bot/secrets/K", `{}`, "y",
-			"This deletes secret 'K' from agent 'bot'; pass --yes to confirm without a prompt."},
+			"This deletes secret 'K' from agent 'bot'; pass --yes to confirm without a prompt.", nil},
 		{"afy secrets delete (workspace)", []string{"secrets", "delete", "--workspace", "acme", "K"}, "DELETE", "/workspaces/acme/secrets/K", `{}`, "y",
-			"This deletes secret 'K' from workspace 'acme'; pass --yes to confirm without a prompt."},
+			"This deletes secret 'K' from workspace 'acme'; pass --yes to confirm without a prompt.", nil},
+		{"afy keys revoke", []string{"keys", "revoke", "k-1"}, "DELETE", "/keys/k-1", `{"revoked":true,"id":"k-1"}`, "y",
+			"This revokes API key 'k-1'; pass --yes to confirm without a prompt.",
+			[]route{{"GET", "/keys", 200, `{"keys":[{"id":"k-1","name":"ci","key_prefix":"afy_live_zz...","created_at":"2026-11-01T00:00:00Z","last_used_at":null,"is_system_managed":false}]}`}}},
 	}
 }
 
 func (c destructiveCase) cp(t *testing.T) *fakeCP {
 	cp := newFakeCP(t)
 	cp.on(c.method, c.path, 200, c.reply)
+	for _, r := range c.also {
+		cp.on(r.method, r.path, r.status, r.body)
+	}
 	return cp
 }
 

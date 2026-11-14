@@ -1,0 +1,79 @@
+{
+  "hasActivePeriod": true,
+  "tier": "starter",
+  "periodStart": "2026-11-01T00:00:00Z",
+  "periodEnd": "2026-12-01T00:00:00Z",
+  "gaugePercent": 40,
+  "gaugeLabel": "40% of plan",
+  "awakeBudgetNote": "Awake budget: 75% of the time an agent exists in the billing period. A running agent's budget runs to the end of the period; for a deleted or archived agent, or a removed region, it covers only the time it existed, so a short-lived agent can read past 100%. Awake time beyond it counts toward your plan.",
+  "meteredNote": "Usage is booked once a day, overnight. Today shows only the flat price so far; awake time is added overnight.",
+  "inOverage": false,
+  "overageDollars": 0,
+  "overageLabel": null,
+  "showDollars": false,
+  "planBaseDollars": 25,
+  "currentTotalDollars": 25,
+  "currentTotalLabel": null,
+  "totalCompositionLabel": null,
+  "forecast": {
+    "available": true,
+    "projectedDollars": 40,
+    "projectedLabel": null,
+    "crossesLimit": false,
+    "limitKind": null,
+    "reachDateLabel": null,
+    "message": null
+  },
+  "today": {
+    "inOverage": false,
+    "percent": 4,
+    "dollars": 0,
+    "label": "4% of plan today"
+  },
+  "spendCap": {
+    "enabled": false,
+    "amountDollars": null,
+    "systemCeilingDollars": null,
+    "effectiveLimitDollars": null,
+    "isUserCap": false,
+    "blocked": false,
+    "progressPercent": null
+  },
+  "agents": [
+    {
+      "agentId": "a-1",
+      "agentName": "invoice-parser",
+      "state": null,
+      "display": "95% of plan",
+      "dollars": null,
+      "percent": 95,
+      "sortKey": 9.5,
+      "usagePaused": false,
+      "awakeTime": [
+        {
+          "region": "eu-central-1",
+          "percent": 10,
+          "share": 10,
+          "label": "Awake time in eu-central-1: 10% of this month's budget"
+        },
+        {
+          "region": "us-east-1",
+          "percent": 40,
+          "share": 40,
+          "label": "Awake time in us-east-1: 40% of this month's budget"
+        }
+      ]
+    },
+    {
+      "agentId": "a-2",
+      "agentName": "old-bot",
+      "state": "archived",
+      "display": "30% of plan",
+      "dollars": null,
+      "percent": 30,
+      "sortKey": 3,
+      "usagePaused": false,
+      "awakeTime": []
+    }
+  ]
+}

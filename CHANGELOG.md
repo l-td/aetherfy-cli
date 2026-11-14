@@ -5,7 +5,27 @@ so an entry here is written for the version the owner tags next.
 
 ## Unreleased
 
+### Added
+
+- `afy keys create [--name <n>]`, `afy keys list` and `afy keys revoke <id>`. A key is created by
+  approving a code in the dashboard, not by a command that holds a key: `keys create` prints a code and
+  a page, asks the control plane every few seconds (the interval it states) until a person signed in to
+  the dashboard approves the code, then prints the new key once, with "This is the only time the full
+  key is shown.", and stores it nowhere. Its two calls carry no credentials. `keys revoke` asks `[y/N]`
+  first (`--yes` from a script, declining exits 1) and says so when the key is the one this CLI is using.
+  `keys list --json` prints the control plane's document unchanged. Release this CLI after the control
+  plane that serves `/auth/device`, `/auth/device/token`, `/keys` and `/usage`.
+- `afy usage`: this billing period's usage as the dashboard's Usage page words it (period, plan,
+  percent of the plan used, overage dollars, each agent's awake time). `--json` prints the control
+  plane's document unchanged.
+- `afy login --no-browser`.
+
 ### Breaking
+
+- `afy login` with no key to hand no longer asks you to paste one. It runs the device sign-in: it prints a
+  code and a page, you approve the code in the dashboard, and afy stores the key that approval created.
+  `--api-key`, a key piped on stdin (`echo "$KEY" | afy login`) and `AETHERFY_API_KEY` work as before. The
+  product is pre-launch and keeps no compatibility form of the prompt.
 
 - `afy deployments --json` prints one object, `{"deployments": [...], "next_before_id": null}`, where it
   used to print the bare array of deployments. `next_before_id` is the id to pass as `--before` for the
