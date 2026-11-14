@@ -2,9 +2,11 @@ package test
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -429,64 +431,78 @@ func TestGitHubUnlinkAgent_NotLinked_Idempotent(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-deploy pause: PATCH /agents/{id}/github
+// Auto-deploy pause: POST /agents/{id}/github/pause and /resume
 // ---------------------------------------------------------------------------
 
-// Both states are asserted on the wire, FALSE INCLUDED: a body that drops
-// auto_deploy_paused when it is false would send {} and the control plane would
-// refuse a resume that looked right on the screen.
-func TestGitHubSetAutoDeploy_SendsThePatchBodyAndDecodesTheLink(t *testing.T) {
+// Both routes are a POST with NO body (the verb is the path), and the answer is
+// the link plus `changed`, whichever way it went: changed=false is an
+// idempotent no-op, which the caller must be able to tell from a change.
+func TestGitHubAutoDeploy_PostsToTheVerbRouteWithNoBodyAndDecodesTheLink(t *testing.T) {
 	cases := []struct {
 		name       string
-		paused     bool
-		answer     string
+		call       func(c *api.Client) (*api.GitHubAutoDeployResponse, error)
+		wantPath   string
+		pausedAt   string
+		changed    bool
 		wantPaused bool
 	}{
-		{"pause", true, `"2026-11-14T09:30:00Z"`, true},
-		{"resume", false, `null`, false},
+		{"pause changed", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubPauseAutoDeploy("agent-1") },
+			"/agents/agent-1/github/pause", `"2026-11-14T09:30:00Z"`, true, true},
+		{"pause unchanged", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubPauseAutoDeploy("agent-1") },
+			"/agents/agent-1/github/pause", `"2026-11-14T09:30:00Z"`, false, true},
+		{"resume changed", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubResumeAutoDeploy("agent-1") },
+			"/agents/agent-1/github/resume", `null`, true, false},
+		{"resume unchanged", func(c *api.Client) (*api.GitHubAutoDeployResponse, error) { return c.GitHubResumeAutoDeploy("agent-1") },
+			"/agents/agent-1/github/resume", `null`, false, false},
 	}
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			var gotMethod, gotPath string
-			var gotBody map[string]interface{}
+			var gotBody []byte
+			requests := 0
 			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				requests++
 				gotMethod, gotPath = r.Method, r.URL.Path
-				_ = json.NewDecoder(r.Body).Decode(&gotBody)
+				gotBody, _ = io.ReadAll(r.Body)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"linked":true,"repo":"myorg/myrepo","branch":"main","root_dir":null,` +
 					`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
-					`"auto_deploy_paused_at":` + tc.answer + `}`))
+					`"auto_deploy_paused_at":` + tc.pausedAt + `,"changed":` + strconv.FormatBool(tc.changed) + `}`))
 			}))
 			defer srv.Close()
 
 			client := api.NewClientWithURL(srv.URL, "test-key")
-			link, err := client.GitHubSetAutoDeploy("agent-1", tc.paused)
+			resp, err := tc.call(client)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
-			if gotMethod != http.MethodPatch || gotPath != "/agents/agent-1/github" {
-				t.Errorf("sent %s %s, want PATCH /agents/agent-1/github", gotMethod, gotPath)
+			if requests != 1 || gotMethod != http.MethodPost || gotPath != tc.wantPath {
+				t.Errorf("sent %d request(s), last %s %s, want one POST %s", requests, gotMethod, gotPath, tc.wantPath)
 			}
-			if len(gotBody) != 1 || gotBody["auto_deploy_paused"] != tc.paused {
-				t.Errorf("sent body %v, want exactly {auto_deploy_paused: %v}", gotBody, tc.paused)
+			if len(gotBody) != 0 {
+				t.Errorf("sent body %q, want none", gotBody)
 			}
-			if (link.AutoDeployPausedAt != nil) != tc.wantPaused {
-				t.Errorf("decoded auto_deploy_paused_at = %v, want set=%v", link.AutoDeployPausedAt, tc.wantPaused)
+			if resp.Changed != tc.changed {
+				t.Errorf("decoded changed = %v, want %v", resp.Changed, tc.changed)
 			}
-			if tc.wantPaused && link.AutoDeployPausedAt.UTC().Format(time.RFC3339) != "2026-11-14T09:30:00Z" {
-				t.Errorf("decoded auto_deploy_paused_at = %v, want 2026-11-14T09:30:00Z", link.AutoDeployPausedAt)
+			if (resp.AutoDeployPausedAt != nil) != tc.wantPaused {
+				t.Errorf("decoded auto_deploy_paused_at = %v, want set=%v", resp.AutoDeployPausedAt, tc.wantPaused)
 			}
-			if link.Branch == nil || *link.Branch != "main" {
-				t.Errorf("the rest of the link did not decode: %+v", link)
+			if tc.wantPaused && resp.AutoDeployPausedAt.UTC().Format(time.RFC3339) != "2026-11-14T09:30:00Z" {
+				t.Errorf("decoded auto_deploy_paused_at = %v, want 2026-11-14T09:30:00Z", resp.AutoDeployPausedAt)
+			}
+			if resp.Branch == nil || *resp.Branch != "main" {
+				t.Errorf("the rest of the link did not decode: %+v", resp)
 			}
 		})
 	}
 }
 
 // The agent has no GitHub link: 409 GITHUB_NOT_LINKED, and the code reaches the
-// caller, because `afy github pause` keys its "link it first" hint on it.
-func TestGitHubSetAutoDeploy_NotLinked_Returns409WithItsCode(t *testing.T) {
+// caller, because `afy github pause` and `resume` key their "link it first" hint
+// on it.
+func TestGitHubAutoDeploy_NotLinked_Returns409WithItsCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
@@ -500,16 +516,21 @@ func TestGitHubSetAutoDeploy_NotLinked_Returns409WithItsCode(t *testing.T) {
 	defer srv.Close()
 
 	client := api.NewClientWithURL(srv.URL, "test-key")
-	link, err := client.GitHubSetAutoDeploy("agent-1", true)
-	if err == nil {
-		t.Fatalf("expected an error, got link %+v", link)
-	}
-	apiErr, ok := err.(*api.APIError)
-	if !ok {
-		t.Fatalf("expected *api.APIError, got %T", err)
-	}
-	if apiErr.StatusCode != 409 || apiErr.Code != "GITHUB_NOT_LINKED" {
-		t.Errorf("got %d %q, want 409 GITHUB_NOT_LINKED", apiErr.StatusCode, apiErr.Code)
+	for name, call := range map[string]func() (*api.GitHubAutoDeployResponse, error){
+		"pause":  func() (*api.GitHubAutoDeployResponse, error) { return client.GitHubPauseAutoDeploy("agent-1") },
+		"resume": func() (*api.GitHubAutoDeployResponse, error) { return client.GitHubResumeAutoDeploy("agent-1") },
+	} {
+		resp, err := call()
+		if err == nil {
+			t.Fatalf("%s: expected an error, got %+v", name, resp)
+		}
+		apiErr, ok := err.(*api.APIError)
+		if !ok {
+			t.Fatalf("%s: expected *api.APIError, got %T", name, err)
+		}
+		if apiErr.StatusCode != 409 || apiErr.Code != "GITHUB_NOT_LINKED" {
+			t.Errorf("%s: got %d %q, want 409 GITHUB_NOT_LINKED", name, apiErr.StatusCode, apiErr.Code)
+		}
 	}
 }
 

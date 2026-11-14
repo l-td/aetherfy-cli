@@ -136,8 +136,8 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"workspaces", "update", "acme", "--description", "x"}, ok: []route{{"PATCH", "/workspaces/acme", 200, wsRow}}, refuse: []string{"PATCH /workspaces/acme"}},
 		{class: "mutate", args: []string{"workspaces", "delete", "acme", "--yes"}, ok: []route{{"DELETE", "/workspaces/acme", 200, `{"secrets_deleted":0}`}}, refuse: []string{"DELETE /workspaces/acme"}},
 		{class: "mutate", args: []string{"github", "unlink", "bot"}, ok: []route{{"DELETE", "/agents/bot/github", 200, `{}`}}, refuse: []string{"DELETE /agents/bot/github"}},
-		{class: "mutate", args: []string{"github", "pause", "bot"}, ok: []route{{"PATCH", "/agents/bot/github", 200, `{"linked":true,"repo":"o/r","branch":"main","auto_deploy_paused_at":"2026-11-14T09:30:00Z"}`}}, refuse: []string{"PATCH /agents/bot/github"}},
-		{class: "mutate", args: []string{"github", "resume", "bot"}, ok: []route{{"PATCH", "/agents/bot/github", 200, `{"linked":true,"repo":"o/r","branch":"main","auto_deploy_paused_at":null}`}}, refuse: []string{"PATCH /agents/bot/github"}},
+		{class: "mutate", args: []string{"github", "pause", "bot"}, ok: []route{{"POST", "/agents/bot/github/pause", 200, `{"linked":true,"repo":"o/r","branch":"main","auto_deploy_paused_at":"2026-11-14T09:30:00Z","changed":true}`}}, refuse: []string{"POST /agents/bot/github/pause"}},
+		{class: "mutate", args: []string{"github", "resume", "bot"}, ok: []route{{"POST", "/agents/bot/github/resume", 200, `{"linked":true,"repo":"o/r","branch":"main","auto_deploy_paused_at":null,"changed":true}`}}, refuse: []string{"POST /agents/bot/github/resume"}},
 		{class: "mutate", args: []string{"github", "disconnect"}, ok: []route{{"DELETE", "/auth/github", 200, `{}`}}, refuse: []string{"DELETE /auth/github"}},
 		{class: "mutate", args: []string{"logout"}},
 

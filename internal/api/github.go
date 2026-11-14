@@ -83,14 +83,26 @@ func (c *Client) GitHubUnlinkAgent(agentID string) error {
 	return c.Delete(fmt.Sprintf("/agents/%s/github", agentID))
 }
 
-// GitHubSetAutoDeploy pauses or resumes auto-deploy on an agent's GitHub link
-// and returns the link as it stands afterwards (idempotent: setting the state
-// the link already has is a 200 that changes nothing). 409 GITHUB_NOT_LINKED
-// when the agent has no link. Resuming deploys nothing by itself.
-func (c *Client) GitHubSetAutoDeploy(agentID string, paused bool) (*GitHubLinkStatus, error) {
-	var resp GitHubLinkStatus
-	req := &GitHubAutoDeployRequest{AutoDeployPaused: paused}
-	if err := c.Patch(fmt.Sprintf("/agents/%s/github", agentID), req, &resp); err != nil {
+// GitHubPauseAutoDeploy pauses auto-deploy on an agent's GitHub link (POST
+// /agents/{id}/github/pause, no body) and returns the link as it stands
+// afterwards. Idempotent: Changed is false when it was already paused, and a
+// pause keeps the time it was first set. 409 GITHUB_NOT_LINKED when the agent
+// has no link.
+func (c *Client) GitHubPauseAutoDeploy(agentID string) (*GitHubAutoDeployResponse, error) {
+	var resp GitHubAutoDeployResponse
+	if err := c.Post(fmt.Sprintf("/agents/%s/github/pause", agentID), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GitHubResumeAutoDeploy resumes auto-deploy on an agent's GitHub link (POST
+// /agents/{id}/github/resume, no body). Idempotent: Changed is false when it
+// was already on. Resuming deploys nothing by itself. 409 GITHUB_NOT_LINKED
+// when the agent has no link.
+func (c *Client) GitHubResumeAutoDeploy(agentID string) (*GitHubAutoDeployResponse, error) {
+	var resp GitHubAutoDeployResponse
+	if err := c.Post(fmt.Sprintf("/agents/%s/github/resume", agentID), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

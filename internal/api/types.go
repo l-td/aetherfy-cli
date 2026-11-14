@@ -489,12 +489,6 @@ type GitHubLinkResponse struct {
 	WebhookSecret string `json:"webhook_secret"`
 }
 
-// GitHubAutoDeployRequest is the body of PATCH /agents/{id}/github: whether
-// pushes to the linked branch deploy. The control plane refuses any other field.
-type GitHubAutoDeployRequest struct {
-	AutoDeployPaused bool `json:"auto_deploy_paused"`
-}
-
 // GitHubLinkStatus is an agent's GitHub link — the `github` object on every agent
 // response, which GET /agents/{id}/github also serves on its own: what the link
 // points at, and whether it can still fire.
@@ -559,6 +553,16 @@ type GitHubLinkStatus struct {
 	// DEPLOYMENT_IN_PROGRESS, and a delete, pause or archive answers 409
 	// AGENT_HAS_PENDING_DEPLOYMENTS.
 	PushInClone *PushInClone `json:"push_in_clone"`
+}
+
+// GitHubAutoDeployResponse is the body from POST /agents/{id}/github/pause and
+// /github/resume: the link as GET /agents/{id}/github serves it, plus Changed,
+// which is false when the link already had the requested state (an idempotent
+// no-op). Changed belongs to this answer, not to the link: the `github` object
+// on an agent has no such field.
+type GitHubAutoDeployResponse struct {
+	GitHubLinkStatus
+	Changed bool `json:"changed"`
 }
 
 // WaitingPush is a push waiting for the deploy of its agent in progress.

@@ -708,7 +708,7 @@ resume. A push already being built when you pause finishes.
 
 The link, its webhook and the running agent are untouched, and
 'afy deploy' still deploys your code. Pausing auto-deploy that is already
-paused changes nothing.
+paused changes nothing and says so.
 
 Turn it back on with 'afy github resume <agent>'.`,
 	Example: `  afy github pause my-bot`,
@@ -726,7 +726,7 @@ var githubResumeCmd = &cobra.Command{
 Resuming deploys nothing by itself: the next push to the linked branch
 deploys, or run 'afy deploy' to ship your code now. A push that arrived
 while auto-deploy was paused is not deployed. Resuming when auto-deploy is
-already on changes nothing.`,
+already on changes nothing and says so.`,
 	Example: `  afy github resume my-bot`,
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -735,8 +735,9 @@ already on changes nothing.`,
 }
 
 // setGitHubAutoDeploy turns auto-deploy off (paused) or on for an agent's link
-// and says the state the control plane reports back: the same call and the same
-// words whether it changed anything or not, since the answer does not say.
+// and says what the control plane answers: the state the link now has, and
+// whether this call changed it. A call that changed nothing says so plainly,
+// as the schedule's pause and resume do.
 func setGitHubAutoDeploy(agentID string, paused bool) error {
 	if err := checkAuth(); err != nil {
 		return err
@@ -749,7 +750,13 @@ func setGitHubAutoDeploy(agentID string, paused bool) error {
 	}
 	sp := output.NewSpinner(fmt.Sprintf("%s %s...", what, agentID))
 	sp.Start()
-	link, err := client.GitHubSetAutoDeploy(agentID, paused)
+	var resp *api.GitHubAutoDeployResponse
+	var err error
+	if paused {
+		resp, err = client.GitHubPauseAutoDeploy(agentID)
+	} else {
+		resp, err = client.GitHubResumeAutoDeploy(agentID)
+	}
 	sp.Stop()
 
 	if err != nil {
@@ -763,22 +770,30 @@ func setGitHubAutoDeploy(agentID string, paused bool) error {
 		os.Exit(1)
 	}
 
-	branch := derefString(link.Branch)
+	// What is said follows the answer, not the verb: the state is the link's.
+	isPaused := resp.AutoDeployPausedAt != nil
+	branch := derefString(resp.Branch)
 	if branch == "" {
 		branch = "the linked branch"
 	}
-	if link.AutoDeployPausedAt != nil {
+	switch {
+	case !resp.Changed && isPaused:
+		output.PrintInfo("Auto-deploy for %s was already paused.", agentID)
+	case !resp.Changed:
+		output.PrintInfo("Auto-deploy for %s was already on.", agentID)
+	case isPaused:
 		output.PrintSuccess("Auto-deploy is paused for %s.", agentID)
 		output.Println(fmt.Sprintf("Pushes to %s build nothing until you run `afy github resume %s`.", branch, agentID))
 		output.Println("`afy deploy` still deploys your code.")
-	} else {
+	default:
 		output.PrintSuccess("Auto-deploy is on for %s.", agentID)
 		output.Println(fmt.Sprintf("Resuming deploys nothing by itself: the next push to %s deploys, or run `afy deploy` to ship the latest code now.", branch))
 	}
 	return output.Result(map[string]interface{}{
 		"agent":                 agentID,
-		"auto_deploy_paused":    link.AutoDeployPausedAt != nil,
-		"auto_deploy_paused_at": link.AutoDeployPausedAt,
+		"auto_deploy_paused":    isPaused,
+		"auto_deploy_paused_at": resp.AutoDeployPausedAt,
+		"changed":               resp.Changed,
 	})
 }
 
