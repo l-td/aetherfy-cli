@@ -707,7 +707,7 @@ says so on its commit. Such a push is not deployed later, not even after you
 resume. A push already being built when you pause finishes.
 
 The link, its webhook and the running agent are untouched, and
-'afy deploy' still deploys your code. Pausing an agent that is already
+'afy deploy' still deploys your code. Pausing auto-deploy that is already
 paused changes nothing.
 
 Turn it back on with 'afy github resume <agent>'.`,
@@ -725,8 +725,8 @@ var githubResumeCmd = &cobra.Command{
 
 Resuming deploys nothing by itself: the next push to the linked branch
 deploys, or run 'afy deploy' to ship your code now. A push that arrived
-while auto-deploy was paused is not deployed. Resuming an agent whose
-auto-deploy is already on changes nothing.`,
+while auto-deploy was paused is not deployed. Resuming when auto-deploy is
+already on changes nothing.`,
 	Example: `  afy github resume my-bot`,
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
