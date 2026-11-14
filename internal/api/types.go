@@ -489,6 +489,12 @@ type GitHubLinkResponse struct {
 	WebhookSecret string `json:"webhook_secret"`
 }
 
+// GitHubAutoDeployRequest is the body of PATCH /agents/{id}/github: whether
+// pushes to the linked branch deploy. The control plane refuses any other field.
+type GitHubAutoDeployRequest struct {
+	AutoDeployPaused bool `json:"auto_deploy_paused"`
+}
+
 // GitHubLinkStatus is an agent's GitHub link — the `github` object on every agent
 // response, which GET /agents/{id}/github also serves on its own: what the link
 // points at, and whether it can still fire.
@@ -532,6 +538,12 @@ type GitHubLinkStatus struct {
 	// they find their agent inert. Null covers both a branch that was never
 	// lost and one that came back — the next push clears it.
 	BranchDeletedAt *time.Time `json:"branch_deleted_at"`
+	// When auto-deploy was paused on this link, or null: null means pushes
+	// deploy. Set by `afy github pause`, cleared by `afy github resume` and by
+	// unlinking, and kept across a re-link. A TIMESTAMP for the same reason as
+	// BranchDeletedAt: "since when" is what someone asks of an agent that stopped
+	// deploying. Unlike the two inert states above it is a choice, not a fault.
+	AutoDeployPausedAt *time.Time `json:"auto_deploy_paused_at"`
 	// The push WAITING for the deploy in progress, or null. An agent deploys
 	// one push at a time; a push that arrives while a deployment of the agent
 	// is in flight waits, and has no deployment row until it starts, so this

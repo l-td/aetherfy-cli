@@ -82,3 +82,16 @@ func (c *Client) GitHubLinkAgent(agentID, repo, branch, rootDir string) (*GitHub
 func (c *Client) GitHubUnlinkAgent(agentID string) error {
 	return c.Delete(fmt.Sprintf("/agents/%s/github", agentID))
 }
+
+// GitHubSetAutoDeploy pauses or resumes auto-deploy on an agent's GitHub link
+// and returns the link as it stands afterwards (idempotent: setting the state
+// the link already has is a 200 that changes nothing). 409 GITHUB_NOT_LINKED
+// when the agent has no link. Resuming deploys nothing by itself.
+func (c *Client) GitHubSetAutoDeploy(agentID string, paused bool) (*GitHubLinkStatus, error) {
+	var resp GitHubLinkStatus
+	req := &GitHubAutoDeployRequest{AutoDeployPaused: paused}
+	if err := c.Patch(fmt.Sprintf("/agents/%s/github", agentID), req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
