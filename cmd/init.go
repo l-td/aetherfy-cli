@@ -362,7 +362,7 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 	if len(runtimeOptions) == 0 {
 		return nil, fmt.Errorf("the server listed no runtimes to deploy with")
 	}
-	detected, err := detect.Resolve(hints, runtimeOptions, opts.DefaultRuntimes)
+	detected, err := detect.Resolve(hints, runtimeOptions, opts.DefaultRuntimes, opts.RuntimeDetails)
 	if err != nil {
 		// Detection only suggests; a runtime the person named is theirs to use.
 		if initRuntime == "" {
@@ -549,7 +549,7 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 	}
 
 	return &generatedConfig{
-		content:   buildAetherfyYAML(runtime, agentType, region, memoryMB, keepAlive, entrypoint, schedule),
+		content:   buildAetherfyYAML(runtime, agentType, region, memoryMB, keepAlive, entrypoint, opts.RuntimeDetails[runtime].Entrypoint, schedule),
 		runtime:   runtime,
 		agentType: agentType,
 		region:    region,
@@ -643,8 +643,11 @@ func printConfigSummary(name, workspace, runtime, agentType, region string, memo
 // buildAetherfyYAML is the aetherfy.yaml `afy init` writes for a new agent:
 // how it runs, and nothing the platform owns (its name, description and
 // workspace are set on the agent, not in the file). The schema modeline is
-// the first line.
-func buildAetherfyYAML(runtime, agentType, region string, memoryMB int, keepAlive bool, entrypoint, schedule string) string {
+// the first line. `runtime:` is always the runtime's name. `entryHint` is the
+// file the runtime runs when none is named (the server's own, from
+// runtime_details); with no entrypoint set, it is what the commented-out
+// `# entrypoint:` line suggests, and without one that line is left out.
+func buildAetherfyYAML(runtime, agentType, region string, memoryMB int, keepAlive bool, entrypoint, entryHint, schedule string) string {
 	var sb strings.Builder
 
 	sb.WriteString(yamlSchemaModeline + "\n")
@@ -664,17 +667,8 @@ func buildAetherfyYAML(runtime, agentType, region string, memoryMB int, keepAliv
 	if runtime != "dockerfile" {
 		if entrypoint != "" {
 			sb.WriteString(fmt.Sprintf("entrypoint: %q\n", entrypoint))
-		} else {
-			hint := "main.py"
-			switch {
-			case runtime == "bun":
-				hint = "index.ts"
-			case strings.HasSuffix(runtime, "-ts"):
-				hint = "index.ts"
-			case strings.HasPrefix(runtime, "node"):
-				hint = "index.js"
-			}
-			sb.WriteString(fmt.Sprintf("# entrypoint: %s  # TODO: set your entrypoint file\n", hint))
+		} else if entryHint != "" {
+			sb.WriteString(fmt.Sprintf("# entrypoint: %s  # TODO: set your entrypoint file\n", entryHint))
 		}
 	}
 

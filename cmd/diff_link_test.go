@@ -69,7 +69,7 @@ github_dependencies: []
 `
 
 func TestAFreshlyInitialisedFolderDiffsClean(t *testing.T) {
-	dir := agentFolder(t, buildAetherfyYAML("python3.11", "service", "eu-central-1", 1024, false, "main.py", ""))
+	dir := agentFolder(t, buildAetherfyYAML("python3.11", "service", "eu-central-1", 1024, false, "main.py", "", ""))
 	linkFolder(t, dir, map[string]string{"default": prodID})
 	cp := diffCP(t)
 	cp.on("GET", "/agents/"+prodID+"/yaml", 200, initReleaseExport)

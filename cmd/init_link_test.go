@@ -18,6 +18,19 @@ import (
 // deployOptions is GET /deploy-options (sheet 2.5, CP b96c5fd): the runtimes
 // as models.agent.RuntimeEnum lists them, and the plan's regions and sizes.
 const deployOptions = `{"runtimes":["python3.11","python3.12","python3.13","python3.14","python3.15","node22","node24","node26","node22-ts","node24-ts","node26-ts","bun","dockerfile"],
+	"runtime_details":{
+		"python3.11":{"language":"python","version":"3.11","typescript":false,"entrypoint":"main.py"},
+		"python3.12":{"language":"python","version":"3.12","typescript":false,"entrypoint":"main.py"},
+		"python3.13":{"language":"python","version":"3.13","typescript":false,"entrypoint":"main.py"},
+		"python3.14":{"language":"python","version":"3.14","typescript":false,"entrypoint":"main.py"},
+		"python3.15":{"language":"python","version":"3.15","typescript":false,"entrypoint":"main.py"},
+		"node22":{"language":"node","version":"22","typescript":false,"entrypoint":"index.js"},
+		"node24":{"language":"node","version":"24","typescript":false,"entrypoint":"index.js"},
+		"node26":{"language":"node","version":"26","typescript":false,"entrypoint":"index.js"},
+		"node22-ts":{"language":"node","version":"22","typescript":true,"entrypoint":"index.ts"},
+		"node24-ts":{"language":"node","version":"24","typescript":true,"entrypoint":"index.ts"},
+		"node26-ts":{"language":"node","version":"26","typescript":true,"entrypoint":"index.ts"},
+		"bun":{"language":"bun","version":"1","typescript":false,"entrypoint":"main.ts"}},
 	"default_runtimes":{"python":"python3.14","node":"node24"},
 	"regions":[{"code":"us-east-1","allowed":false},{"code":"eu-central-1","allowed":true},{"code":"ap-southeast-1","allowed":true}],
 	"max_regions":1,

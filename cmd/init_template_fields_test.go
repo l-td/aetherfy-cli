@@ -23,7 +23,7 @@ var commentedSetting = regexp.MustCompile(`(?m)^# ?(\s*(?:[a-z_]+:|- ).*)$`)
 func TestInitTemplateUncommentedIsAccepted(t *testing.T) {
 	for _, schedule := range []string{"", "0 3 * * *"} {
 		for _, entrypoint := range []string{"", "main.py"} {
-			out := buildAetherfyYAML("python3.11", "service", "us-east-1", 256, true, entrypoint, schedule)
+			out := buildAetherfyYAML("python3.11", "service", "us-east-1", 256, true, entrypoint, "main.py", schedule)
 			uncommented := commentedSetting.ReplaceAllString(out, "$1")
 
 			// Positive controls: the spawn block was uncommented, and the

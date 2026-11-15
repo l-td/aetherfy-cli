@@ -55,7 +55,10 @@ so an entry here is written for the version the owner tags next.
   resolves them against what the control plane offers (`GET /deploy-options`): a version that is offered
   is that runtime, an older one gets the lowest offered version above it and `afy init` says so, and a
   project that names no version gets the control plane's default for its language. Node 20 is no longer
-  offered. A runtime the control plane adds needs no CLI release.
+  offered. `afy init` picks a runtime by what the control plane says each one is (its language, its version,
+  whether it is TypeScript), never by reading its name, and the commented `# entrypoint:` suggestion in the
+  file it writes is the file that runtime runs by default. A runtime the control plane adds needs no CLI
+  release, whatever it is called.
 - `afy github pause <agent>` and `afy github resume <agent>` turn auto-deploy off and on for an agent's
   GitHub link without unlinking it. While auto-deploy is paused a push builds nothing and says so on its
   commit, and it is not deployed later, not even after a resume; a push already being built finishes, and
