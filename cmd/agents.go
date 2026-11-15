@@ -789,15 +789,17 @@ func printLastDeployFailure(client *api.Client, agent *api.Agent) {
 		output.Dim.Printf("  (could not read the deployment history: %v)\n", err)
 		return
 	}
-	for _, d := range deployments {
-		if !strings.EqualFold(d.Status, "failed") {
-			return
-		}
-		output.KeyValue("Last deploy", fmt.Sprintf("v%d failed", d.Version))
-		if d.ErrorMessage != "" {
-			output.KeyValue("Deploy error", d.ErrorMessage)
-		}
+	// The list is releases only, newest first: the newest one is the agent's last deploy.
+	if len(deployments) == 0 {
 		return
+	}
+	latest := deployments[0]
+	if !strings.EqualFold(latest.Status, "failed") {
+		return
+	}
+	output.KeyValue("Last deploy", fmt.Sprintf("v%d failed", latest.Version))
+	if latest.ErrorMessage != "" {
+		output.KeyValue("Deploy error", latest.ErrorMessage)
 	}
 }
 
