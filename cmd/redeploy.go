@@ -123,6 +123,8 @@ func redeployAgent(client *api.Client, args []string, detach bool, pollInterval,
 
 	output.KeyValue("Deployment ID", resp.ID)
 	output.KeyValue("New Version", strconv.Itoa(resp.Version))
+	// What the server says to know about this release, as soon as it said it (a watch may end in a timeout).
+	printWarnings(resp.Warnings)
 	output.Println("")
 
 	if detach {

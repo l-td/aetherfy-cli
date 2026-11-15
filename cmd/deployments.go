@@ -174,6 +174,7 @@ func printDeployments(client *api.Client, agentID string) error {
 
 	output.Println("")
 	output.Dim.Printf("Total: %d deployment(s)\n", len(deployments))
+	printDeploymentListWarnings(deployments)
 
 	// Show hint if latest is failed
 	if firstPage && len(deployments) > 0 && deployments[0].Status == "failed" {

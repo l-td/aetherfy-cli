@@ -126,6 +126,7 @@ func printAgentList(client *api.Client) error {
 
 	output.Println("")
 	output.Dim.Printf("Total: %d agent(s)\n", len(agents))
+	printAgentListWarnings(agents)
 
 	return nil
 }
@@ -194,6 +195,7 @@ func runAgentsCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	output.PrintSuccess("Agent '%s' created in workspace '%s'.", agent.Name, ws.Name)
+	printWarnings(agent.Warnings)
 	output.Println("")
 	output.KeyValue("ID", agent.ID)
 	output.KeyValue("Name", agent.Name)
@@ -746,6 +748,7 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	//     a few minutes if mid-Docker-build subprocess).
 	// Distinguish in the user-facing message so the user knows whether
 	// to expect immediate vs eventual completion.
+	printWarnings(result.Warnings)
 	if result.Status == "failed" {
 		output.PrintSuccess("Deployment v%d cancelled.", result.Version)
 	} else {
@@ -1572,6 +1575,7 @@ func runAgentsUpdate(cmd *cobra.Command, args []string) error {
 		if agent.Description != "" {
 			output.KeyValue("Description", agent.Description)
 		}
+		printWarnings(agent.Warnings)
 		if nameChanged {
 			printRenameNote(agent)
 		}
@@ -1642,6 +1646,8 @@ func printAgentMove(m *api.AgentMove) {
 	output.PrintSuccess("Agent '%s' moved from workspace '%s' to '%s'.", m.Agent, m.PreviousWorkspace.Name, m.Workspace.Name)
 	if m.Redeployed && m.Deployment != nil {
 		output.KeyValue("Redeploy", fmt.Sprintf("version %d (deployment %s)", m.Deployment.Version, m.Deployment.ID))
+		// The move's warnings sit INSIDE the answer, on the redeploy it started.
+		printWarnings(m.Deployment.Warnings)
 		output.Println("Run 'afy logs " + m.Agent + "' to follow it.")
 	} else {
 		output.Dim.Println("  It had no release serving, so nothing was redeployed; its next deploy runs in the new workspace.")

@@ -161,6 +161,9 @@ func initLinkExisting(cmd *cobra.Command, client *api.Client, p *prompter, dir, 
 	if err != nil {
 		return printRefusal("Failed to find agent '"+name+"'", err)
 	}
+	// The file written below is this agent's live release as it stands: what the server says to know about the
+	// agent (its runtime past its end of life, today) is said before a folder is linked to it.
+	printWarnings(agent.Warnings)
 
 	// ONE RULE: export when the agent has a release, generate when it does
 	// not. An existing aetherfy.yaml is kept unless --force.

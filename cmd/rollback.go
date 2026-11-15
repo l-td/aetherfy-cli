@@ -117,6 +117,8 @@ func rollbackAgent(client *api.Client, args []string, detach bool, pollInterval,
 	if resp.RollbackNotice != "" {
 		output.PrintWarning("Rollback to v%d: %s", version, resp.RollbackNotice)
 	}
+	// What the server says to know about this release, as soon as it said it (a watch may end in a timeout).
+	printWarnings(resp.Warnings)
 	output.Println("")
 
 	if detach {

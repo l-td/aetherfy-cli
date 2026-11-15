@@ -212,6 +212,9 @@ type Deployment struct {
 	// Deployment.can_rollback): its image or its stored code archive still
 	// exists. Server-derived for the same reason as CanRedeploy; no omitempty.
 	CanRollback bool `json:"can_rollback"`
+	// Warnings: what the server says to know about this release (server DeploymentResponse.warnings), empty
+	// when there is nothing. A release read inside another answer (a move's redeploy) carries them too.
+	Warnings []Warning `json:"warnings"`
 }
 
 // DeployRequest is the request body for deploying
@@ -254,6 +257,8 @@ type RollbackResponse struct {
 	// Set when the target's image was gone and the version was rebuilt from its
 	// stored source instead of re-deployed exactly. The server's own wording.
 	RollbackNotice string `json:"rollback_notice,omitempty"`
+	// Warnings: what the server says to know about this release (server DeploymentResponse.warnings).
+	Warnings []Warning `json:"warnings"`
 }
 
 // Secret represents a secret (without the value)

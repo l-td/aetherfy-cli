@@ -19,11 +19,15 @@ so an entry here is written for the version the owner tags next.
   percent of the plan used, overage dollars, each agent's awake time). `--json` prints the control
   plane's document unchanged.
 - `afy login --no-browser`.
-- `afy deploy` and `afy status` print what the control plane says to know about the agent or the release,
-  as it words it. Today that is the warning that the agent's runtime is past its end of life: the sentence
-  names the date deploys on it stop and the runtime to create a new agent on. It is a warning, not an error,
-  and the exit code does not change. `--json` carries it as `warnings` on the deployment and on the agent.
-  Release this CLI after the control plane that sends `warnings`.
+- Every command whose answer carries `warnings` prints them, as the control plane words them, wherever they
+  sit in the answer: `afy deploy`, `afy redeploy`, `afy rollback` and `afy cancel` (on the release),
+  `afy status`, `afy create`, `afy update` and `afy init --agent` (on the agent), a move by `afy update
+  --workspace` (inside the redeploy it starts), and `afy list` and `afy deployments`, which say each sentence
+  once with the agents or versions it covers. Today that is the warning that the agent's runtime is past its
+  end of life: the sentence names the date deploys on it stop and the runtime to create a new agent on. It is
+  a warning, not an error, and the exit code does not change. `--json` carries them as `warnings` on the
+  deployment and on the agent, and nested in a move. Release this CLI after the control plane that sends
+  `warnings`.
 
 ### Breaking
 
