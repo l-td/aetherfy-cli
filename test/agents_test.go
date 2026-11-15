@@ -31,12 +31,12 @@ func TestAgentIncludesRuntime(t *testing.T) {
 		ID:           "test-id",
 		Name:         "test-agent",
 		AgentType:    "SERVICE",
-		Runtime:      "node20",
+		Runtime:      "node24",
 		SpawnEnabled: false,
 	}
 
-	if agent.Runtime != "node20" {
-		t.Errorf("Expected runtime to be 'node20', got '%s'", agent.Runtime)
+	if agent.Runtime != "node24" {
+		t.Errorf("Expected runtime to be 'node24', got '%s'", agent.Runtime)
 	}
 }
 

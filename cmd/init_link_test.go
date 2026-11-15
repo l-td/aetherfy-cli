@@ -17,7 +17,8 @@ import (
 
 // deployOptions is GET /deploy-options (sheet 2.5, CP b96c5fd): the runtimes
 // as models.agent.RuntimeEnum lists them, and the plan's regions and sizes.
-const deployOptions = `{"runtimes":["python3.11","python3.12","python3.13","node20","node22","node20-ts","node22-ts","bun","dockerfile"],
+const deployOptions = `{"runtimes":["python3.11","python3.12","python3.13","python3.14","python3.15","node22","node24","node26","node22-ts","node24-ts","node26-ts","bun","dockerfile"],
+	"default_runtimes":{"python":"python3.14","node":"node24"},
 	"regions":[{"code":"us-east-1","allowed":false},{"code":"eu-central-1","allowed":true},{"code":"ap-southeast-1","allowed":true}],
 	"max_regions":1,
 	"memory_mb":[{"memory_mb":256,"allowed":false},{"memory_mb":512,"allowed":true},{"memory_mb":1024,"allowed":true}],
@@ -150,11 +151,11 @@ func TestInitRuntimesAreTheServersList(t *testing.T) {
 
 	dir = t.TempDir()
 	cp = initCP(t)
-	cp.on("GET", "/deploy-options", 200, strings.Replace(deployOptions, `"runtimes":["python3.11",`, `"runtimes":["python3.14","python3.11",`, 1))
-	if _, stderr, err := runAfy(t, cp, "init", dir, "-y", "--runtime", "python3.14"); err != nil {
+	cp.on("GET", "/deploy-options", 200, strings.Replace(deployOptions, `"runtimes":["python3.11",`, `"runtimes":["python3.16","python3.11",`, 1))
+	if _, stderr, err := runAfy(t, cp, "init", dir, "-y", "--runtime", "python3.16"); err != nil {
 		t.Fatalf("a runtime the server lists must be accepted: %v\n%s", err, stderr)
 	}
-	if !strings.Contains(readFile(t, filepath.Join(dir, "aetherfy.yaml")), "runtime: python3.14") {
+	if !strings.Contains(readFile(t, filepath.Join(dir, "aetherfy.yaml")), "runtime: python3.16") {
 		t.Error("the yaml must carry the runtime")
 	}
 }
@@ -354,5 +355,52 @@ func TestInitAgentThatDoesNotExistWritesNothing(t *testing.T) {
 	}
 	if fileExists(filepath.Join(dir, "aetherfy.yaml")) || fileExists(link.Path(dir)) {
 		t.Error("nothing may be written")
+	}
+}
+
+// A project's runtime is what the server offers, not a list in the CLI. A project that asks for a
+// version the platform has stopped offering (Node 20 reached its end of life) is moved up to the
+// lowest offered one and told so; one that names no version gets the server's default.
+func TestInitResolvesTheProjectsVersionAgainstWhatTheServerOffers(t *testing.T) {
+	cases := []struct {
+		name  string
+		files map[string]string
+		want  string
+		note  string
+	}{
+		{"an offered Node", map[string]string{".nvmrc": "24\n"}, "runtime: node24", ""},
+		{"a Node that is no longer offered", map[string]string{".nvmrc": "20\n"}, "runtime: node22", "Node 20 is not offered; using node22"},
+		{"no version named", map[string]string{}, "runtime: node24", ""},
+		{"TypeScript, no version named", map[string]string{"tsconfig.json": "{}"}, "runtime: node24-ts", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cp := initCP(t)
+			if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"x"}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			for name, body := range c.files {
+				if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			stdout, stderr, err := runAfy(t, cp, "init", dir, "-y", "--name", "invoice-parser")
+			if err != nil {
+				t.Fatalf("init: %v\n%s%s", err, stdout, stderr)
+			}
+			if got := readFile(t, filepath.Join(dir, "aetherfy.yaml")); !strings.Contains(got, c.want+"\n") {
+				t.Errorf("the yaml must carry %q:\n%s", c.want, got)
+			}
+			if c.note != "" && !strings.Contains(stdout+stderr, c.note) {
+				t.Errorf("init must say %q:\n%s%s", c.note, stdout, stderr)
+			}
+			if c.note == "" && strings.Contains(stdout+stderr, "is not offered") {
+				t.Errorf("init must not say a version was moved:\n%s%s", stdout, stderr)
+			}
+		})
 	}
 }

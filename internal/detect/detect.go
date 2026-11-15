@@ -5,13 +5,23 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
+)
+
+// The languages (and the one mode) a project can be detected as. None is a runtime: the platform
+// offers the runtimes, and Resolve turns what a project asks for into one of them.
+const (
+	Python     = "python"
+	Node       = "node"
+	Bun        = "bun"
+	Dockerfile = "dockerfile"
 )
 
 // ProjectHints holds what was auto-detected in a project directory.
 type ProjectHints struct {
-	Runtime          string // e.g. "python3.11", "python3.12", "python3.13", "node20", "node22", "node20-ts", "node22-ts", "bun", "dockerfile"
+	Language         string // Python, Node, Bun or Dockerfile; empty when nothing was recognised
+	Version          string // the version the project asks for: "3.12" for Python, "22" for Node; empty when it names none
+	TypeScript       bool   // Node only: the project is TypeScript, so it runs through tsx
 	Entrypoint       string // e.g. "main.py", "index.js", "index.ts" — empty for dockerfile runtime
 	HasMastra        bool   // mastra in package.json dependencies
 	HasPyprojectToml bool   // pyproject.toml found (uv or PEP 517 project)
@@ -25,7 +35,7 @@ func Project(dir string) ProjectHints {
 	// Dockerfile detection — takes highest priority. If a Dockerfile is present
 	// the user owns the entire container; entrypoint is irrelevant.
 	if fileExists(filepath.Join(dir, "Dockerfile")) {
-		hints.Runtime = "dockerfile"
+		hints.Language = Dockerfile
 		return hints
 	}
 
@@ -44,7 +54,8 @@ func Project(dir string) ProjectHints {
 	hasRequirements := fileExists(filepath.Join(dir, "requirements.txt"))
 	hasMainPy := fileExists(filepath.Join(dir, "main.py"))
 	if hasRequirements || hasPyproject || hasMainPy {
-		hints.Runtime = PythonVersion(dir)
+		hints.Language = Python
+		hints.Version = PythonVersion(dir)
 		if hasMainPy {
 			hints.Entrypoint = "main.py"
 		}
@@ -59,10 +70,12 @@ func Project(dir string) ProjectHints {
 	// Node / Bun detection — overrides python if both present (unusual but safe)
 	jsCandidates := []string{"index.ts", "index.js", "main.ts", "main.js", "src/index.ts", "src/index.js"}
 	if fileExists(filepath.Join(dir, "package.json")) {
+		hints.Version = ""
 		if fileExists(filepath.Join(dir, "bun.lockb")) {
-			hints.Runtime = "bun"
+			hints.Language = Bun
 		} else {
-			hints.Runtime = NodeVersion(dir)
+			hints.Language = Node
+			hints.Version = NodeVersion(dir)
 		}
 		for _, candidate := range jsCandidates {
 			if fileExists(filepath.Join(dir, candidate)) {
@@ -71,17 +84,15 @@ func Project(dir string) ProjectHints {
 			}
 		}
 		hints.HasMastra = hasMastraDep(filepath.Join(dir, "package.json"))
-		// TypeScript promotion for Node: if the project is TypeScript (tsconfig.json
-		// present, or the resolved entrypoint is a .ts file), switch node20→node20-ts
-		// and node22→node22-ts so the backend runs it through `tsx`. Bun is left alone
-		// because Bun runs TypeScript natively.
-		if hints.Runtime == "node20" || hints.Runtime == "node22" {
-			if fileExists(filepath.Join(dir, "tsconfig.json")) || strings.HasSuffix(hints.Entrypoint, ".ts") {
-				hints.Runtime = hints.Runtime + "-ts"
-			}
+		// TypeScript: if the project is TypeScript (tsconfig.json present, or the resolved
+		// entrypoint is a .ts file), Node runs it through `tsx`. Bun is left alone because Bun
+		// runs TypeScript natively.
+		if hints.Language == Node {
+			hints.TypeScript = fileExists(filepath.Join(dir, "tsconfig.json")) || strings.HasSuffix(hints.Entrypoint, ".ts")
 		}
 	} else if fileExists(filepath.Join(dir, "bunfig.toml")) {
-		hints.Runtime = "bun"
+		hints.Language = Bun
+		hints.Version = ""
 		for _, candidate := range jsCandidates {
 			if fileExists(filepath.Join(dir, candidate)) {
 				hints.Entrypoint = candidate
@@ -93,8 +104,8 @@ func Project(dir string) ProjectHints {
 	return hints
 }
 
-// PythonVersion detects the Python version from project files.
-// Priority: .python-version → pyproject.toml requires-python → "python3.11"
+// PythonVersion detects the Python version a project asks for, as "3.<minor>".
+// Priority: .python-version → pyproject.toml requires-python → "" (it names none).
 func PythonVersion(dir string) string {
 	// .python-version (pyenv / asdf)
 	if data, err := os.ReadFile(filepath.Join(dir, ".python-version")); err == nil {
@@ -103,50 +114,31 @@ func PythonVersion(dir string) string {
 		}
 	}
 
-	// pyproject.toml — requires-python = ">=3.10"
+	// pyproject.toml — requires-python = ">=3.12"
 	if data, err := os.ReadFile(filepath.Join(dir, "pyproject.toml")); err == nil {
-		re := regexp.MustCompile(`requires-python\s*=\s*"[^"]*?(\d+)\.(\d+)`)
-		if m := re.FindStringSubmatch(string(data)); len(m) == 3 {
-			if minor, err := strconv.Atoi(m[2]); err == nil {
-				if v := SupportedPythonRuntime(minor); v != "" {
-					return v
-				}
+		re := regexp.MustCompile(`requires-python\s*=\s*"[^"]*?(\d+\.\d+)`)
+		if m := re.FindStringSubmatch(string(data)); len(m) == 2 {
+			if v := ParsePythonVersion(m[1]); v != "" {
+				return v
 			}
 		}
 	}
 
-	return "python3.11"
+	return ""
 }
 
-// ParsePythonVersion extracts a supported runtime string from a raw version string.
-// Handles "3.11", "3.11.5", "python3.10", etc.
+// ParsePythonVersion extracts "3.<minor>" from a raw version string.
+// Handles "3.11", "3.11.5", "python3.10", etc. Returns "" when there is none.
 func ParsePythonVersion(s string) string {
-	re := regexp.MustCompile(`3\.(\d+)`)
+	re := regexp.MustCompile(`(?:^|[^0-9.])3\.(\d+)`)
 	if m := re.FindStringSubmatch(s); len(m) == 2 {
-		if minor, err := strconv.Atoi(m[1]); err == nil {
-			return SupportedPythonRuntime(minor)
-		}
+		return "3." + m[1]
 	}
 	return ""
 }
 
-// SupportedPythonRuntime maps a minor version integer to a runtime string.
-// Returns "" for versions below 3.11 (unsupported by the platform).
-func SupportedPythonRuntime(minor int) string {
-	switch {
-	case minor == 11:
-		return "python3.11"
-	case minor == 12:
-		return "python3.12"
-	case minor >= 13:
-		// Future versions fall back to the latest known supported
-		return "python3.13"
-	}
-	return ""
-}
-
-// NodeVersion detects the Node.js version from project files.
-// Priority: .nvmrc → .node-version → package.json engines.node → "node20"
+// NodeVersion detects the Node.js major version a project asks for.
+// Priority: .nvmrc → .node-version → package.json engines.node → "" (it names none).
 func NodeVersion(dir string) string {
 	for _, file := range []string{".nvmrc", ".node-version"} {
 		if data, err := os.ReadFile(filepath.Join(dir, file)); err == nil {
@@ -170,32 +162,27 @@ func NodeVersion(dir string) string {
 		}
 	}
 
-	return "node20"
+	return ""
 }
 
-// ParseNodeVersion extracts a supported runtime string from a raw version string.
-// Handles "20", "v22.11.0", ">=20.0.0", "^22", "lts/iron", "lts/jod".
-// Node.js odd releases (19, 21, 23) are not LTS and are not supported.
+// ltsNames are the codenames .nvmrc accepts, each with the Node major it names.
+var ltsNames = map[string]string{
+	"lts/hydrogen": "18",
+	"lts/iron":     "20",
+	"lts/jod":      "22",
+	"lts/krypton":  "24",
+	"lts/lithium":  "26",
+}
+
+// ParseNodeVersion extracts the major version from a raw version string.
+// Handles "20", "v22.11.0", ">=20.0.0", "^22", "lts/jod". Returns "" when there is none.
 func ParseNodeVersion(s string) string {
-	ltsNames := map[string]string{
-		"lts/iron": "node20", // Node.js 20 (Active LTS)
-		"lts/jod":  "node22", // Node.js 22 (Active LTS)
-	}
 	if v, ok := ltsNames[strings.ToLower(strings.TrimSpace(s))]; ok {
 		return v
 	}
-
 	re := regexp.MustCompile(`(\d+)`)
 	if m := re.FindStringSubmatch(s); len(m) == 2 {
-		if major, err := strconv.Atoi(m[1]); err == nil {
-			switch {
-			case major >= 22:
-				return "node22"
-			case major == 20:
-				return "node20"
-				// 21 is an odd/non-LTS release — not supported, caller falls back to default
-			}
-		}
+		return m[1]
 	}
 	return ""
 }

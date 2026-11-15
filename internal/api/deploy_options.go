@@ -9,7 +9,10 @@ import "net/url"
 type DeployOptions struct {
 	// Runtimes are the runtimes a deploy accepts, in the server's order.
 	Runtimes []string `json:"runtimes"`
-	Regions  []struct {
+	// DefaultRuntimes is the runtime to pick for a language when the project names no version,
+	// keyed by language ("python", "node"): the platform's choice, so no client carries one.
+	DefaultRuntimes map[string]string `json:"default_runtimes"`
+	Regions         []struct {
 		Code    string `json:"code"`
 		Allowed bool   `json:"allowed"`
 	} `json:"regions"`

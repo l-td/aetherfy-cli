@@ -18,20 +18,18 @@ func TestParsePythonVersion(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"3.11", "python3.11"},
-		{"3.11.5", "python3.11"},
-		{"3.12", "python3.12"},
-		{"3.12.3", "python3.12"},
-		{"3.13", "python3.13"},
-		{"3.13.1", "python3.13"},
-		{"python3.12", "python3.12"},
-		// Future version → falls back to 3.13
-		{"3.15", "python3.13"},
-		{"3.14", "python3.13"},
-		// Unsupported (below 3.11)
-		{"3.10", ""},
-		{"3.9", ""},
+		{"3.11", "3.11"},
+		{"3.11.5", "3.11"},
+		{"3.12.3", "3.12"},
+		{"3.14", "3.14"},
+		{"python3.12", "3.12"},
+		// A version is read as it is written, whether or not the platform offers it:
+		// Resolve is what maps it onto a runtime.
+		{"3.10", "3.10"},
+		{"3.9", "3.9"},
+		{"3.99", "3.99"},
 		{"2.7", ""},
+		{"13.5", ""}, // a 3.5 inside another number is not a Python version
 		{"invalid", ""},
 		{"", ""},
 	}
@@ -48,7 +46,7 @@ func TestParsePythonVersion(t *testing.T) {
 func TestPythonVersion_PythonVersionFile(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".python-version"), []byte("3.12.3\n"), 0644))
-	assert.Equal(t, "python3.12", detect.PythonVersion(dir))
+	assert.Equal(t, "3.12", detect.PythonVersion(dir))
 }
 
 func TestPythonVersion_PythonVersionFilePriority(t *testing.T) {
@@ -58,7 +56,7 @@ func TestPythonVersion_PythonVersionFilePriority(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
 requires-python = ">=3.13"
 `), 0644))
-	assert.Equal(t, "python3.12", detect.PythonVersion(dir))
+	assert.Equal(t, "3.12", detect.PythonVersion(dir))
 }
 
 func TestPythonVersion_PyprojectToml(t *testing.T) {
@@ -67,21 +65,21 @@ func TestPythonVersion_PyprojectToml(t *testing.T) {
 name = "my-app"
 requires-python = ">=3.12"
 `), 0644))
-	assert.Equal(t, "python3.12", detect.PythonVersion(dir))
+	assert.Equal(t, "3.12", detect.PythonVersion(dir))
 }
 
-func TestPythonVersion_PyprojectTomlUnsupportedVersion(t *testing.T) {
-	// requires-python = ">=3.10" — 3.10 not supported → falls back to default 3.11
+func TestPythonVersion_PyprojectTomlOlderThanAnyOffered(t *testing.T) {
+	// requires-python = ">=3.10" asks for 3.10: detection reads it, Resolve moves it up.
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "pyproject.toml"), []byte(`[project]
 requires-python = ">=3.10"
 `), 0644))
-	assert.Equal(t, "python3.11", detect.PythonVersion(dir))
+	assert.Equal(t, "3.10", detect.PythonVersion(dir))
 }
 
-func TestPythonVersion_Default(t *testing.T) {
+func TestPythonVersion_NamesNone(t *testing.T) {
 	dir := t.TempDir()
-	assert.Equal(t, "python3.11", detect.PythonVersion(dir))
+	assert.Equal(t, "", detect.PythonVersion(dir))
 }
 
 // ─── ParseNodeVersion ─────────────────────────────────────────────────────────
@@ -92,29 +90,24 @@ func TestParseNodeVersion(t *testing.T) {
 		want  string
 	}{
 		// Plain integers
-		{"20", "node20"},
-		{"22", "node22"},
+		{"22", "22"},
+		{"24", "24"},
 		// v-prefixed
-		{"v20.11.0", "node20"},
-		{"v22.3.0", "node22"},
+		{"v22.3.0", "22"},
+		{"v24.11.0", "24"},
 		// Range constraints
-		{">=20.0.0", "node20"},
-		{">=22.0.0", "node22"},
-		{"^20", "node20"},
-		{"^22", "node22"},
-		// LTS names
-		{"lts/iron", "node20"},
-		{"lts/jod", "node22"},
-		{"LTS/Iron", "node20"}, // case-insensitive
-		{"LTS/Jod", "node22"},
-		// Future version → node22
-		{"24", "node22"},
-		// Unsupported: odd non-LTS versions, legacy, garbage
-		{"18", ""},
-		{"19", ""},
-		{"21", ""},
-		{"16", ""},
-		{"lts/hydrogen", ""}, // Node 18 — EOL, not supported
+		{">=22.0.0", "22"},
+		{"^24", "24"},
+		// LTS names, case-insensitive
+		{"lts/jod", "22"},
+		{"lts/krypton", "24"},
+		{"LTS/Lithium", "26"},
+		{"lts/iron", "20"},
+		{"lts/hydrogen", "18"},
+		// A version is read as it is written, whether or not the platform offers it
+		{"20", "20"},
+		{"21", "21"},
+		{"99", "99"},
 		{"invalid", ""},
 		{"", ""},
 	}
@@ -128,49 +121,44 @@ func TestParseNodeVersion(t *testing.T) {
 
 // ─── NodeVersion (directory scan) ────────────────────────────────────────────
 
-func TestNodeVersion_Nvmrc_Node20(t *testing.T) {
+func TestNodeVersion_Nvmrc(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("20\n"), 0644))
-	assert.Equal(t, "node20", detect.NodeVersion(dir))
-}
-
-func TestNodeVersion_Nvmrc_Node22(t *testing.T) {
-	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("22\n"), 0644))
-	assert.Equal(t, "node22", detect.NodeVersion(dir))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("24\n"), 0644))
+	assert.Equal(t, "24", detect.NodeVersion(dir))
 }
 
 func TestNodeVersion_NvmrcVPrefixed(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("v22.3.0\n"), 0644))
-	assert.Equal(t, "node22", detect.NodeVersion(dir))
+	assert.Equal(t, "22", detect.NodeVersion(dir))
 }
 
-func TestNodeVersion_NvmrcLTSNameJod(t *testing.T) {
+func TestNodeVersion_NvmrcLTSNameKrypton(t *testing.T) {
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("lts/jod\n"), 0644))
-	assert.Equal(t, "node22", detect.NodeVersion(dir))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("lts/krypton\n"), 0644))
+	assert.Equal(t, "24", detect.NodeVersion(dir))
 }
 
-func TestNodeVersion_NvmrcUnsupportedFallsBackToDefault(t *testing.T) {
-	// Node 18 is EOL / not supported — falls back to node20 default
+func TestNodeVersion_NvmrcGarbageFallsThrough(t *testing.T) {
+	// An .nvmrc that names no version is skipped, and the next source is read.
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("18\n"), 0644))
-	assert.Equal(t, "node20", detect.NodeVersion(dir))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("latest\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".node-version"), []byte("22\n"), 0644))
+	assert.Equal(t, "22", detect.NodeVersion(dir))
 }
 
 func TestNodeVersion_NodeVersionFile(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".node-version"), []byte("22\n"), 0644))
-	assert.Equal(t, "node22", detect.NodeVersion(dir))
+	assert.Equal(t, "22", detect.NodeVersion(dir))
 }
 
 func TestNodeVersion_NvmrcPriority(t *testing.T) {
 	// .nvmrc takes priority over .node-version
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("20\n"), 0644))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("24\n"), 0644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".node-version"), []byte("22\n"), 0644))
-	assert.Equal(t, "node20", detect.NodeVersion(dir))
+	assert.Equal(t, "24", detect.NodeVersion(dir))
 }
 
 func TestNodeVersion_PackageJsonEngines(t *testing.T) {
@@ -181,12 +169,12 @@ func TestNodeVersion_PackageJsonEngines(t *testing.T) {
 	}
 	data, _ := json.Marshal(pkg)
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
-	assert.Equal(t, "node22", detect.NodeVersion(dir))
+	assert.Equal(t, "22", detect.NodeVersion(dir))
 }
 
-func TestNodeVersion_Default(t *testing.T) {
+func TestNodeVersion_NamesNone(t *testing.T) {
 	dir := t.TempDir()
-	assert.Equal(t, "node20", detect.NodeVersion(dir))
+	assert.Equal(t, "", detect.NodeVersion(dir))
 }
 
 // ─── Project (full scan) ──────────────────────────────────────────────────────
@@ -198,7 +186,8 @@ func TestProject_PythonWithMainPy(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".python-version"), []byte("3.12\n"), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "python3.12", h.Runtime)
+	assert.Equal(t, detect.Python, h.Language)
+	assert.Equal(t, "3.12", h.Version)
 	assert.Equal(t, "main.py", h.Entrypoint)
 	assert.False(t, h.HasMastra)
 }
@@ -212,7 +201,8 @@ func TestProject_PythonBareMainPyNoManifest(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte("print('hi')"), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "python3.11", h.Runtime, "main.py alone should signal Python (default version)")
+	assert.Equal(t, detect.Python, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "main.py", h.Entrypoint)
 	assert.False(t, h.HasPyprojectToml)
 	assert.False(t, h.HasUvLock)
@@ -228,7 +218,7 @@ func TestProject_PythonNonMainPyAlone(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "script.py"), []byte("print('hi')"), 0644))
 
 	h := detect.Project(dir)
-	assert.Empty(t, h.Runtime, "a non-main.py file should not signal Python without a manifest")
+	assert.Empty(t, h.Language, "nothing was recognised")
 	assert.Empty(t, h.Entrypoint)
 }
 
@@ -241,7 +231,9 @@ func TestProject_NodeWithIndexJs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, ".nvmrc"), []byte("22\n"), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node22", h.Runtime)
+	assert.Equal(t, detect.Node, h.Language)
+	assert.Equal(t, "22", h.Version)
+	assert.False(t, h.TypeScript)
 	assert.Equal(t, "index.js", h.Entrypoint)
 }
 
@@ -254,7 +246,8 @@ func TestProject_BunWithIndexTs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, detect.Bun, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
@@ -265,7 +258,8 @@ func TestProject_BunViaBunfigToml(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, detect.Bun, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
@@ -276,13 +270,14 @@ func TestProject_BunBunfigWithMainTs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, detect.Bun, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "main.ts", h.Entrypoint)
 }
 
 func TestProject_NodeWithMainTs(t *testing.T) {
 	// package.json + main.ts (no index.ts/index.js) → detects main.ts and
-	// promotes node20 → node20-ts because the entrypoint is TypeScript.
+	// marks the project TypeScript because the entrypoint is.
 	dir := t.TempDir()
 	pkg := map[string]interface{}{"name": "test"}
 	data, _ := json.Marshal(pkg)
@@ -290,12 +285,14 @@ func TestProject_NodeWithMainTs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node20-ts", h.Runtime)
+	assert.Equal(t, detect.Node, h.Language)
+	assert.Equal(t, "", h.Version)
+	assert.True(t, h.TypeScript)
 	assert.Equal(t, "main.ts", h.Entrypoint)
 }
 
 func TestProject_NodeTsViaIndexTs(t *testing.T) {
-	// package.json + index.ts → node20-ts (default node major + TS promotion)
+	// package.json + index.ts → TypeScript Node, no version named
 	dir := t.TempDir()
 	pkg := map[string]interface{}{"name": "test"}
 	data, _ := json.Marshal(pkg)
@@ -303,12 +300,14 @@ func TestProject_NodeTsViaIndexTs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node20-ts", h.Runtime)
+	assert.Equal(t, detect.Node, h.Language)
+	assert.Equal(t, "", h.Version)
+	assert.True(t, h.TypeScript)
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
 func TestProject_Node22TsViaNvmrc(t *testing.T) {
-	// .nvmrc pins node22, index.ts present → node22-ts
+	// .nvmrc pins 22, index.ts present → TypeScript Node 22
 	dir := t.TempDir()
 	pkg := map[string]interface{}{"name": "test"}
 	data, _ := json.Marshal(pkg)
@@ -317,13 +316,15 @@ func TestProject_Node22TsViaNvmrc(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node22-ts", h.Runtime)
+	assert.Equal(t, detect.Node, h.Language)
+	assert.Equal(t, "22", h.Version)
+	assert.True(t, h.TypeScript)
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
 func TestProject_NodeTsViaTsconfigWithJsEntrypoint(t *testing.T) {
 	// tsconfig.json present but user wrote plain index.js — still promote to
-	// node20-ts because the project is declared TypeScript.
+	// TypeScript Node because the project is declared TypeScript.
 	dir := t.TempDir()
 	pkg := map[string]interface{}{"name": "test"}
 	data, _ := json.Marshal(pkg)
@@ -332,7 +333,9 @@ func TestProject_NodeTsViaTsconfigWithJsEntrypoint(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node20-ts", h.Runtime)
+	assert.Equal(t, detect.Node, h.Language)
+	assert.Equal(t, "", h.Version)
+	assert.True(t, h.TypeScript)
 	assert.Equal(t, "index.js", h.Entrypoint)
 }
 
@@ -347,7 +350,8 @@ func TestProject_BunNotPromotedByTsconfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, detect.Bun, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
@@ -362,7 +366,8 @@ func TestProject_IndexTsTakesPriorityOverMainTs(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.ts"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "bun", h.Runtime)
+	assert.Equal(t, detect.Bun, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "index.ts", h.Entrypoint)
 }
 
@@ -377,7 +382,9 @@ func TestProject_PackageJsonTakesPriorityOverBunfig(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.js"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "node20", h.Runtime)
+	assert.Equal(t, detect.Node, h.Language)
+	assert.Equal(t, "", h.Version)
+	assert.False(t, h.TypeScript)
 	assert.Equal(t, "index.js", h.Entrypoint)
 }
 
@@ -399,7 +406,8 @@ func TestProject_Dockerfile(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "Dockerfile"), []byte("FROM alpine\n"), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.Equal(t, detect.Dockerfile, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "", h.Entrypoint) // entrypoint is irrelevant for dockerfile runtime
 }
 
@@ -411,7 +419,8 @@ func TestProject_DockerfileTakesPriorityOverPython(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.Equal(t, detect.Dockerfile, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "", h.Entrypoint)
 }
 
@@ -423,14 +432,15 @@ func TestProject_DockerfileTakesPriorityOverNode(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), data, 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "dockerfile", h.Runtime)
+	assert.Equal(t, detect.Dockerfile, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.Equal(t, "", h.Entrypoint)
 }
 
 func TestProject_Empty(t *testing.T) {
 	dir := t.TempDir()
 	h := detect.Project(dir)
-	assert.Equal(t, "", h.Runtime)
+	assert.Empty(t, h.Language, "nothing was recognised")
 	assert.Equal(t, "", h.Entrypoint)
 	assert.False(t, h.HasMastra)
 	assert.False(t, h.HasUvLock)
@@ -449,7 +459,8 @@ dependencies = []
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "python3.12", h.Runtime)
+	assert.Equal(t, detect.Python, h.Language)
+	assert.Equal(t, "3.12", h.Version)
 	assert.Equal(t, "main.py", h.Entrypoint)
 	assert.True(t, h.HasPyprojectToml)
 	assert.True(t, h.HasUvLock)
@@ -465,7 +476,8 @@ requires-python = ">=3.11"
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "python3.11", h.Runtime)
+	assert.Equal(t, detect.Python, h.Language)
+	assert.Equal(t, "3.11", h.Version)
 	assert.True(t, h.HasPyprojectToml)
 	assert.False(t, h.HasUvLock)
 }
@@ -477,7 +489,8 @@ func TestProject_PythonRequirementsTxtNoUvLock(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "main.py"), []byte(""), 0644))
 
 	h := detect.Project(dir)
-	assert.Equal(t, "python3.11", h.Runtime)
+	assert.Equal(t, detect.Python, h.Language)
+	assert.Equal(t, "", h.Version)
 	assert.False(t, h.HasPyprojectToml)
 	assert.False(t, h.HasUvLock)
 }

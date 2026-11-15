@@ -15,7 +15,7 @@ import (
 // ap-southeast-1 (us-east-1 is listed but not open) with the given limit. It
 // carries no home_region: the field is gone from the contract.
 func regionOptions(max int) string {
-	return `{"runtimes":["python3.11"],
+	return `{"runtimes":["python3.11"],"default_runtimes":{"python":"python3.11","node":"node24"},
 	"regions":[{"code":"us-east-1","allowed":false},{"code":"eu-central-1","allowed":true},{"code":"ap-southeast-1","allowed":true}],
 	"max_regions":` + string(rune('0'+max)) + `,
 	"memory_mb":[{"memory_mb":512,"allowed":true}]}`

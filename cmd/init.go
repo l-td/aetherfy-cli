@@ -347,13 +347,37 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 	output.PrintInfo("Scanning your project...")
 
 	hints := detect.Project(absDir)
-	if hints.Runtime != "" {
-		output.PrintSuccess("Detected runtime: %s", hints.Runtime)
+
+	// The runtimes, and the regions and sizes an agent in ws may have, from
+	// the server: offered exactly as returned, with no rule of the CLI's own.
+	// What the project asks for is resolved against them: the CLI names no runtime.
+	opts, err := client.GetDeployOptions(ws.ID)
+	if err != nil {
+		return nil, printRefusal("Failed to read the regions and memory sizes your plan allows", err)
+	}
+	runtimeOptions := opts.Runtimes
+	if len(runtimeOptions) == 0 {
+		return nil, fmt.Errorf("the server listed no runtimes to deploy with")
+	}
+	detected, err := detect.Resolve(hints, runtimeOptions, opts.DefaultRuntimes)
+	if err != nil {
+		// Detection only suggests; a runtime the person named is theirs to use.
+		if initRuntime == "" {
+			return nil, err
+		}
+		detected = detect.Resolution{}
+	}
+
+	if detected.Runtime != "" {
+		output.PrintSuccess("Detected runtime: %s", detected.Runtime)
+	}
+	if detected.Note != "" {
+		output.PrintWarning("%s", detected.Note)
 	}
 	if hints.Entrypoint != "" {
 		output.PrintSuccess("Detected entrypoint: %s", hints.Entrypoint)
 	}
-	if hints.Runtime == "" && initRuntime == "" {
+	if detected.Runtime == "" && initRuntime == "" {
 		if isInteractive() {
 			output.PrintWarning("Could not detect runtime — you will be asked to choose")
 		} else {
@@ -362,7 +386,7 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 	}
 	selectedRuntime := initRuntime
 	if selectedRuntime == "" {
-		selectedRuntime = hints.Runtime
+		selectedRuntime = detected.Runtime
 	}
 	if hints.Entrypoint == "" && initEntrypoint == "" && selectedRuntime != "dockerfile" {
 		if isInteractive() {
@@ -381,18 +405,7 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 	}
 	output.Println("")
 
-	// The runtimes, and the regions and sizes an agent in ws may have, from
-	// the server: offered exactly as returned, with no rule of the CLI's own.
-	opts, err := client.GetDeployOptions(ws.ID)
-	if err != nil {
-		return nil, printRefusal("Failed to read the regions and memory sizes your plan allows", err)
-	}
-
 	// --- Runtime ---
-	runtimeOptions := opts.Runtimes
-	if len(runtimeOptions) == 0 {
-		return nil, fmt.Errorf("the server listed no runtimes to deploy with")
-	}
 	runtime := initRuntime
 	if runtime != "" && !contains(runtimeOptions, runtime) {
 		return nil, refuse("--runtime %s is not one the server accepts (%s)", runtime, strings.Join(runtimeOptions, ", "))
@@ -400,7 +413,7 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 	if runtime == "" {
 		if interactive {
 			runtimeDefault := 0
-			if i := indexOf(runtimeOptions, hints.Runtime); hints.Runtime != "" && runtimeOptions[i] == hints.Runtime {
+			if i := indexOf(runtimeOptions, detected.Runtime); detected.Runtime != "" && runtimeOptions[i] == detected.Runtime {
 				runtimeDefault = i
 			}
 			i, err := p.choose("Runtime", runtimeOptions, runtimeDefault)
@@ -408,8 +421,8 @@ func generateConfig(cmd *cobra.Command, client *api.Client, p *prompter, absDir 
 				return nil, err
 			}
 			runtime = runtimeOptions[i]
-		} else if hints.Runtime != "" && contains(runtimeOptions, hints.Runtime) {
-			runtime = hints.Runtime
+		} else if detected.Runtime != "" {
+			runtime = detected.Runtime
 		} else {
 			return nil, refuse("could not detect the runtime. Pass --runtime, one of: %s", strings.Join(runtimeOptions, ", "))
 		}

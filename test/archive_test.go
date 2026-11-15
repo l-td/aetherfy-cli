@@ -111,13 +111,13 @@ entrypoint: main.py
 func TestParseAetherfyConfig_MinimalConfig(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	yaml := "runtime: node20\n"
+	yaml := "runtime: node24\n"
 	require.NoError(t, os.WriteFile(filepath.Join(tmpDir, "aetherfy.yaml"), []byte(yaml), 0644))
 
 	cfg, err := archive.ParseAetherfyConfig(tmpDir)
 	require.NoError(t, err)
 
-	assert.Equal(t, "node20", cfg.Runtime)
+	assert.Equal(t, "node24", cfg.Runtime)
 	assert.Equal(t, "", cfg.Type)
 	assert.Empty(t, cfg.Regions)
 	assert.Equal(t, 0, cfg.MemoryMB)
