@@ -19,6 +19,11 @@ so an entry here is written for the version the owner tags next.
   percent of the plan used, overage dollars, each agent's awake time). `--json` prints the control
   plane's document unchanged.
 - `afy login --no-browser`.
+- `afy deploy` and `afy status` print what the control plane says to know about the agent or the release,
+  as it words it. Today that is the warning that the agent's runtime is past its end of life: the sentence
+  names the date deploys on it stop and the runtime to create a new agent on. It is a warning, not an error,
+  and the exit code does not change. `--json` carries it as `warnings` on the deployment and on the agent.
+  Release this CLI after the control plane that sends `warnings`.
 
 ### Breaking
 
@@ -42,6 +47,11 @@ so an entry here is written for the version the owner tags next.
 
 ### Changed
 
+- `afy init` names no runtime of its own. It reads the language and the version a project asks for and
+  resolves them against what the control plane offers (`GET /deploy-options`): a version that is offered
+  is that runtime, an older one gets the lowest offered version above it and `afy init` says so, and a
+  project that names no version gets the control plane's default for its language. Node 20 is no longer
+  offered. A runtime the control plane adds needs no CLI release.
 - `afy github pause <agent>` and `afy github resume <agent>` turn auto-deploy off and on for an agent's
   GitHub link without unlinking it. While auto-deploy is paused a push builds nothing and says so on its
   commit, and it is not deployed later, not even after a resume; a push already being built finishes, and

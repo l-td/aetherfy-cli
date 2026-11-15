@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 160
+      "count": 161
     },
     {
       "path": "api/routes/regions.py",
@@ -564,6 +564,10 @@
       "tier": "top-level"
     },
     "RESOURCE_BUSY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "RUNTIME_DEPRECATED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -856,6 +856,11 @@ func showAgentStatus(client *api.Client, name string) error {
 	if agent.URL != "" {
 		output.KeyValue("URL", agent.URL)
 	}
+	// What the server says to know about this agent (its runtime past its end of life, today): its own
+	// sentence, one line each.
+	for _, w := range agent.Warnings {
+		output.KeyValue("Warning", w.Message)
+	}
 	// Degraded = a partial multi-region deploy still converging (derived from
 	// the current deployment, control-plane REVIEW_FAQ §63). Shown only when
 	// degraded — a status command that hides this is a contract violation by

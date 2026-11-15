@@ -276,6 +276,9 @@ func deployDir(client *api.Client, agent *api.Agent, dir string) error {
 	}
 
 	output.KeyValue("Deployment ID", resp.DeploymentID)
+	// What the server says to know about this release, printed as soon as it said it (a watch may end in a
+	// timeout, and a warning lost behind it is no warning).
+	printWarnings(resp.Warnings)
 	output.Println("")
 	if deployDetach {
 		output.PrintSuccess("Deployment queued.")

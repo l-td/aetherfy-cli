@@ -66,6 +66,10 @@ type Agent struct {
 	RegionsTotal   int    `json:"regions_total"`
 	RegionsReady   int    `json:"regions_ready"`
 	DegradedReason string `json:"degraded_reason,omitempty"`
+	// Warnings: what the server says to know about this agent today (server AgentResponse.warnings), empty
+	// when there is nothing. Today the only one is RUNTIME_DEPRECATED. No omitempty: `--json` says []
+	// rather than dropping the key.
+	Warnings []Warning `json:"warnings"`
 	// WHY THE AGENT IS NOT WHERE ITS OWNER ASKED, when nothing else on the
 	// record says: `failed` because the compute plane lost its app or image,
 	// or still `archived` because a restore was refused (the plan's agent
@@ -223,6 +227,20 @@ type DeployResponse struct {
 	Version       int    `json:"version"`
 	Status        string `json:"state"`
 	QueuePosition *int   `json:"queue_position,omitempty"`
+	// Warnings: what the server says to know about this release (server DeploymentResponse.warnings).
+	// The request succeeded; the CLI prints each message (printWarnings) and `--json` carries them.
+	Warnings []Warning `json:"warnings"`
+}
+
+// Warning is one entry of `warnings` on an agent or a release (server AgentWarning). It is never an
+// error. Message is the server's own sentence, with the dates and what to move to; the CLI prints it as
+// sent and decides nothing from the other fields.
+type Warning struct {
+	Code          string  `json:"code"`
+	Message       string  `json:"message"`
+	Runtime       string  `json:"runtime,omitempty"`
+	DeploysStopOn string  `json:"deploys_stop_on,omitempty"`
+	Replacement   *string `json:"replacement"`
 }
 
 // RollbackResponse is the response from a rollback request (same shape as DeploymentResponse).
