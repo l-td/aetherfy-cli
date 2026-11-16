@@ -488,10 +488,10 @@ var (
 // exitStillPending: a wait reached its bound with the thing it waits for still
 // going: `afy start --wait` at the server's bound with the start neither carried
 // out nor dropped, `afy run --wait` at its own with the run neither ended nor
-// cancelled. Not a failure -- Aetherfy is still retrying the start, the run goes
-// on -- so not 1, which every waiting command uses for "it failed";
-// the next code after the CLI's 1 (failed), 2 (input refused) and
-// 3 (not logged in).
+// cancelled. Non-zero, so a script that gates on the command does not read it as
+// success, but not 1, which every waiting command uses for "it failed": Aetherfy is
+// still retrying the start, the run goes on, and giving up the wait stops neither.
+// The next code after the CLI's 1 (failed), 2 (input refused) and 3 (not logged in).
 const exitStillPending = 4
 
 // stillPendingError is what startAgent returns for exitStillPending.

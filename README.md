@@ -394,28 +394,31 @@ Keys starting with `AETHERFY_` are reserved.
 
 | Command | Description |
 |---------|-------------|
-| `afy spawn <parent> <child>` | Spawn a JOB agent from a SERVICE parent |
+| `afy spawn <parent> <child>` | Spawn a run of an agent, a task or a service, from a parent agent |
 | `afy spawn <parent> <child> --payload '{...}'` | Pass a JSON payload via `AETHERFY_SPAWN_PAYLOAD` |
 | `afy spawn <parent> <child> --payload-file payload.json` | Read payload from a file |
 | `afy spawn <parent> <child> --stdin` | Read payload from stdin |
 
-The parent must have `spawn.enabled: true`, and the child must be of type `job`.
-`afy spawn` prints the run's id, its state and its region. When the account's runs in
+The parent must have `spawn.enabled: true` and list the child in `spawn.workers`
+(or list `["*"]`, any of your agents); an empty list allows no spawns. A task child
+runs its entrypoint once, and a service child is sent one request to its
+`POST /aetherfy/run` route. `afy spawn` prints the run's id, its state and its region. When the account's runs in
 flight are at their limit, the spawned run waits in the line like any other, and the
 command says so with its place (`Run accepted; waiting for a slot (#3 in line).`).
 
-**`spawn` vs `agents run`** — both start a job agent with a JSON payload, but
+**`spawn` vs `run`** — both start a run of an agent with a JSON payload, but
 they are different entry points:
 
-- `afy spawn <parent> <child>` is the parent-to-worker path: a SERVICE agent
-  dispatches work to one of its declared workers. It requires a parent, and
-  the resulting runs belong to the parent's history.
-- `afy run <name>` is a manual **root** run of a job agent — no parent
+- `afy spawn <parent> <child>` is the parent-to-worker path: an agent
+  dispatches work to one of its declared workers. It requires a parent, which
+  is recorded on the run: `afy runs <child>` lists the run with the parent's
+  name as who spawned it.
+- `afy run <name>` is a manual **root** run of an agent — no parent
   involved. These runs appear in `afy runs <name>` alongside the
   scheduled ones.
 
-Note the flags differ: `spawn` accepts `--stdin`, `agents run` does not;
-`agents run` accepts `--wait`, `spawn` does not.
+Note the flags differ: `spawn` accepts `--stdin`, `afy run` does not;
+`afy run` accepts `--wait`, `spawn` does not.
 
 ### GitHub Integration
 
