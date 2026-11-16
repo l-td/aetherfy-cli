@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 161
+      "count": 164
     },
     {
       "path": "api/routes/regions.py",
@@ -139,15 +139,19 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
-    "AGENT_RUN_CONCURRENCY_LIMIT_EXCEEDED": {
-      "source": "shared/error_codes.py",
-      "tier": "top-level"
-    },
     "AGENT_RUN_INELIGIBLE_STATE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "AGENT_RUN_LINE_FULL": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "AGENT_SAFETY_LIMIT_EXCEEDED": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SCHEDULE_DEADLINE_TOO_LONG": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -156,6 +160,10 @@
       "tier": "top-level"
     },
     "AGENT_SERVICE_NOT_RUNNING": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "AGENT_SERVICE_REDEPLOY_REQUIRED": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
@@ -324,6 +332,10 @@
       "tier": "top-level"
     },
     "DEPLOYMENT_IN_PROGRESS": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_NOT_A_RUN": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
