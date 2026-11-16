@@ -164,8 +164,32 @@ func orderedKeys(local, server map[string]interface{}) []string {
 // reordering is never a change.
 var setFields = map[string]bool{"regions": true}
 
+// blockFields are blocks whose keys are all optional but one: a key written as
+// null is the key left out (`deadline_minutes: null` and no `deadline_minutes`
+// both mean no deadline), so a null is not a difference. Whether the control
+// plane's export writes a null or leaves the key out, the same block is the same.
+var blockFields = map[string]bool{"schedule": true}
+
+// withoutNulls is a block without its null-valued keys; any other value is itself.
+func withoutNulls(v interface{}) interface{} {
+	m, ok := v.(map[string]interface{})
+	if !ok {
+		return v
+	}
+	out := make(map[string]interface{}, len(m))
+	for k, e := range m {
+		if e != nil {
+			out[k] = e
+		}
+	}
+	return out
+}
+
 // equalField compares one field's two values, by the field's own rule.
 func equalField(key string, a, b interface{}) bool {
+	if blockFields[key] {
+		return equalValues(withoutNulls(a), withoutNulls(b))
+	}
 	if setFields[key] {
 		if as, ok := sortedStrings(a); ok {
 			if bs, ok := sortedStrings(b); ok {

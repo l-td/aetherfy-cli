@@ -87,10 +87,14 @@ func CheckPlatformFields(data []byte) error {
 
 // CheckConfigKeys is every key check a deploy would fail on, in the control
 // plane's order: a platform-owned key first (it refuses those before it
-// validates the model), then the names its model does not declare.
+// validates the model), then the names its model does not declare, then the shape
+// of `schedule:` (a block, not the string it was).
 func CheckConfigKeys(data []byte) error {
 	if err := CheckPlatformFields(data); err != nil {
 		return err
 	}
-	return CheckUnknownFields(data)
+	if err := CheckUnknownFields(data); err != nil {
+		return err
+	}
+	return CheckScheduleForm(data)
 }

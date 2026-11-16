@@ -15,12 +15,16 @@ func init() {
 	output.DisableColors()
 }
 
-// buildAetherfyYAML emits `schedule:` (quoted) when set, and omits it entirely
-// when empty — schedule-less agents keep the original file shape.
+// buildAetherfyYAML emits the `schedule:` BLOCK (its expression quoted, under
+// `cron:`) when set, and omits it entirely when empty — schedule-less agents keep
+// the original file shape.
 func TestBuildAetherfyYAMLSchedule(t *testing.T) {
 	with := buildAetherfyYAML("python3.11", "job", "us-east-1", 256, false, "main.py", "", "0 3 * * *")
-	if !strings.Contains(with, `schedule: "0 3 * * *"`) {
-		t.Errorf("expected quoted schedule line, got:\n%s", with)
+	if !strings.Contains(with, "schedule:\n  cron: \"0 3 * * *\"") {
+		t.Errorf("expected the schedule block with its quoted cron, got:\n%s", with)
+	}
+	if strings.Contains(with, `schedule: "`) {
+		t.Errorf("the string form of schedule is written:\n%s", with)
 	}
 
 	without := buildAetherfyYAML("python3.11", "service", "us-east-1", 256, false, "main.py", "", "")

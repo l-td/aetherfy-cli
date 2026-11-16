@@ -672,10 +672,14 @@ func buildAetherfyYAML(runtime, agentType, region string, memoryMB int, keepAliv
 		}
 	}
 
-	// Cron schedule. Quoted so cron expressions like "0 3 * * *"
-	// are always parsed as a string. Validated server-side on deploy.
+	// The schedule is a BLOCK: the cron expression under `cron:`, quoted so an
+	// expression like "0 3 * * *" is always parsed as a string and validated
+	// server-side on deploy. The deadline is offered as a commented line, as the
+	// spawn block is below, only where there is a schedule for it to belong to.
 	if schedule != "" {
-		sb.WriteString(fmt.Sprintf("schedule: %q  # UTC, 5-field cron (min every 5 minutes)\n", schedule))
+		sb.WriteString("schedule:\n")
+		sb.WriteString(fmt.Sprintf("  cron: %q  # UTC, 5-field cron (min every 5 minutes)\n", schedule))
+		sb.WriteString("#   deadline_minutes: 30  # optional: how long after its time a run may still start; shorter than the gap between runs\n")
 	}
 
 	sb.WriteString("\n# --- ADVANCED SETTINGS ---\n")

@@ -67,7 +67,7 @@ func TestInteractiveInitAnswersEveryQuestionFromOneInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]interface{}{
-		"runtime": "python3.12", "type": "job", "schedule": "0 3 * * *", "memory_mb": 1024,
+		"runtime": "python3.12", "type": "job", "memory_mb": 1024,
 		"keep_alive": false, "entrypoint": "worker.py",
 	}
 	for k, v := range want {
@@ -77,6 +77,10 @@ func TestInteractiveInitAnswersEveryQuestionFromOneInput(t *testing.T) {
 	}
 	if r, _ := doc["regions"].([]interface{}); len(r) != 1 || r[0] != "eu-central-1" {
 		t.Errorf("regions = %v", doc["regions"])
+	}
+	// The schedule answer is written as the BLOCK: the expression under cron.
+	if sched, _ := doc["schedule"].(map[string]interface{}); len(sched) != 1 || sched["cron"] != "0 3 * * *" {
+		t.Errorf("schedule = %v, want the block {cron: 0 3 * * *}", doc["schedule"])
 	}
 }
 

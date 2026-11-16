@@ -36,8 +36,23 @@ func TestInitTemplateUncommentedIsAccepted(t *testing.T) {
 				t.Fatalf("uncommented template is not YAML: %v\n%s", err, uncommented)
 			}
 
-			if err := archive.CheckUnknownFields([]byte(uncommented)); err != nil {
+			if err := archive.CheckConfigKeys([]byte(uncommented)); err != nil {
 				t.Errorf("afy init's file, uncommented, is refused: %v\n%s", err, uncommented)
+			}
+
+			// THE SCHEDULE'S DEADLINE is offered beside a schedule and nowhere else:
+			// uncommented it is the block's second key, and with no schedule there
+			// is no block for it to belong to.
+			var typed archive.AetherfyConfig
+			if err := yaml.Unmarshal([]byte(uncommented), &typed); err != nil {
+				t.Fatalf("uncommented template does not decode: %v\n%s", err, uncommented)
+			}
+			if schedule == "" {
+				if strings.Contains(out, "deadline_minutes") || typed.Schedule != nil {
+					t.Errorf("a deadline is offered without a schedule:\n%s", out)
+				}
+			} else if typed.Schedule == nil || typed.Schedule.Cron != schedule || typed.Schedule.DeadlineMinutes != 30 {
+				t.Errorf("the schedule block, uncommented, is %+v; want cron %q and the offered deadline 30:\n%s", typed.Schedule, schedule, uncommented)
 			}
 		}
 	}

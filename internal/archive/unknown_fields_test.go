@@ -30,7 +30,18 @@ func refusal(t *testing.T, yamlText string) string {
 // tests/unit/shared/test_config_parser.py::TestUnknownFieldsRefused there).
 func TestAMisspeltTopLevelFieldIsRefusedWithASuggestion(t *testing.T) {
 	assert.Equal(t, "aetherfy.yaml: unknown field `schedul`, did you mean `schedule`?",
-		refusal(t, base+"schedul: '0 * * * *'\n"))
+		refusal(t, base+"schedul:\n  cron: '0 * * * *'\n"))
+}
+
+// The schedule block's own keys are checked, with their path.
+func TestAMisspeltScheduleKeyIsRefusedWithItsPath(t *testing.T) {
+	assert.Equal(t, "aetherfy.yaml: unknown field `schedule.deadlin_minutes`, did you mean `schedule.deadline_minutes`?",
+		refusal(t, base+"schedule:\n  cron: '0 3 * * *'\n  deadlin_minutes: 30\n"))
+	assert.Equal(t, "aetherfy.yaml: unknown field `schedule.crn`, did you mean `schedule.cron`?",
+		refusal(t, base+"schedule:\n  crn: '0 3 * * *'\n"))
+	// A key of the top level is not suggested inside the block.
+	assert.Equal(t, "aetherfy.yaml: unknown field `schedule.runtime`",
+		refusal(t, base+"schedule:\n  cron: '0 3 * * *'\n  runtime: x\n"))
 }
 
 func TestAMisspeltNestedFieldIsRefusedWithItsPath(t *testing.T) {
@@ -62,7 +73,7 @@ func TestAFileWithEveryFieldIsAccepted(t *testing.T) {
 		"workspace: ws\nspawn:\n  enabled: true\n  workers: [a]\n" +
 		"regions: [us-east-1]\nmemory_mb: 512\nidle_timeout_minutes: 10\n" +
 		"drain_timeout_minutes: 30\n" +
-		"keep_alive: false\nentrypoint: main.py\nschedule: '0 3 * * *'\n" +
+		"keep_alive: false\nentrypoint: main.py\nschedule:\n  cron: '0 3 * * *'\n  deadline_minutes: 30\n" +
 		"github_dependencies: ['o/r@v1']\n" +
 		"writable_paths: [/data]\n"
 	require.NoError(t, CheckUnknownFields([]byte(full)))
@@ -103,12 +114,14 @@ func TestParseAetherfyConfigRefusesBeforeAnyUpload(t *testing.T) {
 
 // CloseMatch against answers produced by Python's own difflib, with the
 // control plane's call: get_close_matches(word, fields, n=1, cutoff=0.6).
-// Generated 2026-09-25 on CPython 3.12. The tie rows are the ones an
+// Generated 2026-09-25 on CPython 3.12 (the schedule block's rows on 2026-11-16,
+// CPython 3.12.10). The tie rows are the ones an
 // approximation gets wrong: equal scores go to the larger string.
 func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 	top := []string{"name", "runtime", "type", "description", "workspace", "spawn", "regions",
 		"memory_mb", "idle_timeout_minutes", "keep_alive", "entrypoint", "schedule", "github_dependencies", "writable_paths"}
 	spawn := []string{"enabled", "workers"}
+	schedule := []string{"cron", "deadline_minutes"}
 	cases := []struct {
 		cands []string
 		word  string
@@ -132,6 +145,12 @@ func TestCloseMatchAgreesWithPythonDifflib(t *testing.T) {
 		{spawn, "workres", "workers"}, {spawn, "enable", "enabled"}, {spawn, "enabld", "enabled"},
 		{spawn, "worker", "workers"}, {spawn, "schedule", ""}, {spawn, "workspace", "workers"},
 		{spawn, "wrkers", "workers"}, {spawn, "enabeld", "enabled"}, {spawn, "x", ""},
+		{schedule, "crn", "cron"}, {schedule, "cron_", "cron"}, {schedule, "corn", "cron"}, {schedule, "cro", "cron"},
+		{schedule, "deadline", "deadline_minutes"}, {schedule, "deadline_minute", "deadline_minutes"},
+		{schedule, "deadlin_minutes", "deadline_minutes"}, {schedule, "deadline_min", "deadline_minutes"},
+		{schedule, "minutes", "deadline_minutes"}, {schedule, "dead_line_minutes", "deadline_minutes"},
+		{schedule, "dedline_minutes", "deadline_minutes"}, {schedule, "deadline_minutes_", "deadline_minutes"},
+		{schedule, "cron_expression", ""}, {schedule, "expression", ""}, {schedule, "schedule", ""},
 		{[]string{"ac", "ad"}, "ab", ""},
 		{[]string{"abd", "abe", "xbc"}, "abc", "xbc"},
 		{[]string{"aab", "baa"}, "aaa", "baa"},

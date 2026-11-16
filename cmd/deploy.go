@@ -79,14 +79,16 @@ func init() {
 	deployCmd.Flags().BoolVarP(&deployYes, "yes", "y", false, "Skip the overage confirmation prompt and proceed (non-interactive)")
 }
 
-// isRefusedKeys reports a local aetherfy.yaml refused for naming a key the
-// server does not accept (one it does not declare, or one the platform owns)
-// -- a file that exists, so the "create one" help that follows other
-// validation failures does not apply.
-func isRefusedKeys(err error) bool {
+// isRefusedConfig reports a local aetherfy.yaml refused for what it says: a key
+// the server does not accept (one it does not declare, or one the platform
+// owns), or a `schedule:` written as a string where the server wants a block -- a
+// file that exists, so the "create one" help that follows other validation
+// failures does not apply.
+func isRefusedConfig(err error) bool {
 	var uf *archive.UnknownFieldsError
 	var pf *archive.PlatformFieldsError
-	return errors.As(err, &uf) || errors.As(err, &pf)
+	var sf *archive.ScheduleFormError
+	return errors.As(err, &uf) || errors.As(err, &pf) || errors.As(err, &sf)
 }
 
 // handleDeployResult post-processes the first deploy attempt for the D2 Part 6
@@ -183,8 +185,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	output.Println("")
 	if err := archive.ValidateAetherfyConfig(absPath); err != nil {
 		output.PrintError("%v", err)
-		if isRefusedKeys(err) {
-			// The file exists and names a key the server would refuse: the
+		if isRefusedConfig(err) {
+			// The file exists and says what the server would refuse: the
 			// sentence above says which.
 			os.Exit(1)
 		}
@@ -412,7 +414,7 @@ func runDeployFromGitHub(client *api.Client, agent *api.Agent, repoRef string) e
 	// Validate aetherfy.yaml exists in the clone
 	if err := archive.ValidateAetherfyConfig(tmpDir); err != nil {
 		output.PrintError("%v", err)
-		if !isRefusedKeys(err) {
+		if !isRefusedConfig(err) {
 			output.Println("")
 			output.Println("The repository must contain an aetherfy.yaml file.")
 		}

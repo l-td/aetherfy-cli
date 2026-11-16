@@ -24,13 +24,14 @@ type AetherfyConfig struct {
 	MemoryMB   int      `yaml:"memory_mb"`
 	KeepAlive  bool     `yaml:"keep_alive"`
 	Entrypoint string   `yaml:"entrypoint,omitempty"`
-	// Schedule is a 5-field UTC cron expression, valid on an agent of either
-	// type. The server is the authoritative validator (CP-2) — the CLI never
-	// validates cron client-side. Like every field here, a deploy applies the
-	// file whole: omitted (or null), the agent has no schedule. It changes
-	// with any deploy, so it must NOT get a runtime-style immutability
-	// special-case in the diff view.
-	Schedule string `yaml:"schedule,omitempty"`
+	// Schedule is the `schedule:` BLOCK, valid on an agent of either type: its
+	// 5-field UTC cron expression and an optional deadline. The server is the
+	// authoritative validator (CP-2) — the CLI never validates cron client-side.
+	// The string form it had before is refused (CheckScheduleForm). Like every
+	// field here, a deploy applies the file whole: omitted (or null), the agent
+	// has no schedule. It changes with any deploy, so it must NOT get a
+	// runtime-style immutability special-case in the diff view.
+	Schedule *ScheduleConfig `yaml:"schedule,omitempty"`
 
 	// Declared so they are KNOWN, not because the CLI reads them. Typed `any`
 	// on purpose: the server is the validator of their values, and a Go type
@@ -44,6 +45,19 @@ type AetherfyConfig struct {
 	// The paths a runtime: dockerfile agent writes; the server validates them.
 	WritablePaths any          `yaml:"writable_paths,omitempty"`
 	Spawn         *SpawnConfig `yaml:"spawn,omitempty"`
+}
+
+// ScheduleConfig is the `schedule:` block. A struct, not `any`, because its field
+// names are checked too: `schedule.deadlin_minutes` is refused like a top-level typo.
+//
+// Cron is a string (the server validates the expression, not the CLI).
+// DeadlineMinutes is typed `any`, like the other optional numbers the CLI never
+// reads (idle_timeout_minutes, drain_timeout_minutes): the server validates its
+// value, and a Go int here would refuse a value it accepts (a quoted "60", say)
+// before the server saw it.
+type ScheduleConfig struct {
+	Cron            string `yaml:"cron"`
+	DeadlineMinutes any    `yaml:"deadline_minutes,omitempty"`
 }
 
 // SpawnConfig is the `spawn:` block. A struct, not `any`, because its field
@@ -77,13 +91,16 @@ func ParseAetherfyConfig(dir string) (*AetherfyConfig, error) {
 		}
 		return nil, fmt.Errorf("failed to read aetherfy.yaml: %w", err)
 	}
+	// BEFORE the decode: a `schedule:` written as a string would fail the typed
+	// decode with a message about Go types, where the key checks say what to write
+	// instead. They pass bytes that are not YAML through, so a file that is not
+	// YAML at all still gets the decode's own error.
+	if err := CheckConfigKeys(data); err != nil {
+		return nil, err
+	}
 	var cfg AetherfyConfig
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return nil, fmt.Errorf("failed to parse aetherfy.yaml: %w", err)
-	}
-	// After the decode, so a file that is not YAML at all keeps its own error.
-	if err := CheckConfigKeys(data); err != nil {
-		return nil, err
 	}
 	return &cfg, nil
 }

@@ -47,7 +47,8 @@ type: job
 memory_mb: 1024
 idle_timeout_minutes: 5
 keep_alive: true
-schedule: "0 3 * * *"
+schedule:
+  cron: "0 3 * * *"
 `)
 	local := mustMap(t, `
 runtime: python3.11
@@ -69,7 +70,7 @@ entrypoint: main.py
 		t.Errorf("keep_alive kind = %v, want NoOp", d.Kind)
 	}
 	// Explicit null over a value → Clear.
-	if d := find(t, diffs, "schedule"); d.Kind != Clear || d.Current != "0 3 * * *" {
+	if d := find(t, diffs, "schedule"); d.Kind != Clear || d.Current != "{cron: 0 3 * * *}" {
 		t.Errorf("schedule = %+v, want Clear", d)
 	}
 	// Declared, unset on the server → Add.
@@ -176,6 +177,37 @@ func TestRegionsReorderedAreNotAChange(t *testing.T) {
 	diffs = Diff(mustMap(t, "runtime: python3.11\nregions: [us-east-1]\n"), server)
 	if d := find(t, diffs, "regions"); d.Kind != Change {
 		t.Errorf("a different set = %+v, want Change", d)
+	}
+}
+
+// THE SCHEDULE IS A BLOCK. The same block is no change, whether the export writes
+// a null deadline or leaves the key out; a different expression, or a deadline
+// added, changed or dropped, is a change.
+func TestTheScheduleBlockIsComparedAsABlockWhoseNullKeysAreAbsent(t *testing.T) {
+	base := "runtime: python3.11\n"
+	for name, c := range map[string]struct {
+		local, server string
+		want          Kind
+	}{
+		"the same block":                      {"schedule:\n  cron: \"0 3 * * *\"\n", "schedule:\n  cron: \"0 3 * * *\"\n", NoOp},
+		"a null deadline is the key left out": {"schedule:\n  cron: \"0 3 * * *\"\n", "schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: null\n", NoOp},
+		"a null deadline on the file's side":  {"schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: null\n", "schedule:\n  cron: \"0 3 * * *\"\n", NoOp},
+		"the same block with a deadline":      {"schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 30\n", "schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 30\n", NoOp},
+		"another expression":                  {"schedule:\n  cron: \"0 4 * * *\"\n", "schedule:\n  cron: \"0 3 * * *\"\n", Change},
+		"a deadline added":                    {"schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 30\n", "schedule:\n  cron: \"0 3 * * *\"\n", Change},
+		"a deadline changed":                  {"schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 45\n", "schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 30\n", Change},
+		"a deadline dropped":                  {"schedule:\n  cron: \"0 3 * * *\"\n", "schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 30\n", Change},
+		"a schedule added":                    {"schedule:\n  cron: \"0 3 * * *\"\n", "", Add},
+	} {
+		diffs := Diff(mustMap(t, base+c.local), mustMap(t, base+c.server))
+		if d := find(t, diffs, "schedule"); d.Kind != c.want {
+			t.Errorf("%s: schedule = %+v, want kind %v", name, d, c.want)
+		}
+	}
+	// The block renders as the block.
+	diffs := Diff(mustMap(t, base+"schedule:\n  cron: \"0 3 * * *\"\n  deadline_minutes: 30\n"), mustMap(t, base))
+	if d := find(t, diffs, "schedule"); d.Declared != "{cron: 0 3 * * *, deadline_minutes: 30}" {
+		t.Errorf("schedule render = %q", d.Declared)
 	}
 }
 
