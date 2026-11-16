@@ -9,7 +9,8 @@ import (
 )
 
 // RunAgent must POST to /agents/{name}/run, forward the payload under a
-// "payload" key, and decode the 202 {deployment_id, version, job_id} body.
+// "payload" key, and decode the 202 {deployment_id, version, job_id, status,
+// position} body.
 func TestRunAgent_PostsPayload(t *testing.T) {
 	var gotPath, gotMethod string
 	var gotBody map[string]interface{}
@@ -20,7 +21,7 @@ func TestRunAgent_PostsPayload(t *testing.T) {
 		_ = json.Unmarshal(b, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = w.Write([]byte(`{"deployment_id":"dep-1","version":3,"job_id":"job-9"}`))
+		_, _ = w.Write([]byte(`{"deployment_id":"dep-1","version":3,"job_id":"job-9","status":"queued","position":null}`))
 	}))
 	defer srv.Close()
 
@@ -39,7 +40,8 @@ func TestRunAgent_PostsPayload(t *testing.T) {
 	if !ok || payload["date"] != "2026-07-17" {
 		t.Errorf("payload not forwarded: %v", gotBody)
 	}
-	if resp.DeploymentID != "dep-1" || resp.Version != 3 || resp.JobID != "job-9" {
+	if resp.DeploymentID != "dep-1" || resp.Version != 3 || resp.JobID == nil || *resp.JobID != "job-9" ||
+		resp.Status != "queued" || resp.Position != nil {
 		t.Errorf("response = %+v", resp)
 	}
 }

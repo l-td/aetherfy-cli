@@ -39,7 +39,7 @@ func TestFormatRunState(t *testing.T) {
 		"weird":     "weird",
 	}
 	for in, want := range cases {
-		if got := formatRunState(in); got != want {
+		if got := formatRunState(in, nil); got != want {
 			t.Errorf("formatRunState(%q) = %q, want %q", in, got, want)
 		}
 	}

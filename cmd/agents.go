@@ -883,6 +883,9 @@ func showAgentStatus(client *api.Client, name string) error {
 	// schedule-less agents keep the same status layout as before.
 	if agent.CronSchedule != "" {
 		output.KeyValue("Schedule", agent.CronSchedule+" (UTC)")
+		if agent.CronDeadlineMinutes != nil {
+			output.KeyValue("Deadline", fmt.Sprintf("%d min", *agent.CronDeadlineMinutes))
+		}
 		if agent.CronPaused {
 			output.KeyValue("Next run", "(paused)")
 		} else {
@@ -1163,7 +1166,7 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	output.PrintSuccess("Run started.")
+	printRunAccepted(resp)
 	output.KeyValue("Run ID", resp.DeploymentID)
 	output.KeyValue("Version", fmt.Sprintf("v%d", resp.Version))
 	output.Println("")
@@ -1174,6 +1177,19 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 		output.Printf("Follow it with: afy logs %s --run %s\n", name, resp.DeploymentID)
 	}
 	return nil
+}
+
+// printRunAccepted says what became of the run the control plane accepted: it
+// started, or the account's runs in flight are at their limit and it waits in the
+// line, at the place the answer gives ("✓ Run accepted; waiting for a slot (#3 in
+// line)."). The status is the server's; "waiting" is the one value that changes
+// the sentence.
+func printRunAccepted(resp *api.RunAgentResponse) {
+	if strings.EqualFold(resp.Status, "waiting") {
+		output.PrintSuccess("Run accepted; waiting for a slot%s.", inLine(resp.Position))
+		return
+	}
+	output.PrintSuccess("Run started.")
 }
 
 // watchRun polls a run's deployment to a terminal state, printing status
@@ -1201,7 +1217,7 @@ func watchRun(client *api.Client, agentName, deploymentID string) {
 				continue
 			}
 			if d.Status != lastStatus {
-				output.Printf("Status: %s\n", formatRunState(d.Status))
+				output.Printf("Status: %s\n", formatRunState(d.Status, d.Position))
 				lastStatus = d.Status
 			}
 			switch strings.ToLower(d.Status) {
@@ -1271,7 +1287,7 @@ func printAgentRuns(client *api.Client, name string) error {
 			// run read two hours apart (benchmark runs 3 and 4).
 			formatUTCTime(&r.CreatedAt),
 			formatRunTrigger(r),
-			formatRunState(r.State),
+			formatRunState(r.State, r.Position),
 			formatReleaseVersion(r.ReleaseVersion),
 			formatRunDuration(r.DurationSeconds),
 			r.ID,
@@ -1908,17 +1924,37 @@ func printAgentActionError(prefix string, err error) error {
 // formatRunState colorizes a run's deployment state for the runs table:
 // COMPLETED green, FAILED red, in-flight (queued/building/deploying/active/
 // running) yellow — matching the deployments colorizer's intent.
-func formatRunState(state string) string {
+//
+// A run WAITING in the account's line is yellow too, and says its place when the
+// answer carries one: "waiting (#3 in line)". A CANCELLED run is dim, not red: it
+// was stopped from outside, which is how a superseded or an archived release ends
+// (formatDeployState dims those), where a failed run is the one that broke. The
+// sentence saying why it was cancelled is the run's error_message, printed where a
+// run's message is (formatAgentLastRun, `afy run --wait`).
+func formatRunState(state string, position *int) string {
 	switch strings.ToLower(state) {
 	case "completed":
 		return output.Success.Sprint("completed")
 	case "failed", "error":
 		return output.Error.Sprint("failed")
+	case "waiting":
+		return output.Warning.Sprint("waiting" + inLine(position))
+	case "cancelled":
+		return output.Dim.Sprint("cancelled")
 	case "queued", "building", "deploying", "active", "running":
 		return output.Warning.Sprint(state)
 	default:
 		return state
 	}
+}
+
+// inLine is " (#3 in line)" for a run's place in the line, "" when the answer
+// carries none.
+func inLine(position *int) string {
+	if position == nil {
+		return ""
+	}
+	return fmt.Sprintf(" (#%d in line)", *position)
 }
 
 // formatReleaseVersion renders the release a run executed as `afy deployments`
@@ -1977,7 +2013,10 @@ func formatListLastRun(a api.Agent) string {
 	}
 	cell := "never"
 	if a.LastRun != nil {
-		cell = fmt.Sprintf("%s, %s", formatRunState(a.LastRun.State), relativeTime(a.LastRun.CreatedAt))
+		// The agent's last_run carries no place in the line (the contract gives
+		// `position` to the run rows and the run itself), so a waiting last run
+		// reads "waiting" here; `afy runs` has its place.
+		cell = fmt.Sprintf("%s, %s", formatRunState(a.LastRun.State, nil), relativeTime(a.LastRun.CreatedAt))
 	}
 	if a.CronLastStatus != "" && !strings.EqualFold(a.CronLastStatus, "fired") {
 		cell = fmt.Sprintf("%s\ntick %s", cell, formatLastTick(a))
@@ -1986,14 +2025,15 @@ func formatListLastRun(a api.Agent) string {
 }
 
 // formatAgentLastRun renders an agent's most recent run for `afy status`:
-// its state, the server's reason when it failed, and how long ago it started --
-// "failed (run exited with code 1), 2m ago". "never" when it has not run.
+// its state, the server's reason when it failed or was cancelled, and how long
+// ago it started -- "failed (run exited with code 1), 2m ago", "cancelled (<the
+// server's sentence>), 2m ago". "never" when it has not run.
 func formatAgentLastRun(r *api.LastRun) string {
 	if r == nil {
 		return "never"
 	}
-	state := formatRunState(r.State)
-	if strings.EqualFold(r.State, "failed") && r.ErrorMessage != "" {
+	state := formatRunState(r.State, nil)
+	if (strings.EqualFold(r.State, "failed") || strings.EqualFold(r.State, "cancelled")) && r.ErrorMessage != "" {
 		state = fmt.Sprintf("%s (%s)", state, r.ErrorMessage)
 	}
 	return fmt.Sprintf("%s, %s", state, relativeTime(r.CreatedAt))

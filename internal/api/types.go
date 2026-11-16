@@ -111,6 +111,12 @@ type Agent struct {
 	CronLastRunAt  *time.Time `json:"cron_last_run_at,omitempty"`
 	CronLastStatus string     `json:"cron_last_status,omitempty"`
 	CronLastReason string     `json:"cron_last_reason,omitempty"`
+	// CronDeadlineMinutes is the schedule's deadline_minutes (server
+	// AgentResponse.cron_deadline_minutes): how long after its time a scheduled
+	// run may still start before the schedule gives it up. null when the
+	// schedule sets none. No omitempty: `--json` says null rather than dropping
+	// the key, as Resume does.
+	CronDeadlineMinutes *int `json:"cron_deadline_minutes"`
 	// The agent's most recent run, whatever started it, as `afy runs` lists it:
 	// what the RUN did, where CronLastStatus is what the schedule did. Nil when
 	// the agent has never run.
@@ -191,6 +197,12 @@ type Deployment struct {
 	// "cancelled" from "cancellation requested, worker cleaning up".
 	CancellationRequested bool   `json:"cancellation_requested,omitempty"`
 	CancellationReason    string `json:"cancellation_reason,omitempty"`
+	// A RUN waiting in the account's line (state "waiting"): Position is its
+	// 1-based place, 1 being next, and nil once it is not waiting. AdmittedAt is
+	// when the line let it start. Both only ever describe a run, so a release
+	// leaves them out (omitempty), as it leaves out ReleaseVersion's value.
+	Position   *int       `json:"position,omitempty"`
+	AdmittedAt *time.Time `json:"admitted_at,omitempty"`
 	// Partial-deploy contract (server DeploymentResponse; REVIEW_FAQ §63). A
 	// degraded deployment stays state=ACTIVE and converges in the background;
 	// RegionsReady/RegionsTotal is the N/M progress. No omitempty on IsDegraded:
@@ -299,11 +311,32 @@ type RunAgentRequest struct {
 }
 
 // RunAgentResponse is the 202 body from POST /agents/{id}/run — the ephemeral
-// (root) run's deployment id, version, and the DEPLOY job id.
+// (root) run's deployment id, version, and what became of it: Status is
+// "queued" (it starts now) or "waiting" (the account's runs in flight are at
+// their limit, so it is in the line), Position its 1-based place in that line
+// (null unless it waits), and JobID the job that starts it (null while it waits:
+// a waiting run has no job yet). No omitempty on the nullable two: `--json`
+// says null rather than dropping the key.
 type RunAgentResponse struct {
-	DeploymentID string `json:"deployment_id"`
-	Version      int    `json:"version"`
-	JobID        string `json:"job_id"`
+	DeploymentID string  `json:"deployment_id"`
+	Version      int     `json:"version"`
+	JobID        *string `json:"job_id"`
+	Status       string  `json:"status"`
+	Position     *int    `json:"position"`
+}
+
+// RunCancelResponse is the 200 body from POST /deployments/{run}/cancel. Run is
+// the run as it stands after the call. Outcome says what the call did:
+// "cancelled" (it is cancelled now: it was waiting or had not started),
+// "stopping" (it was running and is being stopped; it ends cancelled), or
+// "already_finished" (it had ended before, which is not an error). Message is
+// the server's sentence for the outcome. CancelledCount is how many runs this
+// call cancelled, the cascade included (the contract's words).
+type RunCancelResponse struct {
+	Run            Deployment `json:"run"`
+	Outcome        string     `json:"outcome"`
+	Message        string     `json:"message"`
+	CancelledCount int        `json:"cancelled_count"`
 }
 
 // AgentRun is one row from GET /agents/{id}/runs — the cron/manual run history.
@@ -327,6 +360,12 @@ type AgentRun struct {
 	// The agent that spawned this run, on a spawned run (trigger_source "spawn"); null on a
 	// scheduled or manual one. No omitempty, for the reason ReleaseVersion has none.
 	SpawnedBy *RunSpawnedBy `json:"spawned_by"`
+	// A run waiting in the account's line (state "waiting"): its 1-based place, 1
+	// being next; null in every other state. And why a cancelled run was cancelled,
+	// as the server's reason code; null on a run that was not. The sentence a person
+	// reads is ErrorMessage. No omitempty on either, for the reason ReleaseVersion has none.
+	Position           *int    `json:"position"`
+	CancellationReason *string `json:"cancellation_reason"`
 }
 
 // RunSpawnedBy names the agent that spawned a run. Name is null when that agent's row is gone.

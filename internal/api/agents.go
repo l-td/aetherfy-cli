@@ -237,7 +237,7 @@ func (c *Client) SpawnAgent(agentID string, req *SpawnRequest) (*SpawnResponse, 
 // payload is optional (nil omits the body field). Errors carry the CP-4 code
 // taxonomy — AGENT_NOT_DEPLOYED (422),
 // AGENT_RUN_INELIGIBLE_STATE / AGENT_OPERATION_IN_PROGRESS (409),
-// AGENT_RUN_CONCURRENCY_LIMIT_EXCEEDED (429, the account runs-in-flight cap)
+// AGENT_RUN_LINE_FULL (429, the account's line of waiting runs is full)
 // and the billing-gate 403s — for callers to switch on.
 func (c *Client) RunAgent(idOrName string, payload map[string]interface{}) (*RunAgentResponse, error) {
 	var resp RunAgentResponse

@@ -158,12 +158,11 @@ func (c *Client) ListDeployments(agentID string) ([]Deployment, error) {
 	return all, nil
 }
 
-// CancelDeployment cancels an in-flight deployment by version.
-// Phase 1: only QUEUED deployments are cancellable; BUILDING/DEPLOYING
-// return 409 ("not yet cancellable") until cooperative-cancel
-// checkpoints land in BuildWorker / DeployWorker. Terminal states
-// (active, failed, rolled_back, superseded) return 409 ("nothing to
-// cancel"). Returns the FAILED deployment row on success.
+// CancelDeployment cancels a RELEASE that has not finished, by version. A queued
+// release becomes failed at once; a building or deploying one is asked to stop
+// and its worker ends it at the next checkpoint (the row comes back still in
+// that state, with CancellationRequested set); a release that has ended is
+// refused with a 409. A RUN is cancelled with CancelRun.
 func (c *Client) CancelDeployment(agentID string, version int) (*Deployment, error) {
 	var resp Deployment
 	path := fmt.Sprintf("/agents/%s/deployments/%d/cancel", agentID, version)
@@ -175,6 +174,20 @@ func (c *Client) CancelDeployment(agentID string, version int) (*Deployment, err
 	}
 	if httpResp.IsError() {
 		return nil, parseAPIError(httpResp)
+	}
+	return &resp, nil
+}
+
+// CancelRun cancels a RUN by its id (POST /deployments/{run}/cancel): a run waiting
+// in the line or not yet started is cancelled now, a running one is stopped and
+// ends cancelled, and one that had already ended answers 200 with outcome
+// "already_finished" (not an error). A release id is refused by the server with
+// 409, the answer saying to cancel it by its agent.
+func (c *Client) CancelRun(runID string) (*RunCancelResponse, error) {
+	var resp RunCancelResponse
+	err := c.Post("/deployments/"+url.PathEscape(runID)+"/cancel", nil, &resp)
+	if err != nil {
+		return nil, err
 	}
 	return &resp, nil
 }
