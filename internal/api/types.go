@@ -293,13 +293,23 @@ type SpawnRequest struct {
 	Payload      map[string]interface{} `json:"payload,omitempty"`
 }
 
-// SpawnResponse is the response from a spawn request
+// SpawnResponse is the 202 body of a spawn request, as the server sends it:
+// SpawnID is the id of the RUN the spawn created (the id `afy runs <child>`
+// lists), JobID the job that starts it (null while the run waits for a slot),
+// Status "queued" (it is starting) or "waiting" (the account's runs in flight
+// are at their limit, so it is in the line), and Position its 1-based place in
+// that line (null unless it waits). This type used to decode deployment_id,
+// machine_id and message, which the server does not send, so `afy spawn` printed
+// an empty run id. No omitempty on the nullable two: `--json` says null.
 type SpawnResponse struct {
-	SpawnID      string `json:"spawn_id"`
-	DeploymentID string `json:"deployment_id"`
-	MachineID    string `json:"machine_id,omitempty"`
-	Status       string `json:"status"`
-	Message      string `json:"message"`
+	SpawnID        string  `json:"spawn_id"`
+	JobID          *string `json:"job_id"`
+	ChildAgentID   string  `json:"child_agent_id"`
+	Workspace      string  `json:"workspace"`
+	Region         string  `json:"region"`
+	Status         string  `json:"status"`
+	Position       *int    `json:"position"`
+	EstimatedStart string  `json:"estimated_start"`
 }
 
 // RunAgentRequest is the optional body for POST /agents/{id}/run. Payload is

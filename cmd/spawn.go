@@ -124,20 +124,19 @@ func runSpawn(cmd *cobra.Command, args []string) error {
 		return output.JSON(resp)
 	}
 
-	output.PrintSuccess("Agent spawned successfully!")
-	output.Println("")
-	output.KeyValue("Spawn ID", resp.SpawnID)
-	// "Run ID", the vocabulary line: an id you can look up in 'afy agents runs <child>'. A
-	// spawned run is a run of the child that executed it, and that history lists it.
-	output.KeyValue("Run ID", resp.DeploymentID)
-	if resp.MachineID != "" {
-		output.KeyValue("Machine ID", resp.MachineID)
+	if strings.EqualFold(resp.Status, "waiting") {
+		output.PrintSuccess("Run accepted; waiting for a slot%s.", inLine(resp.Position))
+	} else {
+		output.PrintSuccess("Agent spawned successfully!")
 	}
-	output.KeyValue("Status", formatStatus(resp.Status))
-
-	if resp.Message != "" {
-		output.Println("")
-		output.Dim.Println(resp.Message)
+	output.Println("")
+	// "Run ID", the vocabulary line: an id you can look up in 'afy runs <child>'. A
+	// spawned run is a run of the child that executed it, and that history lists it;
+	// the server calls it spawn_id.
+	output.KeyValue("Run ID", resp.SpawnID)
+	output.KeyValue("Status", formatRunState(resp.Status, resp.Position))
+	if resp.Region != "" {
+		output.KeyValue("Region", resp.Region)
 	}
 
 	output.Println("")
