@@ -167,7 +167,7 @@ afy logs my-agent --follow
 afy deployments my-agent
 afy rollback my-agent 3
 
-# Run a job agent on demand and inspect its run history
+# Run an agent on demand and inspect its run history
 afy run my-job --wait
 afy runs my-job
 ```
@@ -212,9 +212,11 @@ afy init --agent nightly-report-staging --target staging
 afy deploy --target staging
 ```
 
-`--schedule` writes the `schedule:` field into `aetherfy.yaml`. When you pick
-`job` at the interactive type prompt, `afy init` also asks for a schedule
-(leave it blank for none). The expression is validated server-side on deploy.
+`--schedule` writes the `schedule:` block into `aetherfy.yaml`, with the
+expression as its `cron:`; a commented `deadline_minutes:` line beside it shows
+where to set a deadline. At the interactive prompts `afy init` also asks for a
+schedule (leave it blank for none). The expression is validated server-side on
+deploy.
 
 ### Agents
 
@@ -233,15 +235,17 @@ afy deploy --target staging
 
 ### Runs & Schedules
 
-Only `type: job` agents can be run on demand or scheduled. A run is one
-execution of the job: it starts, does its work, and terminates.
+Any agent, a service or a task (`type: job`), can be run on demand or
+scheduled. A run of a task executes its entrypoint once and terminates; a run
+of a service is sent one request to its `POST /aetherfy/run` route.
 
 | Command | Description |
 |---------|-------------|
 | `afy run <name>` | Trigger a one-off run now, independent of any schedule |
 | `afy run <name> --payload '{...}'` | Pass an inline JSON payload to the run |
 | `afy run <name> --payload-file <file>` | Read the JSON payload from a file |
-| `afy run <name> --wait` | Block until the run finishes (exit `0` completed, `1` failed) |
+| `afy run <name> --wait` | Follow the run until it ends (exit `0` completed, `1` failed or cancelled, `4` still going when the wait gave up) |
+| `afy cancel <name> --run <run-id>` | Cancel one of the agent's runs: a waiting run is cancelled at once, a running one is stopped, a finished one is left as it is (exit `0`) |
 | `afy runs <name>` | Show run history, newest first (scheduled + manual) |
 | `afy runs <name> --limit N` | Limit the run history (default 20, max 100) |
 | `afy schedule pause <name>` | Stop scheduled runs from firing (manual runs still work) |
@@ -262,9 +266,24 @@ afy schedule pause nightly-report
 afy schedule resume nightly-report
 ```
 
-`--payload` and `--payload-file` are mutually exclusive. `--wait` polls to a
-terminal state (up to 30 minutes) and exits non-zero if the run fails, which
-makes it usable as a CI gate.
+`--payload` and `--payload-file` are mutually exclusive.
+
+When the account already has as many runs in flight as its plan allows, a new
+run is not refused: it is accepted and waits its turn in a line. `afy run`
+says so (`Run accepted; waiting for a slot (#3 in line).`), and the run's state
+is `waiting`, shown with its place (`waiting (#3 in line)`, 1 being next) in
+`afy runs` and in the wait. A run stopped from outside ends `cancelled`, and
+the reason is printed where a failed run's is: by `afy cancel <name> --run
+<run-id>`, with the run that started it, or by the platform (for example when
+its agent is deleted or its schedule's deadline passes). `afy runs --json`
+carries each run's `position` and `cancellation_reason`.
+
+`--wait` follows the run through the line and to the state it ends in, for up
+to 30 minutes, which makes it usable as a CI gate. It exits `0` when the run
+completed and `1` when it failed or was cancelled, printing the reason. When
+the 30 minutes pass with the run still going it exits `4`: giving up the wait
+does not stop the run, and the message says how to follow it
+(`afy runs <name>`, `afy logs <name> --run <run-id>`).
 
 Pausing is idempotent, and resuming recomputes the next run from now —
 occurrences that elapsed while paused are skipped, never backfilled.
@@ -272,8 +291,12 @@ occurrences that elapsed while paused are skipped, never backfilled.
 Once an agent has a schedule, `afy list` grows `SCHEDULE`, `NEXT RUN`,
 and `LAST RUN` columns, and `afy status <name>` shows the same three
 fields. Times are UTC. `NEXT RUN` reads `(paused)` while the schedule is
-paused; `LAST RUN` shows the last outcome (`fired`, `skipped`, `missed`) with
-a relative timestamp, or `never`. Accounts with no scheduled agents keep the
+paused. `LAST RUN` shows how the agent's last run went (`completed`, `failed`,
+`waiting`, `cancelled`, ...) with a relative timestamp, or `never`; when the
+schedule's last tick did not start a run, a second line in the cell says what
+it did (`tick skipped (5m ago)`, `tick missed (...)`), and `afy status` gives
+the reason. A schedule with a deadline shows it on `afy status`, as a
+`Deadline` line in minutes. Accounts with no scheduled agents keep the
 original list layout.
 
 ### Workspaces
@@ -329,6 +352,7 @@ lives in a workspace, and a name is unique within it.
 | `afy deploy --from-github <owner/repo[@ref]>` | Deploy a public GitHub repo's code to the agent this folder is linked to |
 | `afy deployments <agent>` | Show deployment history (newest first) |
 | `afy rollback <agent> [version]` | Roll back to a previously deployed version (skips the build step) |
+| `afy cancel <agent>` | Cancel the agent's pending deployment: one still queued is cancelled at once, one that is building or deploying is asked to stop and ends at its next checkpoint |
 
 ### Logs
 
@@ -376,6 +400,9 @@ Keys starting with `AETHERFY_` are reserved.
 | `afy spawn <parent> <child> --stdin` | Read payload from stdin |
 
 The parent must have `spawn.enabled: true`, and the child must be of type `job`.
+`afy spawn` prints the run's id, its state and its region. When the account's runs in
+flight are at their limit, the spawned run waits in the line like any other, and the
+command says so with its place (`Run accepted; waiting for a slot (#3 in line).`).
 
 **`spawn` vs `agents run`** — both start a job agent with a JSON payload, but
 they are different entry points:
@@ -524,6 +551,7 @@ with no alias.) With `--json`:
 | `1` | A refused or failed operation (the server said no, a request failed, a deployment failed) |
 | `2` | Input refused before anything was sent: a usage error (an unknown flag or command, a flag without its value, too few or too many arguments, a required flag not set), and bad input to any command (`collections`, `index`, `points`, `secrets`, `spawn`, `run`, `login`, `update`, ...) |
 | `3` | Not authenticated — any command requiring auth, including `afy whoami` when not logged in |
+| `4` | A wait (`afy start --wait`, `afy run --wait`, and the collection commands that wait) gave up at its bound while the operation is still going: it is not stopped, and the message says how to follow it |
 
 ## Project Structure
 
@@ -540,8 +568,10 @@ regions:                    # optional — within your workspace's regions
 memory_mb: 512              # the sizes your plan allows
 keep_alive: false           # always-on billing
 
-# Optional: cron schedule — job agents only
-schedule: "0 3 * * *"
+# Optional: a schedule, on an agent of either type
+schedule:
+  cron: "0 3 * * *"         # 5-field cron, UTC
+  deadline_minutes: 30      # optional
 
 # Optional: enable multi-agent spawning
 spawn:
@@ -571,11 +601,16 @@ never creates an agent: with no link, no such target, or a link to an agent the
 account does not have, it is refused and names `afy init --agent <name>
 [--target <t>]`. Renaming or moving the agent does not unlink the folder.
 
-`schedule` is a 5-field cron expression, evaluated in **UTC**, with a minimum
-interval of every 5 minutes, and is valid on an agent of either type. A deploy
-applies the file whole: a field it leaves out takes its default, so a deploy
-without `schedule:` removes the agent's schedule. `afy diff` shows what a
-deploy of the file would change, defaults included.
+`schedule` is a block, and is valid on an agent of either type. `cron:` is a
+5-field cron expression, evaluated in **UTC**, with a minimum interval of every
+5 minutes. `deadline_minutes:` is optional: how long after its time a
+scheduled run may still start. A scheduled run still waiting in the line when
+the deadline passes is cancelled, and the deadline must be shorter than the
+shortest gap between two runs of the expression. The string form
+(`schedule: "0 3 * * *"`) is refused, and `afy deploy` shows the block to write
+instead. A deploy applies the file whole: a field it leaves out takes its
+default, so a deploy without `schedule:` removes the agent's schedule. `afy
+diff` shows what a deploy of the file would change, defaults included.
 
 ### .afyignore
 

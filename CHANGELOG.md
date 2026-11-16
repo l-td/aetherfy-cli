@@ -28,8 +28,30 @@ so an entry here is written for the version the owner tags next.
   a warning, not an error, and the exit code does not change. `--json` carries them as `warnings` on the
   deployment and on the agent, and nested in a move. Release this CLI after the control plane that sends
   `warnings`.
+- A run over the account's limit waits in a line instead of being refused, and a run stopped from outside ends
+  `cancelled`. `afy run` says `Run accepted; waiting for a slot (#3 in line).` when the run waits, and
+  `afy spawn` says it too. `afy runs`, `afy list`, `afy status` and `afy run --wait` show the state `waiting`
+  with its place (`waiting (#3 in line)`, yellow) and `cancelled` (dim); where a failed run's reason is shown
+  (`afy status`, `afy run --wait`) a cancelled run's is, as the control plane worded it. `--json` carries
+  `position` and `cancellation_reason` on a run and `status`, `position` and a `job_id` that is `null` while
+  the run waits on `afy run`. Release this CLI after the control plane that sends them.
+- `afy cancel <name> --run <run-id>` cancels a run: one waiting in the line or not started is cancelled at
+  once (`Run <id> cancelled.`, and how many runs below it were cancelled with it), one running is stopped
+  (`Run <id> is being stopped; it ends cancelled.`), and one that had already ended prints the control plane's
+  message and exits 0. The run must be the named agent's: another agent's run is refused as input (exit 2)
+  before anything is cancelled. `afy cancel <name>` without `--run` cancels the agent's pending deployment, as
+  before; its help no longer says that only a queued deployment can be cancelled. Release this CLI after the
+  control plane that serves `POST /deployments/{run}/cancel`.
+- `afy status` prints `Deadline: N min` for a schedule that has a deadline, and `--json` carries
+  `cron_deadline_minutes`.
 
 ### Breaking
+
+- `schedule:` in `aetherfy.yaml` is a block with `cron:` and an optional `deadline_minutes:`. The string form
+  (`schedule: "0 9 * * 1-5"`) is refused by `afy deploy` and `afy diff` before anything is uploaded, with the
+  block to write using the expression in the file. `afy init --schedule` and the prompt write the block, with
+  a commented `deadline_minutes` line beside it. The product is pre-launch and keeps no compatibility form of
+  the string. Release this CLI after the control plane that accepts the block.
 
 - `afy login` with no key to hand no longer asks you to paste one. It runs the device sign-in: it prints a
   code and a page, you approve the code in the dashboard, and afy stores the key that approval created.
@@ -51,6 +73,15 @@ so an entry here is written for the version the owner tags next.
 
 ### Changed
 
+- `afy run --wait` follows the run to the state it ends in, a waiting run included, and says each change of its
+  place in the line. It exits `0` when the run completed and `1` when it failed or was cancelled, printing the
+  reason. Its 30-minute bound is a failure: when the run is still going then, it exits `4` (as `afy start
+  --wait` does at its bound) with a message that giving up the wait does not stop the run and how to follow it;
+  it used to exit `0`. A state this CLI does not know is followed like any other and printed once. The first
+  read is made at once, not after five seconds, and `--json` gets its one error object with the reason in its
+  message.
+- `afy spawn` printed an empty run id: it read fields the control plane does not send. It prints the run's id,
+  its state and its region from what the control plane sends, and `--json` carries the answer as it came.
 - `afy init` names no runtime of its own. It reads the language and the version a project asks for and
   resolves them against what the control plane offers (`GET /deploy-options`): a version that is offered
   is that runtime, an older one gets the lowest offered version above it and `afy init` says so, and a
