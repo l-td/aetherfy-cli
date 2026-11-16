@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -486,9 +485,11 @@ var (
 	startWaitPoll  = 5 * time.Second
 )
 
-// exitStillPending: `afy start --wait` reached the server's bound and the
-// start is neither carried out nor dropped. Not a failure -- Aetherfy is still
-// retrying it -- so not 1, which every waiting command uses for "it failed";
+// exitStillPending: a wait reached its bound with the thing it waits for still
+// going: `afy start --wait` at the server's bound with the start neither carried
+// out nor dropped, `afy run --wait` at its own with the run neither ended nor
+// cancelled. Not a failure -- Aetherfy is still retrying the start, the run goes
+// on -- so not 1, which every waiting command uses for "it failed";
 // the next code after the CLI's 1 (failed), 2 (input refused) and
 // 3 (not logged in).
 const exitStillPending = 4
@@ -1109,8 +1110,16 @@ var agentsRunCmd = &cobra.Command{
 cron schedule. A 'type: job' agent runs its entrypoint once; a 'type: service'
 agent is sent one request to its own POST /aetherfy/run route.
 
-Pass input with --payload (inline JSON) or --payload-file. Use --wait to block
-until the run finishes — the command then exits 0 on success, 1 on failure.`,
+When the account already has as many runs in flight as its plan allows, the run
+is not refused: it is accepted and waits its turn in a line (its state is
+"waiting", shown with its place in the line).
+
+Pass input with --payload (inline JSON) or --payload-file. Use --wait to follow
+the run until it ends, through the line and to the end of the run: the command
+then exits 0 if the run completed and 1 if it failed or was cancelled (the reason
+is printed). If the 30 minutes of the wait pass with the run still going, the
+command exits 4: giving up the wait does not stop the run, and the message says
+how to follow it.`,
 	Example: `  # Run an agent and return immediately
   afy run nightly-report
 
@@ -1129,7 +1138,7 @@ var (
 func init() {
 	agentsRunCmd.Flags().StringVarP(&runPayload, "payload", "p", "", "JSON payload to pass to the run")
 	agentsRunCmd.Flags().StringVarP(&runPayloadFile, "payload-file", "f", "", "Read the JSON payload from a file")
-	agentsRunCmd.Flags().BoolVar(&runWait, "wait", false, "Wait for the run to finish (exit 1 if it fails)")
+	agentsRunCmd.Flags().BoolVar(&runWait, "wait", false, "Follow the run until it ends (exit 0 completed, 1 failed or cancelled, 4 still going when the wait gave up)")
 }
 
 // parseRunPayload resolves the run payload from --payload / --payload-file
@@ -1191,10 +1200,9 @@ func runAgentsRun(cmd *cobra.Command, args []string) error {
 	output.Println("")
 
 	if runWait {
-		watchRun(client, name, resp.DeploymentID)
-	} else {
-		output.Printf("Follow it with: afy logs %s --run %s\n", name, resp.DeploymentID)
+		return followRun(client, name, resp.DeploymentID, newRunWatchClock())
 	}
+	output.Printf("Follow it with: afy logs %s --run %s\n", name, resp.DeploymentID)
 	return nil
 }
 
@@ -1209,49 +1217,6 @@ func printRunAccepted(resp *api.RunAgentResponse) {
 		return
 	}
 	output.PrintSuccess("Run started.")
-}
-
-// watchRun polls a run's deployment to a terminal state, printing status
-// transitions. A JOB run converges to COMPLETED (success) or FAILED (the
-// machine exited non-zero / OOM). Mirrors watchDeployment's ticker but only
-// terminates on the run-terminal states and sets the process exit code so
-// `afy run --wait` is usable as a CI gate.
-func watchRun(client *api.Client, agentName, deploymentID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
-	defer cancel()
-
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
-	lastStatus := ""
-	for {
-		select {
-		case <-ctx.Done():
-			output.PrintWarning("Run watch timed out; check it with 'afy logs %s --run %s'.", agentName, deploymentID)
-			return
-		case <-ticker.C:
-			d, err := client.GetDeployment(deploymentID)
-			if err != nil {
-				output.PrintWarning("Failed to get run status: %v", err)
-				continue
-			}
-			if d.Status != lastStatus {
-				output.Printf("Status: %s\n", formatRunState(d.Status, d.Position))
-				lastStatus = d.Status
-			}
-			switch strings.ToLower(d.Status) {
-			case "completed":
-				output.PrintSuccess("Run completed.")
-				return
-			case "failed", "error":
-				output.PrintError("Run failed.")
-				if d.ErrorMessage != "" {
-					output.Printf("Reason: %s\n", d.ErrorMessage)
-				}
-				os.Exit(1)
-			}
-		}
-	}
 }
 
 // --- RUNS (scheduled + manual run history) ---

@@ -220,6 +220,8 @@ func TestMain(m *testing.M) {
 		// the cadence is not what these runs assert, and the shipped value is
 		// pinned by TestTheShippedPollIntervalIsFiveSeconds.
 		deploymentPollInterval = afyProcessPollInterval
+		// The same for `afy run --wait`, which reads its run at this interval.
+		runWatchPoll = afyProcessPollInterval
 		// As a real process sees them: Execute reads os.Args for a --json
 		// typed after a flag cobra refused.
 		os.Args = append([]string{"afy"}, argv...)

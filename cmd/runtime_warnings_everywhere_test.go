@@ -325,7 +325,7 @@ var classified = map[string]map[string]string{
 	"GetDeployment": {
 		"watchDeployment": "poll: the release's warnings were printed when it was accepted",
 		"cancelAgentRun":  "reads a RUN to learn whose it is, which carries no warnings (a run is not a release)",
-		"watchRun":        "reads a RUN, which carries no warnings (a run is not a release)",
+		"followRun":       "reads a RUN, which carries no warnings (a run is not a release)",
 	},
 	"ListDeployments": {
 		"runAgentsCancel":        prints,
