@@ -124,6 +124,10 @@ func jsonCases() []jsonCase {
 		{class: "mutate", args: []string{"archive", "bot"}, ok: []route{{"POST", "/agents/bot/archive", 200, `{}`}}, refuse: []string{"POST /agents/bot/archive"}},
 		{class: "mutate", args: []string{"restore", "bot"}, ok: []route{{"POST", "/agents/bot/restore", 200, `{}`}}, refuse: []string{"POST /agents/bot/restore"}},
 		{class: "mutate", args: []string{"cancel", "bot"}, ok: []route{{"GET", "/agents/bot/deployments", 200, noDeploymentsPage}}, refuse: []string{"GET /agents/bot/deployments"}},
+		{class: "mutate", args: []string{"cancel", "bot", "--run", "d-1"}, ok: []route{
+			{"GET", "/agents/bot", 200, agentRow}, {"GET", "/deployments/d-1", 200, deploymentRw},
+			{"POST", "/deployments/d-1/cancel", 200, `{"run":` + deploymentRw + `,"outcome":"cancelled","message":"Run cancelled.","cancelled_count":1}`}},
+			refuse: []string{"POST /deployments/d-1/cancel"}},
 		{class: "mutate", args: []string{"update", "bot", "--description", "x"}, ok: []route{{"PATCH", "/agents/bot", 200, agentRow}}, refuse: []string{"PATCH /agents/bot"}},
 		{class: "mutate", args: []string{"schedule", "resume", "bot"}, ok: []route{{"POST", "/agents/bot/schedule/resume", 200, `{"changed":true,"cron_paused":false}`}}, refuse: []string{"POST /agents/bot/schedule/resume"}},
 		{class: "mutate", args: []string{"workspaces", "regions", "acme", "--regions", "eu-central-1"}, ok: []route{{"GET", "/deploy-options", 200, deployOptions}, {"PATCH", "/workspaces/acme/regions", 202, `{"operation_id":"op-1","status":"pending","from_regions":["eu-central-1"],"to_regions":["eu-central-1"]}`}}, refuse: []string{"PATCH /workspaces/acme/regions"}},

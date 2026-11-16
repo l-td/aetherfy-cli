@@ -680,19 +680,29 @@ func runAgentsRestore(cmd *cobra.Command, args []string) error {
 	return output.Result(map[string]interface{}{"agent": idOrName, "status": "restoring"})
 }
 
-// --- CANCEL (abandon an in-flight deployment) ---
+// --- CANCEL (abandon an in-flight deployment, or cancel a run) ---
 var agentsCancelCmd = &cobra.Command{
 	Use:   "cancel <name>",
-	Short: "Cancel a pending deployment",
-	Long: `Cancel an agent's pending deployment.
+	Short: "Cancel a pending deployment, or a run (--run)",
+	Long: `Cancel an agent's pending deployment, or one of its runs.
 
-Useful when you notice a build will fail (bad Dockerfile, wrong deps) and
-want to abandon it without deleting the agent itself — fix the issue and
-redeploy.
+Without --run, the agent's pending deployment (a release being built or
+deployed) is cancelled. Useful when you notice a build will fail (bad
+Dockerfile, wrong deps) and want to abandon it without deleting the agent
+itself — fix the issue and redeploy. A deployment still queued is cancelled at
+once; one that is building or deploying is asked to stop and ends at its next
+checkpoint.
 
-Phase 1: only QUEUED deployments are cancellable. In-flight builds
-(BUILDING / DEPLOYING) return a clear 409 until cooperative-cancellation
-support lands in the backend workers.`,
+With --run <run-id>, the run of that id is cancelled instead (the ids are in
+'afy runs <name>'). A run waiting in the line is cancelled at once, a run in
+progress is stopped and ends cancelled, and a run that had already ended is left
+as it is (exit 0). The runs the cancelled run started are cancelled with it. The
+run must be one of the agent's.`,
+	Example: `  # Cancel the agent's pending deployment
+  afy cancel my-agent
+
+  # Cancel one of its runs (the id is in the Run ID column of afy runs)
+  afy cancel my-agent --run <run-id>`,
 	Args: cobra.ExactArgs(1),
 	RunE: runAgentsCancel,
 }
@@ -703,6 +713,15 @@ func runAgentsCancel(cmd *cobra.Command, args []string) error {
 	}
 
 	idOrName := args[0]
+
+	// --run names a RUN: a different route, and a different answer. Given with
+	// nothing after it, it is refused, not read as "no --run".
+	if cmd.Flags().Changed("run") {
+		if err := cancelRunFlagRefusal(cancelRun); err != nil {
+			return err
+		}
+		return cancelAgentRun(api.NewClient(), idOrName, cancelRun)
+	}
 
 	sp := output.NewSpinner(fmt.Sprintf("Finding pending deployment for '%s'...", idOrName))
 	sp.Start()

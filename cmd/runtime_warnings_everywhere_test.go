@@ -298,6 +298,7 @@ var classified = map[string]map[string]string{
 		"printSpawnRelationships": "lookup: resolves the names of the agents a spawn graph names; the answer is the graph (afy status prints the agent's own warnings)",
 	},
 	"GetAgent": {
+		"cancelAgentRun":       "lookup: resolves the agent a run must belong to before the run is cancelled; a run is not a release, so there is nothing of the agent's to say",
 		"showAgentStatus":      prints,
 		"initLinkExisting":     prints,
 		"waitForAcceptedStart": "lookup: polls the agent's status until a start is accepted; the answer is the start's outcome",
@@ -323,6 +324,7 @@ var classified = map[string]map[string]string{
 	"CancelDeployment": {"runAgentsCancel": prints},
 	"GetDeployment": {
 		"watchDeployment": "poll: the release's warnings were printed when it was accepted",
+		"cancelAgentRun":  "reads a RUN to learn whose it is, which carries no warnings (a run is not a release)",
 		"watchRun":        "reads a RUN, which carries no warnings (a run is not a release)",
 	},
 	"ListDeployments": {
