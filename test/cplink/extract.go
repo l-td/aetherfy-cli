@@ -64,9 +64,11 @@ const SchemaVersion = 1
 // regeneration puts the diff in front of a human.
 const minFields = 5
 
-// Source records where an extraction came from and whether that state is
-// shareable. It is the push gate's evidence, carried in the snapshot so a reader
-// can see which commit of which file the field list describes.
+// Source records where an extraction came from, carried in the snapshot so a
+// reader can see which file on which branch the field list describes, and that
+// it was clean and pushed when it was taken. Whether a checkout may be taken
+// from at all is decided by ONE rule, cperrors.DescribeCheckout / Unshareable
+// (the whole checkout, the docs generators' rule); this only records.
 type Source struct {
 	Path   string `json:"path"`
 	Model  string `json:"model"`
@@ -218,28 +220,6 @@ func describeSource(cpRoot string) *Source {
 	unpushed := changed != ""
 	src.Unpushed = &unpushed
 	return src
-}
-
-// Unshareable says why an extraction cannot be compared or committed, or "" when
-// it can. The wording mirrors docs-site's unshareableSource, because it is the
-// same gate for the same reason.
-func Unshareable(src *Source) string {
-	if src == nil {
-		return "the extraction carries no provenance, so there is no way to tell whether it " +
-			"describes pushed code"
-	}
-	if src.Dirty {
-		return fmt.Sprintf("%s has uncommitted changes in the control-plane checkout", src.Path)
-	}
-	if src.Unpushed == nil {
-		return fmt.Sprintf("branch %q has no upstream, so its commits are on no shared branch",
-			src.Branch)
-	}
-	if *src.Unpushed {
-		return fmt.Sprintf("%s is changed by commits that are not on %q's upstream, so the "+
-			"surface it describes is not pushed", src.Path, src.Branch)
-	}
-	return ""
 }
 
 // Validate is the refuse-to-trust check for a field list's structure. It is what

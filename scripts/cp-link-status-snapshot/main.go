@@ -15,9 +15,9 @@
 //   - an empty or shrunken extraction is a bug in the parser, and writing it
 //     would turn the guard into a rubber stamp — a snapshot with nothing in it
 //     agrees with everything;
-//   - a source file that is dirty or sits in unpushed commits describes code
-//     nobody else can see yet, and a snapshot of it would red on every other
-//     machine until the change was pushed.
+//   - a control-plane checkout with uncommitted Python or unpushed commits
+//     describes code nobody else can see yet (cperrors.DescribeCheckout, the
+//     docs generators' rule, the same check cp-error-codes-snapshot makes).
 package main
 
 import (
@@ -59,6 +59,15 @@ func run(repoRoot, cpRoot string) error {
 			"  new path — extracting from nothing would write a snapshot that agrees with\n"+
 			"  every field name.", cpRoot, cplink.SourcePath)
 	}
+	// Refuse to record a field list nobody else can see: the committed snapshot is what CI reads, so it is the
+	// contract. ONE RULE for every snapshot this repo takes from the control plane, the docs generators' rule and
+	// words (cperrors.DescribeCheckout / Unshareable): no uncommitted Python anywhere in the checkout, nothing
+	// ahead of its upstream.
+	if why := cperrors.Unshareable(cperrors.DescribeCheckout(cpRoot)); why != "" {
+		return fmt.Errorf("%s.\n"+
+			"  Commit and push the control-plane change first, then regenerate. The snapshot is what\n"+
+			"  CI reads, so it must describe a surface CI could also reach.", why)
+	}
 
 	fields, err := cplink.Extract(cpRoot)
 	if err != nil {
@@ -68,12 +77,6 @@ func run(repoRoot, cpRoot string) error {
 	if err := cplink.Validate(fields); err != nil {
 		return fmt.Errorf("extraction from %s is not trustworthy: %v.\n"+
 			"  Refusing to write a snapshot that would green-light any field name.", cpRoot, err)
-	}
-	if why := cplink.Unshareable(fields.Source); why != "" {
-		return fmt.Errorf("%s.\n"+
-			"  The committed snapshot must describe PUSHED code, or it reds on every machine\n"+
-			"  that does not have your working copy. Push the control-plane change first,\n"+
-			"  then regenerate.", why)
 	}
 
 	body, err := cplink.Marshal(fields)
