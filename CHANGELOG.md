@@ -11,7 +11,8 @@ so an entry here is written for the version the owner tags next.
   it (`include: [../../shared]`, relative to the agent's folder) uploads an archive rooted at the
   repository (the nearest folder holding `.git`) holding the folder and each path at its place, and sends
   the folder's repository path as `code_root`. Before the upload it refuses, with the control plane's
-  sentence, an include that is malformed, leaves the repository (`DEPLOYMENT_INCLUDE_OUTSIDE_REPOSITORY`),
+  sentence, an include that is malformed, names something a deploy always leaves out (`.git`, `.env`,
+  `node_modules` and the other built-in exclusions), leaves the repository (`DEPLOYMENT_INCLUDE_OUTSIDE_REPOSITORY`),
   is not there (`DEPLOYMENT_INCLUDE_NOT_FOUND`) or overlaps the agent's folder
   (`DEPLOYMENT_INCLUDE_OVERLAPS_AGENT_FOLDER`), and any include from a folder outside a git repository.
   An agent without `include:` uploads exactly what it did. Release this CLI after the control plane that

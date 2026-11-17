@@ -88,6 +88,17 @@ func IncludeProblem(entry string) string {
 				"'_' and '-', separated by '/'."
 		}
 	}
+	// A name a deploy always leaves out (DefaultIgnorePatterns). Those patterns are matched on the path below
+	// each packed tree, never on the tree's own name, so without this an include of ../../.git would upload
+	// the repository's history and ../../.env the secrets the agent's own folder never carries.
+	for _, name := range parts[steps:] {
+		for _, pattern := range DefaultIgnorePatterns {
+			if matched, _ := filepath.Match(pattern, name); matched {
+				return fmt.Sprintf("It names '%s', which a deploy always leaves out (like .git, .env and "+
+					"node_modules): include only paths a deploy carries.", name)
+			}
+		}
+	}
 	return ""
 }
 

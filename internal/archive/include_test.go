@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,6 +48,27 @@ func TestTheGrammarRefusesWithTheControlPlanesSentence(t *testing.T) {
 	}
 	for entry, want := range cases {
 		assert.Equal(t, want, IncludeProblem(entry), entry)
+	}
+}
+
+// A name a deploy always leaves out is refused, naming it: the built-in exclusions are matched below a packed
+// tree, never on its own name, so `../../.git` would otherwise upload the repository's history.
+func TestAPathADeployAlwaysLeavesOutIsRefusedNamingIt(t *testing.T) {
+	excluded := "It names '%s', which a deploy always leaves out (like .git, .env and node_modules): include " +
+		"only paths a deploy carries."
+	cases := map[string]string{
+		"../../.git": ".git", "../../.git/config": ".git", "../../.env": ".env",
+		"../../.env.production": ".env.production", "../../shared/.env": ".env", "../../node_modules": "node_modules",
+		"../../.venv/lib": ".venv", "../../logs/build.log": "build.log", "../../shared/__pycache__": "__pycache__",
+		"../.afyignore": ".afyignore",
+	}
+	for entry, name := range cases {
+		assert.Equal(t, fmt.Sprintf(excluded, name), IncludeProblem(entry), entry)
+	}
+	// CONTROL: names that only resemble an exclusion are accepted.
+	for _, entry := range []string{"../../environment", "../../.envrc", "../../git-tools", "../../logs",
+		"../../shared/env_config.py", "../../node_modules_shared"} {
+		assert.Empty(t, IncludeProblem(entry), entry)
 	}
 }
 
