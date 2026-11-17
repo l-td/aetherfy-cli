@@ -44,6 +44,9 @@ type AetherfyConfig struct {
 	// The paths a runtime: dockerfile agent writes; the server validates them.
 	WritablePaths any          `yaml:"writable_paths,omitempty"`
 	Spawn         *SpawnConfig `yaml:"spawn,omitempty"`
+	// Repository paths deployed with the agent besides its folder ("../../shared"). Typed `any` like the
+	// fields above, but READ: `afy deploy` packs them, so it checks them first (Includes, include.go).
+	Include any `yaml:"include,omitempty"`
 }
 
 // SpawnConfig is the `spawn:` block. A struct, not `any`, because its field
@@ -176,6 +179,9 @@ func ValidateAetherfyConfig(dir string) error {
 	}
 	if len(missing) > 0 {
 		return fmt.Errorf("aetherfy.yaml is missing required field(s): %s", strings.Join(missing, ", "))
+	}
+	if _, err := Includes(cfg.Include); err != nil {
+		return err
 	}
 	return nil
 }

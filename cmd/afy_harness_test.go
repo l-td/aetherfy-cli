@@ -7,6 +7,8 @@ import (
 	"errors"
 	"github.com/l-td/aetherfy-cli/internal/output"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,6 +34,9 @@ type cpCall struct {
 	Body   map[string]interface{}
 	// Authorization is the request's Authorization header ("" when it sent none).
 	Authorization string
+	// Form and Archive are a multipart upload's fields and its code_archive file (POST /agents/{id}/deploy).
+	Form    map[string]string
+	Archive []byte
 }
 
 // fakeCP answers by "METHOD /path" (the path after /api/v1) and records every
@@ -54,6 +59,29 @@ type cpAnswer struct {
 	headers map[string]string
 }
 
+// multipartOf is a multipart request's fields and its code_archive file; nil for any other body.
+func multipartOf(contentType string, raw []byte) (map[string]string, []byte) {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "multipart/form-data" {
+		return nil, nil
+	}
+	reader := multipart.NewReader(bytes.NewReader(raw), params["boundary"])
+	form := map[string]string{}
+	var archive []byte
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			return form, archive
+		}
+		data, _ := io.ReadAll(part)
+		if part.FormName() == "code_archive" {
+			archive = data
+		} else {
+			form[part.FormName()] = string(data)
+		}
+	}
+}
+
 func newFakeCP(t *testing.T) *fakeCP {
 	t.Helper()
 	f := &fakeCP{routes: map[string]cpAnswer{}, sequences: map[string][]cpAnswer{}}
@@ -62,8 +90,10 @@ func newFakeCP(t *testing.T) *fakeCP {
 		raw, _ := io.ReadAll(r.Body)
 		var body map[string]interface{}
 		_ = json.Unmarshal(raw, &body)
+		form, archive := multipartOf(r.Header.Get("Content-Type"), raw)
 		f.mu.Lock()
-		f.calls = append(f.calls, cpCall{Method: r.Method, Path: path, Query: r.URL.RawQuery, Body: body, Authorization: r.Header.Get("Authorization")})
+		f.calls = append(f.calls, cpCall{Method: r.Method, Path: path, Query: r.URL.RawQuery, Body: body,
+			Authorization: r.Header.Get("Authorization"), Form: form, Archive: archive})
 		a, ok := f.routes[r.Method+" "+path]
 		if seq := f.sequences[r.Method+" "+path]; len(seq) > 0 {
 			a, ok = seq[0], true

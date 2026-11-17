@@ -7,6 +7,16 @@ so an entry here is written for the version the owner tags next.
 
 ### Added
 
+- `include:` in aetherfy.yaml: `afy deploy` of an agent whose yaml lists repository paths to deploy with
+  it (`include: [../../shared]`, relative to the agent's folder) uploads an archive rooted at the
+  repository (the nearest folder holding `.git`) holding the folder and each path at its place, and sends
+  the folder's repository path as `code_root`. Before the upload it refuses, with the control plane's
+  sentence, an include that is malformed, leaves the repository (`DEPLOYMENT_INCLUDE_OUTSIDE_REPOSITORY`),
+  is not there (`DEPLOYMENT_INCLUDE_NOT_FOUND`) or overlaps the agent's folder
+  (`DEPLOYMENT_INCLUDE_OVERLAPS_AGENT_FOLDER`), and any include from a folder outside a git repository.
+  An agent without `include:` uploads exactly what it did. Release this CLI after the control plane that
+  accepts `code_root`.
+
 - `afy keys create [--name <n>]`, `afy keys list` and `afy keys revoke <id>`. A key is created by
   approving a code in the dashboard, not by a command that holds a key: `keys create` prints a code and
   a page, asks the control plane every few seconds (the interval it states) until a person signed in to
@@ -28,6 +38,13 @@ so an entry here is written for the version the owner tags next.
   a warning, not an error, and the exit code does not change. `--json` carries them as `warnings` on the
   deployment and on the agent, and nested in a move. Release this CLI after the control plane that sends
   `warnings`.
+
+### Fixed
+
+- `afy deploy` of a folder holding a symlink failed with `archive/tar: write too long`. A link written as
+  a relative path that lands inside the agent's folder (or a path it includes) is now packed as a link;
+  any other link is refused before the upload, naming `include:` as the way to deploy shared code, as a
+  push refuses it.
 
 ### Breaking
 
