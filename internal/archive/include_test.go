@@ -139,6 +139,20 @@ func TestTwoSpellingsOfOnePathAreOnePathListedTwice(t *testing.T) {
 	assert.Equal(t, "include lists 'agents/shared' twice.", err.Error())
 }
 
+// Nested only once resolved: from agents/bot, `../x` is agents/x and `../../agents/x/lib` is inside it. The text
+// alone does not show it (the grammar takes both), so resolution refuses it, never keeping one of the two, with
+// the grammar's sentence, word for word the control plane's (shared/code_tree.resolve_includes).
+func TestAPathInsideAnotherOnceResolvedIsRefusedWithTheGrammarsSentence(t *testing.T) {
+	entries := []string{"../x", "../../agents/x/lib"}
+	for _, e := range entries {
+		assert.Equal(t, "", IncludeProblem(e), e)
+	}
+	_, err := ResolveIncludes("agents/bot", entries)
+	assert.Equal(t, CodeConfigParseError, codeOf(t, err))
+	assert.Equal(t, "include lists 'agents/x/lib', which is inside 'agents/x', also listed: list only 'agents/x'.",
+		err.Error())
+}
+
 // --- the repository and its files -------------------------------------------------------------
 
 func write(t *testing.T, path, body string) {
