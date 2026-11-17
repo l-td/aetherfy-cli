@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 164
+      "count": 165
     },
     {
       "path": "api/routes/regions.py",
@@ -316,6 +316,10 @@
       "tier": "top-level"
     },
     "DEPLOYMENT_ARCHIVE_TOO_LARGE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_CODE_ROOT_WITHOUT_INCLUDE": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
