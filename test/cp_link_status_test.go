@@ -112,11 +112,14 @@ func TestCommittedLinkSnapshotIsTrustworthy(t *testing.T) {
 	assert.Equal(t, cplink.GeneratorPath, snap.Generator)
 	require.NoError(t, cplink.Validate(snap.FieldList()))
 
-	// The snapshot claims to describe pushed code. If its own provenance says
+	// The snapshot claims to describe pushed code. If its own record says
 	// otherwise it was committed from a working copy, and every other machine
 	// is comparing against something it cannot see.
-	assert.Empty(t, cplink.Unshareable(snap.Source),
-		"the committed snapshot records an unshareable source: %s", cplink.Unshareable(snap.Source))
+	require.NotNil(t, snap.Source, "the committed snapshot records no source")
+	assert.False(t, snap.Source.Dirty, "the committed snapshot records a dirty source")
+	if assert.NotNil(t, snap.Source.Unpushed, "the committed snapshot records a branch without an upstream") {
+		assert.False(t, *snap.Source.Unpushed, "the committed snapshot records unpushed commits")
+	}
 	assert.Equal(t, cplink.SourcePath, snap.Source.Path)
 	assert.Equal(t, cplink.ModelName, snap.Source.Model)
 }
@@ -147,11 +150,12 @@ func TestLinkSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 		"the extraction from %s is not trustworthy — refusing to compare against it, because "+
 			"an empty extraction agrees with everything", cpRoot)
 
-	// PUSH GATE. A dirty or unpushed source file describes code nobody else can
+	// PUSH GATE, the generator's own rule (cperrors.DescribeCheckout). A checkout
+	// with uncommitted Python or unpushed commits describes code nobody else can
 	// see, so a diff here would report the developer's own work as staleness —
-	// and the advice that failure gives, "regenerate", is the one thing that must
-	// not happen: it would commit a field list from a working copy.
-	if why := cplink.Unshareable(live.Source); why != "" {
+	// and the advice that failure gives, "regenerate", is the one thing the
+	// generator would refuse.
+	if why := cperrors.Unshareable(cperrors.DescribeCheckout(cpRoot)); why != "" {
 		cperrors.SkipUnlessRequired(t, "NOT COMPARED — %s. The committed snapshot is unchanged and still governs; "+
 			"push the control-plane change, then regenerate: go run ./%s", why, cplink.GeneratorPath)
 	}

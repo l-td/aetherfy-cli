@@ -6,7 +6,7 @@
     {
       "path": "shared/error_codes.py",
       "tier": "top-level",
-      "count": 164
+      "count": 168
     },
     {
       "path": "api/routes/regions.py",
@@ -327,7 +327,23 @@
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },
+    "DEPLOYMENT_CODE_ROOT_WITHOUT_INCLUDE": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
     "DEPLOYMENT_CONFIG_PARSE_ERROR": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_INCLUDE_NOT_FOUND": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_INCLUDE_OUTSIDE_REPOSITORY": {
+      "source": "shared/error_codes.py",
+      "tier": "top-level"
+    },
+    "DEPLOYMENT_INCLUDE_OVERLAPS_AGENT_FOLDER": {
       "source": "shared/error_codes.py",
       "tier": "top-level"
     },

@@ -455,9 +455,11 @@ Requires your GitHub account to be connected ('afy github connect').
 Use --branch or append @branch to override the branch.
 
 If several agents live in one repository, point each at its own folder
-with --root-dir. That folder holds the agent's aetherfy.yaml, and only
-that folder is uploaded when you push — sibling folders never enter the
-build. Omit it and the whole repository is the build context.
+with --root-dir. That folder holds the agent's aetherfy.yaml, and a push
+deploys that folder plus the repository paths its aetherfy.yaml lists
+under include: (code the agents share, kept once), nothing else. A push
+redeploys the agent when it changes that folder or one of those paths.
+Omit --root-dir and the whole repository is the agent's folder.
 
 Re-running 'afy github link' on an already-linked agent is supported
 and is the recovery path for two situations:
@@ -563,7 +565,7 @@ paused until 'afy github resume'.`,
 		}
 		output.Println("")
 		if resp.RootDir != "" {
-			output.Println("Pushes to " + resp.Branch + " that touch " + resp.RootDir + " will now trigger automatic deployments.")
+			output.Println("Pushes to " + resp.Branch + " that touch " + resp.RootDir + ", or a path its aetherfy.yaml includes, will now trigger automatic deployments.")
 		} else {
 			output.Println("Pushes to " + resp.Branch + " will now trigger automatic deployments.")
 		}

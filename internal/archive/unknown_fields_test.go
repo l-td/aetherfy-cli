@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/l-td/aetherfy-cli/test/cperrors"
 	"github.com/l-td/aetherfy-cli/internal/yamldiff"
+	"github.com/l-td/aetherfy-cli/test/cperrors"
 	"github.com/l-td/aetherfy-cli/test/cpyaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -75,7 +75,8 @@ func TestAFileWithEveryFieldIsAccepted(t *testing.T) {
 		"drain_timeout_minutes: 30\n" +
 		"keep_alive: false\nentrypoint: main.py\nschedule:\n  cron: '0 3 * * *'\n  deadline_minutes: 30\n" +
 		"github_dependencies: ['o/r@v1']\n" +
-		"writable_paths: [/data]\n"
+		"writable_paths: [/data]\n" +
+		"include: ['../shared']\n"
 	require.NoError(t, CheckUnknownFields([]byte(full)))
 	for _, p := range KnownFields().Paths() {
 		leaf := p[strings.LastIndex(p, ".")+1:]

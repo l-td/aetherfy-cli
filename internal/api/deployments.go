@@ -13,7 +13,10 @@ import (
 // Deploy uploads code and triggers a deployment. confirmOverage=true accepts a
 // deploy that tips the account into overage (D2 Part 6) — sent as the
 // confirm_overage query param so the control-plane skips the 402 confirm gate.
-func (c *Client) Deploy(agentID string, zipData []byte, confirmOverage bool) (*DeployResponse, error) {
+// codeRoot is the agent's folder inside the archive when the archive is rooted at the repository because
+// the agent's aetherfy.yaml includes shared paths (the route's `code_root` field); "" sends no field: the
+// archive root is the agent's folder.
+func (c *Client) Deploy(agentID string, zipData []byte, codeRoot string, confirmOverage bool) (*DeployResponse, error) {
 	// Create multipart form
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -25,6 +28,11 @@ func (c *Client) Deploy(agentID string, zipData []byte, confirmOverage bool) (*D
 	}
 	if _, err := part.Write(zipData); err != nil {
 		return nil, fmt.Errorf("failed to write file data: %w", err)
+	}
+	if codeRoot != "" {
+		if err := writer.WriteField("code_root", codeRoot); err != nil {
+			return nil, fmt.Errorf("failed to write code_root: %w", err)
+		}
 	}
 
 	if err := writer.Close(); err != nil {
