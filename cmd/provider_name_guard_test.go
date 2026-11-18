@@ -45,10 +45,10 @@ import (
 // names, which no customer reads, and the binary does not contain them, so the word is not looked for there. (A
 // vendor name is still refused in a test file, as before.)
 //
-// WHAT IS SCANNED: every string literal in cmd/ and internal/, which between
-// them hold all of this binary's help text (cobra Short/Long/Example), every
-// output.Print* argument, every error message, and the keys of the JSON it
-// prints (a struct tag is a literal too). That is broader than
+// WHAT IS SCANNED: every string literal in cmd/, internal/ and pkg/ (pkg/version
+// words `afy version`), which between them hold all of this binary's help text
+// (cobra Short/Long/Example), every output.Print* argument, every error message,
+// and the keys of the JSON it prints (a struct tag is a literal too). That is broader than
 // "help text" on purpose: a provider name is no more acceptable in an error
 // than in --help, and enumerating positions in Go would mean tracking cobra's
 // struct literals, which is more machinery for less coverage.
@@ -97,7 +97,7 @@ type providerExemption struct {
 // keeps it that way — an entry added here must correspond to a real site.
 var providerExemptions = []providerExemption{}
 
-var scannedDirs = []string{"../cmd", "../internal"}
+var scannedDirs = []string{"../cmd", "../internal", "../pkg"}
 
 // providerHits returns one entry per occurrence of the compute provider's NAME, across every spelling.
 func providerHits(s string) []string {
@@ -246,9 +246,18 @@ func TestNoProviderNameInUserVisibleStrings(t *testing.T) {
 	// And the word rule reads only the files the binary is built from, so a walk that reached tests alone would
 	// leave it vacuous.
 	var built int
+	reached := map[string]bool{}
 	for _, path := range files {
 		if !isTestFile(path) {
 			built++
+		}
+		reached[filepath.ToSlash(path)] = true
+	}
+	// And each tree is reached BY NAME, one file in each: pkg/version words `afy version`, and a scan that
+	// dropped a tree would read clean.
+	for _, canary := range []string{"../cmd/deploy.go", "../internal/output/format.go", "../pkg/version/version.go"} {
+		if !reached[canary] {
+			t.Fatalf("%s was not scanned — the walker is not reaching its tree", canary)
 		}
 	}
 	if built < 25 {
