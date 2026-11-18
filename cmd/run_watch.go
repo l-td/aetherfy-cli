@@ -122,10 +122,11 @@ func followRun(client *api.Client, agentName, runID string, clock runWatchClock)
 				output.PrintSuccess("Run completed.")
 				return nil
 			case "failed", "error":
-				printRunEnd("Run failed.", d.ErrorMessage)
+				printRunEnd("Run failed.", d.ErrorMessage, d.FailureCode)
 				return shown(errRunFailed)
 			case "cancelled":
-				printRunEnd("Run cancelled.", d.ErrorMessage)
+				// A cancelled run carries no failure code: its reason is cancellation_reason.
+				printRunEnd("Run cancelled.", d.ErrorMessage, "")
 				return shown(errRunCancelled)
 			}
 		}
@@ -145,21 +146,24 @@ func samePlace(a, b *int) bool {
 	return *a == *b
 }
 
-// printRunEnd says how a followed run ended and why: "Error: Run failed." and a
-// "Reason:" line, or with --json the one error object, the reason inside its message
-// (stderr keeps its last line for that object).
-func printRunEnd(headline, reason string) {
+// printRunEnd says how a followed run ended and why: "Error: Run failed.", a "Reason:"
+// line and a "Failure code:" line, or with --json the one error object, the reason inside
+// its message and the failure code as its code (stderr keeps its last line for that object).
+func printRunEnd(headline, reason, failureCode string) {
 	if output.IsJSON() {
 		msg := headline
 		if reason != "" {
 			msg += " " + reason
 		}
-		output.PrintError("%s", msg)
+		output.PrintAPIError(0, failureCode, msg)
 		return
 	}
 	output.PrintError("%s", headline)
 	if reason != "" {
 		output.Printf("Reason: %s\n", reason)
+	}
+	if failureCode != "" {
+		output.Printf("Failure code: %s\n", failureCode)
 	}
 }
 

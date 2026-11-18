@@ -824,6 +824,9 @@ func printLastDeployFailure(client *api.Client, agent *api.Agent) {
 	if latest.ErrorMessage != "" {
 		output.KeyValue("Deploy error", latest.ErrorMessage)
 	}
+	if latest.FailureCode != "" {
+		output.KeyValue("Failure code", latest.FailureCode)
+	}
 }
 
 // showAgentStatus is `afy status` past the auth check. Split out so a test can
@@ -2019,6 +2022,10 @@ func formatAgentLastRun(r *api.LastRun) string {
 	state := formatRunState(r.State, nil)
 	if (strings.EqualFold(r.State, "failed") || strings.EqualFold(r.State, "cancelled")) && r.ErrorMessage != "" {
 		state = fmt.Sprintf("%s (%s)", state, r.ErrorMessage)
+	}
+	// A failed run's code after its sentence: the contract a script switches on.
+	if strings.EqualFold(r.State, "failed") && r.FailureCode != "" {
+		state = fmt.Sprintf("%s [%s]", state, r.FailureCode)
 	}
 	return fmt.Sprintf("%s, %s", state, relativeTime(r.CreatedAt))
 }

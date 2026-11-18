@@ -613,12 +613,16 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 					if deployment.ErrorMessage != "" {
 						msg += ": " + deployment.ErrorMessage
 					}
-					output.PrintError("%s", msg)
+					// The failure's code is the error object's code: what a script switches on.
+					output.PrintAPIError(0, deployment.FailureCode, msg)
 					return errDeploymentFailed
 				}
 				output.PrintError("Deployment failed")
 				if deployment.ErrorMessage != "" {
 					fmt.Fprintf(os.Stderr, "Reason: %s\n", deployment.ErrorMessage)
+				}
+				if deployment.FailureCode != "" {
+					fmt.Fprintf(os.Stderr, "Failure code: %s\n", deployment.FailureCode)
 				}
 				// THE STEP THAT FAILED, when the server sent it. "Reason" above
 				// is a mapped sentence — the same one for a pip resolution

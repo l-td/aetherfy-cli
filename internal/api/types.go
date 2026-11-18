@@ -125,12 +125,14 @@ type Agent struct {
 
 // LastRun is AgentResponse.last_run: the outcome of an agent's most recent run.
 type LastRun struct {
-	ID             string    `json:"id"`
-	TriggerSource  string    `json:"trigger_source"`
-	State          string    `json:"state"`
-	CreatedAt      time.Time `json:"created_at"`
-	ErrorMessage   string    `json:"error_message,omitempty"`
-	ReleaseVersion *int      `json:"release_version"`
+	ID            string    `json:"id"`
+	TriggerSource string    `json:"trigger_source"`
+	State         string    `json:"state"`
+	CreatedAt     time.Time `json:"created_at"`
+	ErrorMessage  string    `json:"error_message,omitempty"`
+	// Why a failed run failed, as the server's code (its failure_code); empty on any other run.
+	FailureCode    string `json:"failure_code,omitempty"`
+	ReleaseVersion *int   `json:"release_version"`
 }
 
 // AgentCreateRequest is the request body for creating an agent
@@ -181,6 +183,10 @@ type Deployment struct {
 	Status         string   `json:"state"`
 	Regions        []string `json:"regions,omitempty"`
 	ErrorMessage   string   `json:"error_message,omitempty"`
+	// Why a failed deployment failed, as the server's code (its failure_code), beside ErrorMessage, its
+	// sentence: the contract a script switches on. Empty on a deployment that did not fail, and on one that
+	// failed before the server recorded codes.
+	FailureCode string `json:"failure_code,omitempty"`
 	// WHICH BUILD STEP FAILED, and what it printed. ErrorMessage above is the
 	// server's mapped headline; one sentence covers a pip resolution failure, a
 	// missing lockfile and a step that ran out of memory, so on its own it
@@ -376,6 +382,9 @@ type AgentRun struct {
 	// reads is ErrorMessage. No omitempty on either, for the reason ReleaseVersion has none.
 	Position           *int    `json:"position"`
 	CancellationReason *string `json:"cancellation_reason"`
+	// Why a failed run failed, as the server's code; null on a run that did not fail. No omitempty, for the reason
+	// ReleaseVersion has none.
+	FailureCode *string `json:"failure_code"`
 }
 
 // RunSpawnedBy names the agent that spawned a run. Name is null when that agent's row is gone.
