@@ -565,6 +565,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 	defer ticker.Stop()
 
 	lastStatus := ""
+	var retrying retrySaid
 
 	for {
 		select {
@@ -582,6 +583,8 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 				output.Printf("Status: %s\n", formatStatus(deployment.Status))
 				lastStatus = deployment.Status
 			}
+			// While the platform retries an attempt that met a temporary unavailability, once for each retry.
+			retrying.say(deployment.Retry)
 
 			switch deployment.Status {
 			case "completed", "running", "active":

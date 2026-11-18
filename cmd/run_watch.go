@@ -90,6 +90,9 @@ var inFlightRunStates = map[string]bool{
 //   - a state this CLI does not know is followed like any other and said once,
 //     raw, so a state added to the control plane is not a silent hang.
 //
+// While the platform retries an attempt of the run that met a temporary
+// unavailability, each retry is said once (retrySaid), not once per read.
+//
 // The run is read at once and then once for every true the clock answers. A read
 // that fails is said and the follow goes on: the bound is what ends it.
 func followRun(client *api.Client, agentName, runID string, clock runWatchClock) error {
@@ -98,6 +101,7 @@ func followRun(client *api.Client, agentName, runID string, clock runWatchClock)
 	lastState, lastPlace := "", (*int)(nil)
 	said := false // whether a state has been said yet
 	unknownSaid := map[string]bool{}
+	var retrying retrySaid
 	var last *api.Deployment
 
 	for {
@@ -116,6 +120,8 @@ func followRun(client *api.Client, agentName, runID string, clock runWatchClock)
 				output.Printf("Status: %s (a state this CLI does not know; still following the run)\n", d.Status)
 			}
 			said, lastState, lastPlace = true, state, d.Position
+			// While the platform retries an attempt that met a temporary unavailability, once for each retry.
+			retrying.say(d.Retry)
 
 			switch state {
 			case "completed":
