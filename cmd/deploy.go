@@ -565,6 +565,7 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 	defer ticker.Stop()
 
 	lastStatus := ""
+	var retrying retrySaid
 
 	for {
 		select {
@@ -582,6 +583,8 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 				output.Printf("Status: %s\n", formatStatus(deployment.Status))
 				lastStatus = deployment.Status
 			}
+			// While the platform retries an attempt that met a temporary unavailability, once for each retry.
+			retrying.say(deployment.Retry)
 
 			switch deployment.Status {
 			case "completed", "running", "active":
@@ -613,12 +616,16 @@ func watchDeployment(client *api.Client, agentID, deploymentID string, pollInter
 					if deployment.ErrorMessage != "" {
 						msg += ": " + deployment.ErrorMessage
 					}
-					output.PrintError("%s", msg)
+					// The failure's code is the error object's code: what a script switches on.
+					output.PrintAPIError(0, deployment.FailureCode, msg)
 					return errDeploymentFailed
 				}
 				output.PrintError("Deployment failed")
 				if deployment.ErrorMessage != "" {
 					fmt.Fprintf(os.Stderr, "Reason: %s\n", deployment.ErrorMessage)
+				}
+				if deployment.FailureCode != "" {
+					fmt.Fprintf(os.Stderr, "Failure code: %s\n", deployment.FailureCode)
 				}
 				// THE STEP THAT FAILED, when the server sent it. "Reason" above
 				// is a mapped sentence — the same one for a pip resolution

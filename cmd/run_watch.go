@@ -90,6 +90,9 @@ var inFlightRunStates = map[string]bool{
 //   - a state this CLI does not know is followed like any other and said once,
 //     raw, so a state added to the control plane is not a silent hang.
 //
+// While the platform retries an attempt of the run that met a temporary
+// unavailability, each retry is said once (retrySaid), not once per read.
+//
 // The run is read at once and then once for every true the clock answers. A read
 // that fails is said and the follow goes on: the bound is what ends it.
 func followRun(client *api.Client, agentName, runID string, clock runWatchClock) error {
@@ -98,6 +101,7 @@ func followRun(client *api.Client, agentName, runID string, clock runWatchClock)
 	lastState, lastPlace := "", (*int)(nil)
 	said := false // whether a state has been said yet
 	unknownSaid := map[string]bool{}
+	var retrying retrySaid
 	var last *api.Deployment
 
 	for {
@@ -116,16 +120,19 @@ func followRun(client *api.Client, agentName, runID string, clock runWatchClock)
 				output.Printf("Status: %s (a state this CLI does not know; still following the run)\n", d.Status)
 			}
 			said, lastState, lastPlace = true, state, d.Position
+			// While the platform retries an attempt that met a temporary unavailability, once for each retry.
+			retrying.say(d.Retry)
 
 			switch state {
 			case "completed":
 				output.PrintSuccess("Run completed.")
 				return nil
 			case "failed", "error":
-				printRunEnd("Run failed.", d.ErrorMessage)
+				printRunEnd("Run failed.", d.ErrorMessage, d.FailureCode)
 				return shown(errRunFailed)
 			case "cancelled":
-				printRunEnd("Run cancelled.", d.ErrorMessage)
+				// A cancelled run carries no failure code: its reason is cancellation_reason.
+				printRunEnd("Run cancelled.", d.ErrorMessage, "")
 				return shown(errRunCancelled)
 			}
 		}
@@ -145,21 +152,24 @@ func samePlace(a, b *int) bool {
 	return *a == *b
 }
 
-// printRunEnd says how a followed run ended and why: "Error: Run failed." and a
-// "Reason:" line, or with --json the one error object, the reason inside its message
-// (stderr keeps its last line for that object).
-func printRunEnd(headline, reason string) {
+// printRunEnd says how a followed run ended and why: "Error: Run failed.", a "Reason:"
+// line and a "Failure code:" line, or with --json the one error object, the reason inside
+// its message and the failure code as its code (stderr keeps its last line for that object).
+func printRunEnd(headline, reason, failureCode string) {
 	if output.IsJSON() {
 		msg := headline
 		if reason != "" {
 			msg += " " + reason
 		}
-		output.PrintError("%s", msg)
+		output.PrintAPIError(0, failureCode, msg)
 		return
 	}
 	output.PrintError("%s", headline)
 	if reason != "" {
 		output.Printf("Reason: %s\n", reason)
+	}
+	if failureCode != "" {
+		output.Printf("Failure code: %s\n", failureCode)
 	}
 }
 
