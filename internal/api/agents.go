@@ -113,14 +113,15 @@ var lifecycleRetryBaseWait = 2 * time.Second
 //
 //	409 AGENT_OPERATION_IN_PROGRESS — the lifecycle handler's bounded 3s
 //	    agent-row wait expired (api/routes/agents.py _lock_agent_row_or_409).
-//	503 RESOURCE_BUSY — the global 5s request-path lock bound expired
-//	    (shared/error_codes.py). Contended lifecycle calls answer this
-//	    routinely now that the bound is actually armed for the whole
-//	    transaction; before, they blocked the server's event loop instead.
+//	503 RESOURCE_BUSY — the request's first unit found no database slot free
+//	    within the slot wait, so nothing ran (shared/error_codes.py, REVIEW_FAQ
+//	    §97). The control plane answers it for that refusal and nothing else.
 //
 // Deliberately NOT retried: every other 409 (AGENT_ALREADY_PAUSED,
 // AGENT_NOT_PAUSED, AGENT_ALREADY_ARCHIVED, AGENT_HAS_PENDING_DEPLOYMENTS) is a
-// contract answer about state, and any other 5xx may have half-applied.
+// contract answer about state, and any other 5xx may have half-applied,
+// 503 REQUEST_TIMED_OUT included: a lock or statement timeout partway through
+// the request, after earlier work committed.
 var contendedLifecycleCodes = map[int]string{
 	409: "AGENT_OPERATION_IN_PROGRESS",
 	503: "RESOURCE_BUSY",
@@ -130,8 +131,8 @@ var contendedLifecycleCodes = map[int]string{
 // with a bounded retry on server-declared contention.
 //
 // Retrying is safe precisely BECAUSE it is keyed on those two codes: both are
-// raised from a BOUNDED lock wait before the handler does any work, so they
-// mean "not started", never "half-done". A verb that already took effect
+// raised before the handler does any work (a bounded agent-row wait, the
+// first unit's slot wait), so they mean "not started", never "half-done". A verb that already took effect
 // answers with a different code entirely, so a completed operation is never
 // re-sent. Everything else fails fast on the first attempt.
 //
