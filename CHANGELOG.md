@@ -55,6 +55,19 @@ so an entry here is written for the version the owner tags next.
   control plane that serves `POST /deployments/{run}/cancel`.
 - `afy status` prints `Deadline: N min` for a schedule that has a deadline, and `--json` carries
   `cron_deadline_minutes`.
+- A failed deployment or run shows its failure code beside its reason. `afy deploy`, `afy redeploy`,
+  `afy rollback` and `afy run --wait` print `Failure code: <CODE>` under `Reason:`, and with `--json` the error
+  object carries it as its `code`. `afy status` shows it under `Deploy error` and on the last run's line,
+  `afy deployments` under the version's error, and `afy runs --json` carries `failure_code` on each run. A
+  cancelled run (its reason is `cancellation_reason`) and a deployment that failed before codes were recorded
+  show the reason alone. Release this CLI after the control plane that sends `failure_code`.
+- While the platform retries an attempt that met a temporary unavailability of its own, `afy deploy`,
+  `afy redeploy`, `afy rollback` and `afy run --wait` say so, once each time the retry changes, not on every
+  poll: `The platform was temporarily unavailable: retrying in N s (attempt K of M).`, or `retrying now` once
+  the time has come. With `--json` the line goes to stderr and stdout stays the one document. `--json` carries
+  `retry` as the control plane sends it (`null` when nothing is being retried) on a deployment, on an agent's
+  last run and on each run of `afy runs`. If the retries are used up, the deployment or run fails with the code
+  `PLATFORM_TEMPORARILY_UNAVAILABLE`. Release this CLI after the control plane that sends `retry`.
 
 ### Fixed
 
