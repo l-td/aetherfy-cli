@@ -424,6 +424,14 @@ func TestSnapshotMatchesTheLiveControlPlane(t *testing.T) {
 			cpRoot, len(missing), strings.Join(missing, "\n    "), cperrors.GeneratorPath)
 	}
 
+	// PUSH GATE, the generator's own rule. Against a checkout with uncommitted
+	// Python or unpushed commits a diff would report the developer's own work as
+	// staleness, and the advice it gives, "regenerate", is what the generator refuses.
+	if why := cperrors.Unshareable(cperrors.DescribeCheckout(cpRoot)); why != "" {
+		cperrors.SkipUnlessRequired(t, "NOT COMPARED — %s. The committed snapshot is unchanged and still governs; "+
+			"push the control-plane change, then regenerate: go run ./%s", why, cperrors.GeneratorPath)
+	}
+
 	live, err := cperrors.Extract(cpRoot)
 	require.NoError(t, err)
 	require.NoError(t, cperrors.ValidateExtraction(live),

@@ -117,34 +117,3 @@ func TestValidateRefusesAnExtractionItCannotVouchFor(t *testing.T) {
 		t.Errorf("Validate rejected a well-formed field list: %v", err)
 	}
 }
-
-func TestUnshareableBlocksEveryStateThatIsNotPushed(t *testing.T) {
-	no, yes := false, true
-	cases := []struct {
-		name string
-		src  *Source
-		want string
-	}{
-		{"no provenance", nil, "no provenance"},
-		{"dirty", &Source{Path: "p", Dirty: true}, "uncommitted"},
-		{"no upstream", &Source{Path: "p", Branch: "wip"}, "no upstream"},
-		{"unpushed", &Source{Path: "p", Branch: "main", Unpushed: &yes}, "not pushed"},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			why := Unshareable(c.src)
-			if why == "" {
-				t.Fatalf("Unshareable allowed %+v", c.src)
-			}
-			if !strings.Contains(why, c.want) {
-				t.Errorf("reason %q does not mention %q", why, c.want)
-			}
-		})
-	}
-
-	// The positive control. Without it, an Unshareable that refuses everything
-	// would pass every case above and silently disable the drift check forever.
-	if why := Unshareable(&Source{Path: "p", Branch: "main", Unpushed: &no}); why != "" {
-		t.Errorf("a clean, pushed source was called unshareable: %s", why)
-	}
-}

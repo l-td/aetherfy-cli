@@ -39,7 +39,11 @@ one (default: "default"); 'afy init --agent <name> --target <t>' adds one.
 The path should contain an aetherfy.yaml; if no path is given, the current
 directory is used. The deployment process:
   1. Validates aetherfy.yaml exists
-  2. Creates an archive of your code (files matching .afyignore are left out)
+  2. Creates an archive of your code (files matching .afyignore are left out).
+     When aetherfy.yaml lists repository paths under include: (code several
+     agents of one repository share), the archive holds the folder and those
+     paths at their places in the repository; the folder must then be inside
+     a git repository, and every path must exist and stay inside it.
   3. Uploads to Aetherfy
   4. Builds an image
   5. Deploys it and prints the agent's URL
@@ -88,7 +92,8 @@ func isRefusedConfig(err error) bool {
 	var uf *archive.UnknownFieldsError
 	var pf *archive.PlatformFieldsError
 	var sf *archive.ScheduleFormError
-	return errors.As(err, &uf) || errors.As(err, &pf) || errors.As(err, &sf)
+	var inc *archive.IncludeError
+	return errors.As(err, &uf) || errors.As(err, &pf) || errors.As(err, &sf) || errors.As(err, &inc)
 }
 
 // handleDeployResult post-processes the first deploy attempt for the D2 Part 6
@@ -97,7 +102,7 @@ func isRefusedConfig(err error) bool {
 // spinner). On OVERAGE_CONFIRM_REQUIRED it shows "this adds ~$X/mo — continue?"
 // and, on confirm (or --yes), re-sends with confirm_overage=true (its own brief
 // spinner). Non-special errors pass through for the caller to print generically.
-func handleDeployResult(client *api.Client, agentID string, tarballData []byte, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
+func handleDeployResult(client *api.Client, agentID string, tarballData []byte, codeRoot string, resp *api.DeployResponse, err error) (*api.DeployResponse, error) {
 	if err == nil {
 		return resp, nil
 	}
@@ -129,7 +134,7 @@ func handleDeployResult(client *api.Client, agentID string, tarballData []byte, 
 		// Confirmed (or --yes) → resend accepting the overage.
 		sp := output.NewSpinner("Deploying...")
 		sp.Start()
-		r, e := client.Deploy(agentID, tarballData, true)
+		r, e := client.Deploy(agentID, tarballData, codeRoot, true)
 		sp.Stop()
 		return r, e
 
@@ -247,6 +252,57 @@ func warnUnlessLinkCommitted(dir string) {
 	}
 }
 
+// packAgent is the archive of the agent in dir, and the code_root to send with it.
+//
+// Without `include:` it is the archive of dir alone, rooted at it, exactly as before (codeRoot "").
+// With it, it is rooted at the repository dir is in (the nearest folder holding .git; outside a repository
+// an include has nothing to be bounded by and is refused), and holds dir at its repository path
+// (codeRoot) and each include at its own: the same rules and sentences as the control plane, before any
+// byte is uploaded.
+func packAgent(dir string, ignorePatterns []string) ([]byte, string, error) {
+	cfg, err := archive.ParseAetherfyConfig(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	includes, err := archive.Includes(cfg.Include)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(includes) == 0 {
+		data, err := archive.CreateTarball(dir, ignorePatterns)
+		return data, "", err
+	}
+	repoRoot, err := archive.RepositoryRoot(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, "", err
+	}
+	rel, err := filepath.Rel(repoRoot, absDir)
+	if err != nil {
+		return nil, "", err
+	}
+	codeRoot := filepath.ToSlash(rel)
+	if codeRoot == "." {
+		codeRoot = ""
+	}
+	resolved, err := archive.ResolveIncludes(codeRoot, includes)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := archive.CheckIncludesOnDisk(repoRoot, codeRoot, resolved); err != nil {
+		return nil, "", err
+	}
+	paths := make([]string, len(resolved))
+	for i, r := range resolved {
+		paths[i] = r.Path
+	}
+	data, err := archive.CreateRepositoryTarball(repoRoot, codeRoot, paths, ignorePatterns)
+	return data, codeRoot, err
+}
+
 // deployDir archives dir and deploys it to agent.
 func deployDir(client *api.Client, agent *api.Agent, dir string) error {
 	ignorePatterns, err := archive.LoadIgnorePatterns(dir)
@@ -256,10 +312,16 @@ func deployDir(client *api.Client, agent *api.Agent, dir string) error {
 
 	sp := output.NewSpinner("Creating archive...")
 	sp.Start()
-	tarballData, err := archive.CreateTarball(dir, ignorePatterns)
+	tarballData, codeRoot, err := packAgent(dir, ignorePatterns)
 	sp.Stop()
 	if err != nil {
-		output.PrintError("Failed to create archive: %v", err)
+		var linkErr *archive.LinkError
+		var incErr *archive.IncludeError
+		if errors.As(err, &linkErr) || errors.As(err, &incErr) || errors.Is(err, archive.ErrNotInRepository) {
+			output.PrintError("%v", err)
+		} else {
+			output.PrintError("Failed to create archive: %v", err)
+		}
 		os.Exit(1)
 	}
 	output.PrintSuccess("Archive created (%.2f MB)", float64(len(tarballData))/1024/1024)
@@ -267,11 +329,11 @@ func deployDir(client *api.Client, agent *api.Agent, dir string) error {
 	output.PrintInfo("Deploying to %s...", agent.Name)
 	sp = output.NewSpinner("Uploading and deploying...")
 	sp.Start()
-	resp, err := client.Deploy(agent.ID, tarballData, false)
+	resp, err := client.Deploy(agent.ID, tarballData, codeRoot, false)
 	sp.Stop()
 	// The D2 Part 6 overage confirm and the freeze/pause 403s (may prompt,
 	// which is why the spinner is stopped first).
-	resp, err = handleDeployResult(client, agent.ID, tarballData, resp, err)
+	resp, err = handleDeployResult(client, agent.ID, tarballData, codeRoot, resp, err)
 	if err != nil {
 		_ = printRefusal("Deployment failed", err)
 		os.Exit(1)

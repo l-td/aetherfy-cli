@@ -11,7 +11,9 @@
 //
 // It refuses to write anything it cannot vouch for. An empty or shrunken
 // extraction is a bug in this script, and writing it would turn the guard into
-// a rubber stamp: a snapshot with nothing in it agrees with everything.
+// a rubber stamp: a snapshot with nothing in it agrees with everything. And it
+// refuses a control-plane checkout with uncommitted Python or unpushed commits,
+// as the docs generators do: the snapshot must describe pushed code.
 package main
 
 import (
@@ -53,6 +55,13 @@ func run(repoRoot, cpRoot string) error {
 			"  They were moved or renamed. Update `sources` in test/cperrors/extract.go to "+
 			"the new paths — extracting from the rest would write a snapshot that reports the "+
 			"missing file's codes as deletions.", cpRoot, strings.Join(missing, "\n    "))
+	}
+	// Refuse to record codes nobody else can see: the committed snapshot is what CI reads, so it is the contract.
+	// The docs generators' rule and words (cperrors.DescribeCheckout / Unshareable).
+	if why := cperrors.Unshareable(cperrors.DescribeCheckout(cpRoot)); why != "" {
+		return fmt.Errorf("%s.\n"+
+			"  Commit and push the control-plane change first, then regenerate. The snapshot is what\n"+
+			"  CI reads, so it must describe a surface CI could also reach.", why)
 	}
 
 	reg, err := cperrors.Extract(cpRoot)

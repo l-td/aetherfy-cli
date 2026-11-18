@@ -41,6 +41,7 @@ var Defaults = map[string]interface{}{
 	"schedule":              nil,
 	"github_dependencies":   []interface{}{},
 	"writable_paths":        []interface{}{},
+	"include":               []interface{}{},
 }
 
 // Kind classifies what `afy deploy` would do to a field.
