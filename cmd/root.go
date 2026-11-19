@@ -196,7 +196,7 @@ func init() {
 	for _, c := range []*cobra.Command{deployCmd, redeployCmd, rollbackCmd} {
 		c.GroupID = groupAgentLifecycle
 	}
-	for _, c := range []*cobra.Command{logsCmd, deploymentsCmd, spawnCmd} {
+	for _, c := range []*cobra.Command{logsCmd, deploymentsCmd, spawnCmd, messagesCmd} {
 		c.GroupID = groupAgentOps
 	}
 	for _, c := range []*cobra.Command{secretsCmd, workspacesCmd, githubCmd, collectionsCmd, indexCmd, pointsCmd} {
@@ -227,6 +227,7 @@ func init() {
 	rootCmd.AddCommand(logoutCmd)
 	rootCmd.AddCommand(whoamiCmd)
 	rootCmd.AddCommand(keysCmd)
+	rootCmd.AddCommand(messagesCmd)
 	rootCmd.AddCommand(usageCmd)
 	// Deliberately NOT behind checkAuth(): replacing the CLI binary needs no
 	// Aetherfy account, and a logged-out user is exactly who might be stuck on
