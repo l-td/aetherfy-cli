@@ -41,7 +41,7 @@ func TestMessagesReadsEveryPageInOrder(t *testing.T) {
 	if first < 0 || second < first {
 		t.Fatalf("both messages, in order, were not printed:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, `from a person`) || !strings.Contains(stdout, `"hello"`) ||
+	if !strings.Contains(stdout, `from the account`) || !strings.Contains(stdout, `"hello"`) ||
 		!strings.Contains(stdout, `from run run-2`) || !strings.Contains(stdout, `{"progress":0.5}`) {
 		t.Errorf("a message's sender or body is missing:\n%s", stdout)
 	}
@@ -110,5 +110,20 @@ func TestARunAwaitingAMessageIsFollowedAsARunInProgress(t *testing.T) {
 	}
 	if got := plainRunState("awaiting_message", nil); got != "awaiting_message" {
 		t.Errorf("the state is shown as %q, want awaiting_message", got)
+	}
+}
+
+func TestAMessageSentWithTheAccountsKeyIsShownAsTheAccountsNeverAsARuns(t *testing.T) {
+	// The sender is the server's `sender` field: a person's message is the
+	// account's even if a run id were ever carried beside it.
+	cp := newFakeCP(t)
+	row := strings.Replace(messageRow(1, "person", `"approved"`, ""), `"sender_run_id":null`, `"sender_run_id":"run-9"`, 1)
+	cp.on("GET", "/deployments/run-1/messages", 200, `{"messages":[`+row+`],"next_after":null}`)
+	stdout, stderr, err := runAfy(t, cp, "messages", "list", "run-1")
+	if err != nil {
+		t.Fatalf("messages list: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, "from the account") || strings.Contains(stdout, "from run") {
+		t.Errorf("a message sent with the account's key must read as the account's:\n%s", stdout)
 	}
 }

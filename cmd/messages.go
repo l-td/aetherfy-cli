@@ -106,9 +106,12 @@ func runMessagesList(cmd *cobra.Command, args []string) error {
 }
 
 // formatRunMessage is one line: its place, who sent it, when, whether the run
-// has read it, and the body as it was sent.
+// has read it, and the body as it was sent. WHO SENT IT IS THE SERVER'S `sender`:
+// "run" names the run that sent it; anything else -- "person", a message sent
+// with the account's key, this CLI's own sends among them -- is the account,
+// whatever else the row carries.
 func formatRunMessage(m api.RunMessage) string {
-	from := "a person"
+	from := "the account"
 	if m.Sender == "run" && m.SenderRunID != nil {
 		from = "run " + *m.SenderRunID
 	}
