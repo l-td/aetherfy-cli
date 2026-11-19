@@ -46,7 +46,7 @@ func TestLifecycleRetriesContendedCodes(t *testing.T) {
 		code   string
 	}{
 		{"409 agent-row held", http.StatusConflict, "AGENT_OPERATION_IN_PROGRESS"},
-		{"503 request-path lock bound", http.StatusServiceUnavailable, "RESOURCE_BUSY"},
+		{"503 no database slot, refused before anything ran", http.StatusServiceUnavailable, "RESOURCE_BUSY"},
 	}
 
 	for _, tc := range cases {
