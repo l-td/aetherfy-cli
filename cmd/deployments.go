@@ -169,6 +169,9 @@ func printDeployments(client *api.Client, agentID string) error {
 		output.Println("")
 		for _, d := range cut {
 			output.Printf("v%d error: %s\n", d.Version, d.ErrorMessage)
+			if d.FailureCode != "" {
+				output.Printf("v%d failure code: %s\n", d.Version, d.FailureCode)
+			}
 		}
 	}
 

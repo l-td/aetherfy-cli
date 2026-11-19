@@ -125,12 +125,31 @@ type Agent struct {
 
 // LastRun is AgentResponse.last_run: the outcome of an agent's most recent run.
 type LastRun struct {
-	ID             string    `json:"id"`
-	TriggerSource  string    `json:"trigger_source"`
-	State          string    `json:"state"`
-	CreatedAt      time.Time `json:"created_at"`
-	ErrorMessage   string    `json:"error_message,omitempty"`
-	ReleaseVersion *int      `json:"release_version"`
+	ID            string    `json:"id"`
+	TriggerSource string    `json:"trigger_source"`
+	State         string    `json:"state"`
+	CreatedAt     time.Time `json:"created_at"`
+	ErrorMessage  string    `json:"error_message,omitempty"`
+	// Why a failed run failed, as the server's code (its failure_code); empty on any other run.
+	FailureCode    string `json:"failure_code,omitempty"`
+	ReleaseVersion *int   `json:"release_version"`
+	// The retry the platform is making of this run's attempt, null when none. No omitempty: `--json` says null
+	// rather than dropping the key, as ReleaseVersion does.
+	Retry *RetryState `json:"retry"`
+}
+
+// RetryState is the read-time `retry` of a deployment or a run: while the platform retries an attempt that met a
+// temporary unavailability of its own (a rate limit, a full host, a machine ceiling, an unreachable compute
+// plane), the attempt it will make next and when. The record carries null whenever nothing is being retried.
+// Code is the server's reason, carried on as sent (`--json` shows it): the CLI says the same line for every
+// code and branches on none.
+type RetryState struct {
+	Code string `json:"code"`
+	// The number of the attempt that will be made next, from 2 to MaxAttempts.
+	Attempt     int `json:"attempt"`
+	MaxAttempts int `json:"max_attempts"`
+	// When that attempt is due (the server sends ISO 8601, UTC).
+	NextAttemptAt time.Time `json:"next_attempt_at"`
 }
 
 // AgentCreateRequest is the request body for creating an agent
@@ -181,6 +200,13 @@ type Deployment struct {
 	Status         string   `json:"state"`
 	Regions        []string `json:"regions,omitempty"`
 	ErrorMessage   string   `json:"error_message,omitempty"`
+	// Why a failed deployment failed, as the server's code (its failure_code), beside ErrorMessage, its
+	// sentence: the contract a script switches on. Empty on a deployment that did not fail, and on one that
+	// failed before the server recorded codes.
+	FailureCode string `json:"failure_code,omitempty"`
+	// The retry the platform is making of this deployment's attempt, null when none (see RetryState). No
+	// omitempty: `--json` says null rather than dropping the key, as ReleaseVersion does.
+	Retry *RetryState `json:"retry"`
 	// WHICH BUILD STEP FAILED, and what it printed. ErrorMessage above is the
 	// server's mapped headline; one sentence covers a pip resolution failure, a
 	// missing lockfile and a step that ran out of memory, so on its own it
@@ -376,6 +402,12 @@ type AgentRun struct {
 	// reads is ErrorMessage. No omitempty on either, for the reason ReleaseVersion has none.
 	Position           *int    `json:"position"`
 	CancellationReason *string `json:"cancellation_reason"`
+	// Why a failed run failed, as the server's code; null on a run that did not fail. No omitempty, for the reason
+	// ReleaseVersion has none.
+	FailureCode *string `json:"failure_code"`
+	// The retry the platform is making of this run's attempt, null when none (see RetryState). No omitempty, for
+	// the reason ReleaseVersion has none.
+	Retry *RetryState `json:"retry"`
 }
 
 // RunSpawnedBy names the agent that spawned a run. Name is null when that agent's row is gone.
