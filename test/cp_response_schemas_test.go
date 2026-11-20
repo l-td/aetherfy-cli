@@ -120,8 +120,7 @@ var notDecoded = map[string]string{
 	// The transport: each typed call above goes through one of these.
 	"Get": "transport", "GetRaw": "transport", "Post": "transport", "PostFile": "transport",
 	"Patch": "transport", "Put": "transport", "Delete": "transport", "DeleteWithResult": "transport",
-	"SetVerbose":      "configures the client, reads no answer",
-	"CheckConnection": "reads the status code only, never a body",
+	"SetVerbose": "configures the client, reads no answer",
 
 	"GetAgentYAML":                 "the agent's aetherfy.yaml as bytes, not a JSON answer",
 	"DeleteAgent":                  "reads the status only",
