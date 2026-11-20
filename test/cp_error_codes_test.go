@@ -79,6 +79,7 @@ var notControlPlaneCodes = map[string]string{
 	"NO_COLOR":              "env var: the no-color convention, honoured by internal/output",
 	"XDG_CONFIG_HOME":       "env var: XDG base-directory lookup on unix",
 	"AETHERFY_CP_ROOT":      "env var: points this guard at a control-plane checkout (cperrors.RootEnv)",
+	"CONTROL_PLANE_PYTHON":  "env var: the Python that imports the control plane's app for test/cpschemas (cpschemas.PythonEnv)",
 	"AETHERFY_WORKSPACE_ID": "env var: the workspace id the control plane injects into agents (for the SDKs); the CLI reads it NOT, pinned by a test",
 	"PLATFORM_FIELDS":       "the control plane's constant of the keys that left aetherfy.yaml, read by test/cpyaml",
 
