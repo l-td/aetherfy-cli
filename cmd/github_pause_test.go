@@ -16,20 +16,20 @@ import (
 // lifecycle (`afy stop`, the dashboard's agent pause), which this does not touch.
 
 const (
-	// The control plane's answer: the link, plus whether this call changed it.
+	// The control plane's answer: the link, plus no_op (true when nothing changed).
 	pausedLinkBody = `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,` +
 		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
-		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z","changed":true}`
+		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z","no_op":false}`
 	runningLinkBody = `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,` +
 		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
-		`"auto_deploy_paused_at":null,"changed":true}`
+		`"auto_deploy_paused_at":null,"no_op":false}`
 	// The same links answered to a call that found the state already set.
 	alreadyPausedLinkBody = `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,` +
 		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
-		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z","changed":false}`
+		`"auto_deploy_paused_at":"2026-11-14T09:30:00Z","no_op":true}`
 	alreadyOnLinkBody = `{"linked":true,"repo":"myorg/agents","branch":"production","root_dir":null,` +
 		`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
-		`"auto_deploy_paused_at":null,"changed":false}`
+		`"auto_deploy_paused_at":null,"no_op":true}`
 )
 
 func TestGitHubPausePostsToThePauseRouteWithNoBodyAndSaysAutoDeployIsPaused(t *testing.T) {
@@ -184,8 +184,8 @@ func TestGitHubPauseAndResumeJSONPrintTheWholeAnswerLikeTheSchedulesDo(t *testin
 			if at, present := got["auto_deploy_paused_at"]; !present || at != tc.wantAt {
 				t.Errorf("auto_deploy_paused_at = %v (present %v), want %v", at, present, tc.wantAt)
 			}
-			if changed, present := got["changed"]; !present || changed != tc.wantChanged {
-				t.Errorf("changed = %v (present %v), want %v", changed, present, tc.wantChanged)
+			if noOp, present := got["no_op"]; !present || noOp != !tc.wantChanged {
+				t.Errorf("no_op = %v (present %v), want %v", noOp, present, !tc.wantChanged)
 			}
 			// Nothing the command made up: the schedule commands print the answer and nothing beside it.
 			for _, invented := range []string{"agent", "auto_deploy_paused"} {

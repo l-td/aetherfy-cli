@@ -42,7 +42,7 @@ func TestUpdateWorkspaceMovesThroughTheMoveRoute(t *testing.T) {
 	cp := newFakeCP(t)
 	cp.on("POST", "/agents/bot/move", 200, `{"agent_id":"a1","agent":"bot",
 		"workspace":{"id":"w2","name":"acme"},"previous_workspace":{"id":"w1","name":"default"},
-		"changed":true,"redeployed":true,"deployment":{"id":"d9","agent_id":"a1","version":4,"state":"pending"}}`)
+		"no_op":false,"redeployed":true,"deployment":{"id":"d9","agent_id":"a1","version":4,"state":"pending"}}`)
 
 	stdout, _, err := runAfy(t, cp, "update", "bot", "--workspace", "acme", "--yes")
 	if err != nil {
@@ -67,7 +67,7 @@ func TestUpdateWorkspaceMovesThroughTheMoveRoute(t *testing.T) {
 
 const movedBot = `{"agent_id":"7d1c2f4e-0000-4000-8000-000000000001","agent":"bot",
 	"workspace":{"id":"w2","name":"acme"},"previous_workspace":{"id":"w1","name":"default"},
-	"changed":true,"redeployed":false,"deployment":null}`
+	"no_op":false,"redeployed":false,"deployment":null}`
 
 // --name with --workspace: the MOVE first (the step most likely refused), then
 // the rename, by the id the move answered with.
@@ -315,7 +315,7 @@ func TestUpdateMoveAsksNothingWhenTheAgentAlreadyLivesThere(t *testing.T) {
 	cp := newFakeCP(t)
 	cp.on("GET", "/agents/bot/access", 200, botAccessJSON)
 	cp.on("POST", "/agents/bot/move", 200, `{"agent_id":"a1","agent":"bot","workspace":{"id":"w1","name":"default"},
-		"previous_workspace":{"id":"w1","name":"default"},"changed":false,"redeployed":false,"deployment":null}`)
+		"previous_workspace":{"id":"w1","name":"default"},"no_op":true,"redeployed":false,"deployment":null}`)
 	stdout, stderr, err := runAfy(t, cp, "update", "bot", "--workspace", "default")
 	if err != nil {
 		t.Fatalf("asked or failed: %v\n%s", err, stderr)
@@ -350,7 +350,7 @@ func TestUpdateMoveToItsOwnWorkspaceWithoutYesOrTerminalIsNotRefused(t *testing.
 	cp := newFakeCP(t)
 	cp.on("GET", "/agents/bot/access", 200, botAccessJSON)
 	cp.on("POST", "/agents/bot/move", 200, `{"agent_id":"a1","agent":"bot","workspace":{"id":"w1","name":"default"},
-		"previous_workspace":{"id":"w1","name":"default"},"changed":false,"redeployed":false,"deployment":null}`)
+		"previous_workspace":{"id":"w1","name":"default"},"no_op":true,"redeployed":false,"deployment":null}`)
 	stdout, stderr, err := runAfy(t, cp, "update", "bot", "--workspace", "default")
 	if err != nil {
 		t.Fatalf("refused a move that changes nothing: %v\n%s", err, stderr)

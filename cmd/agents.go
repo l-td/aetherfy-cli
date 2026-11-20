@@ -1640,7 +1640,7 @@ func updatedWhat(name, description bool) string {
 
 // printAgentMove says where the agent lives now and what the move redeployed.
 func printAgentMove(m *api.AgentMove) {
-	if !m.Changed {
+	if m.NoOp {
 		output.PrintInfo("Agent '%s' already lives in workspace '%s'. Nothing changed.", m.Agent, m.Workspace.Name)
 		return
 	}

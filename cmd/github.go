@@ -782,9 +782,9 @@ func setGitHubAutoDeploy(agentID string, paused bool) error {
 		branch = "the linked branch"
 	}
 	switch {
-	case !resp.Changed && isPaused:
+	case resp.NoOp && isPaused:
 		output.PrintInfo("Auto-deploy for %s was already paused.", agentID)
-	case !resp.Changed:
+	case resp.NoOp:
 		output.PrintInfo("Auto-deploy for %s was already on.", agentID)
 	case isPaused:
 		output.PrintSuccess("Auto-deploy is paused for %s.", agentID)

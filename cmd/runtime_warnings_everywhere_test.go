@@ -97,7 +97,7 @@ func TestRollbackPrintsTheServersWarning(t *testing.T) {
 func movedWith(warnings string) string {
 	return `{"agent_id":"7d1c2f4e-0000-4000-8000-000000000001","agent":"bot",
 	"workspace":{"id":"w2","name":"acme"},"previous_workspace":{"id":"w1","name":"default"},
-	"changed":true,"redeployed":true,
+	"no_op":false,"redeployed":true,
 	"deployment":{"id":"d-9","agent_id":"7d1c2f4e-0000-4000-8000-000000000001","version":4,"state":"queued","warnings":` + warnings + `}}`
 }
 

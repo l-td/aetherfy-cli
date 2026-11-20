@@ -468,7 +468,7 @@ func TestGitHubAutoDeploy_PostsToTheVerbRouteWithNoBodyAndDecodesTheLink(t *test
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = w.Write([]byte(`{"linked":true,"repo":"myorg/myrepo","branch":"main","root_dir":null,` +
 					`"webhook_id":"1","account_connected":true,"branch_deleted_at":null,` +
-					`"auto_deploy_paused_at":` + tc.pausedAt + `,"changed":` + strconv.FormatBool(tc.changed) + `}`))
+					`"auto_deploy_paused_at":` + tc.pausedAt + `,"no_op":` + strconv.FormatBool(!tc.changed) + `}`))
 			}))
 			defer srv.Close()
 
@@ -483,8 +483,8 @@ func TestGitHubAutoDeploy_PostsToTheVerbRouteWithNoBodyAndDecodesTheLink(t *test
 			if len(gotBody) != 0 {
 				t.Errorf("sent body %q, want none", gotBody)
 			}
-			if resp.Changed != tc.changed {
-				t.Errorf("decoded changed = %v, want %v", resp.Changed, tc.changed)
+			if resp.NoOp != !tc.changed {
+				t.Errorf("decoded no_op = %v, want %v", resp.NoOp, !tc.changed)
 			}
 			if (resp.AutoDeployPausedAt != nil) != tc.wantPaused {
 				t.Errorf("decoded auto_deploy_paused_at = %v, want set=%v", resp.AutoDeployPausedAt, tc.wantPaused)
