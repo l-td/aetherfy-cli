@@ -29,9 +29,18 @@ type RunMessagesPage struct {
 	NextAfter *int64       `json:"next_after"`
 }
 
+// SentMessage is the message a send stored, as the control plane answers it (its SentMessage): its id, its place,
+// who sent it and when. Not a history row: a send's answer carries no body and no read mark.
+type SentMessage struct {
+	ID        string `json:"id"`
+	Seq       int64  `json:"seq"`
+	Sender    string `json:"sender"` // "run" or "person"
+	CreatedAt string `json:"created_at"`
+}
+
 // SentRunMessage is the answer to a send: the message as stored, and its run.
 type SentRunMessage struct {
-	Message   RunMessage      `json:"message"`
+	Message   SentMessage     `json:"message"`
 	Recipient json.RawMessage `json:"recipient"`
 }
 

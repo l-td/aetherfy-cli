@@ -121,7 +121,7 @@ func jsonCases() []jsonCase {
 			{"GET", "/workspaces/acme", 200, wsRow}, {"POST", "/agents", 201, agentRow}}, refuse: []string{"POST /agents"}},
 		{class: "mutate", args: []string{"delete", "bot", "--yes"}, ok: []route{{"DELETE", "/agents/bot", 200, `{}`}}, refuse: []string{"DELETE /agents/bot"}},
 		{class: "mutate", args: []string{"stop", "bot"}, ok: []route{{"POST", "/agents/bot/stop", 200, `{}`}}, refuse: []string{"POST /agents/bot/stop"}},
-		{class: "mutate", args: []string{"messages", "send", "run-1", "hi"}, ok: []route{{"POST", "/deployments/run-1/messages", 201, `{"message":{"id":"m1","seq":1,"sender":"person","sender_run_id":null,"body":"hi","created_at":"2026-11-19T10:00:00Z","acked_at":null},"recipient":{"id":"run-1"}}`}}, refuse: []string{"POST /deployments/run-1/messages"}},
+		{class: "mutate", args: []string{"messages", "send", "run-1", "hi"}, ok: []route{{"POST", "/deployments/run-1/messages", 201, `{"message":{"id":"m1","seq":1,"sender":"person","created_at":"2026-11-19T10:00:00Z"},"recipient":{"id":"run-1","agent_id":"a-1","agent":"reviewer","state":"awaiting_message"}}`}}, refuse: []string{"POST /deployments/run-1/messages"}},
 		{class: "mutate", args: []string{"start", "bot"}, ok: []route{{"POST", "/agents/bot/start", 200, `{"readiness":"serving"}`}}, refuse: []string{"POST /agents/bot/start"}},
 		{class: "mutate", args: []string{"archive", "bot"}, ok: []route{{"POST", "/agents/bot/archive", 200, `{}`}}, refuse: []string{"POST /agents/bot/archive"}},
 		{class: "mutate", args: []string{"restore", "bot"}, ok: []route{{"POST", "/agents/bot/restore", 200, `{}`}}, refuse: []string{"POST /agents/bot/restore"}},

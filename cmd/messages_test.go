@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -23,6 +25,37 @@ func messageRow(seq int, sender, body, acked string) string {
 	return `{"id":"m` + string(rune('0'+seq)) + `","seq":` + string(rune('0'+seq)) + `,"sender":"` + sender +
 		`","sender_run_id":` + senderRun + `,"body":` + body + `,"created_at":"2026-11-19T10:00:0` +
 		string(rune('0'+seq)) + `Z","acked_at":` + ack + `}`
+}
+
+// sentAnswer is the control plane's answer to a send (its MessageSentResponse): the stored message's id, seq, sender
+// and time, and the run it went to. Not a history row: a send's answer has no body and no read mark.
+func sentAnswer(seq int) string {
+	return `{"message":{"id":"m` + string(rune('0'+seq)) + `","seq":` + string(rune('0'+seq)) +
+		`,"sender":"person","created_at":"2026-11-19T10:00:0` + string(rune('0'+seq)) + `Z"},` +
+		`"recipient":{"id":"run-1","agent_id":"a-1","agent":"reviewer","state":"awaiting_message"}}`
+}
+
+func TestASendsJSONOutputIsTheControlPlanesAnswerAndNothingMore(t *testing.T) {
+	cp := newFakeCP(t)
+	cp.on("POST", "/deployments/run-1/messages", 201, sentAnswer(2))
+	stdout, stderr, err := runAfy(t, cp, "messages", "send", "run-1", "hi", "--json")
+	if err != nil {
+		t.Fatalf("send --json: %v\n%s", err, stderr)
+	}
+	var got struct {
+		Message map[string]json.RawMessage `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("send --json printed no JSON object: %v\n%s", err, stdout)
+	}
+	keys := make([]string, 0, len(got.Message))
+	for k := range got.Message {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	if strings.Join(keys, ",") != "created_at,id,sender,seq" {
+		t.Errorf("the sent message carries fields the control plane never sent: %v", keys)
+	}
 }
 
 func TestMessagesReadsEveryPageInOrder(t *testing.T) {
@@ -58,8 +91,7 @@ func TestMessagesSendSendsJSONAsJSONAndTextAsText(t *testing.T) {
 		`yes please`:        "yes please",
 	} {
 		cp := newFakeCP(t)
-		cp.on("POST", "/deployments/run-1/messages", 201,
-			`{"message":`+messageRow(3, "person", `null`, "")+`,"recipient":{"id":"run-1"}}`)
+		cp.on("POST", "/deployments/run-1/messages", 201, sentAnswer(3))
 		stdout, stderr, err := runAfy(t, cp, "messages", "send", "run-1", arg)
 		if err != nil {
 			t.Fatalf("send %q: %v\n%s", arg, err, stderr)
@@ -86,8 +118,7 @@ var uuidV4 = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-
 
 func TestEachSendCarriesAnIdOfItsOwn(t *testing.T) {
 	cp := newFakeCP(t)
-	cp.on("POST", "/deployments/run-1/messages", 201,
-		`{"message":`+messageRow(1, "person", `"a"`, "")+`,"recipient":{"id":"run-1"}}`)
+	cp.on("POST", "/deployments/run-1/messages", 201, sentAnswer(1))
 	for i := 0; i < 2; i++ {
 		if _, stderr, err := runAfy(t, cp, "messages", "send", "run-1", "a"); err != nil {
 			t.Fatalf("send: %v\n%s", err, stderr)
