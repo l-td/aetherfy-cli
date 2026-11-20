@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -270,18 +269,6 @@ func (c *Client) handleResponse(resp *resty.Response) error {
 	}
 	if contentType, bad := notJSON(resp); bad {
 		return &NotAPIResponseError{ContentType: contentType}
-	}
-	return nil
-}
-
-// CheckConnection verifies API connectivity
-func (c *Client) CheckConnection() error {
-	resp, err := c.http.R().Get(c.baseURL + "/../health")
-	if err != nil {
-		return fmt.Errorf("connection failed: %w", err)
-	}
-	if resp.IsError() {
-		return fmt.Errorf("API returned status %d", resp.StatusCode())
 	}
 	return nil
 }

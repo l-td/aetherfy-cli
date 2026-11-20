@@ -175,7 +175,7 @@ type AgentMove struct {
 	Agent             string       `json:"agent"`
 	Workspace         WorkspaceRef `json:"workspace"`
 	PreviousWorkspace WorkspaceRef `json:"previous_workspace"`
-	Changed           bool         `json:"changed"`
+	NoOp              bool         `json:"no_op"`
 	Redeployed        bool         `json:"redeployed"`
 	Deployment        *Deployment  `json:"deployment"`
 }
@@ -645,13 +645,13 @@ type GitHubLinkStatus struct {
 }
 
 // GitHubAutoDeployResponse is the body from POST /agents/{id}/github/pause and
-// /github/resume: the link as GET /agents/{id}/github serves it, plus Changed,
-// which is false when the link already had the requested state (an idempotent
-// no-op). Changed belongs to this answer, not to the link: the `github` object
+// /github/resume: the link as GET /agents/{id}/github serves it, plus NoOp,
+// which is true when the link already had the requested state (an idempotent
+// no-op). NoOp belongs to this answer, not to the link: the `github` object
 // on an agent has no such field.
 type GitHubAutoDeployResponse struct {
 	GitHubLinkStatus
-	Changed bool `json:"changed"`
+	NoOp bool `json:"no_op"`
 }
 
 // WaitingPush is a push waiting for the deploy of its agent in progress.
