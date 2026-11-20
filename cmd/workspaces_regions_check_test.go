@@ -13,7 +13,7 @@ func regionsChangeCP(t *testing.T, max int) *fakeCP {
 	cp := newFakeCP(t)
 	cp.on("GET", "/deploy-options", 200, regionOptions(max))
 	cp.on("PATCH", "/workspaces/research/regions", 202,
-		`{"operation_id":"op-1","status":"pending","from_regions":["eu-central-1"],"to_regions":["eu-central-1","ap-southeast-1"]}`)
+		`{"no_op":false,"operation_id":"op-1","from_regions":["eu-central-1"],"to_regions":["eu-central-1","ap-southeast-1"]}`)
 	return cp
 }
 

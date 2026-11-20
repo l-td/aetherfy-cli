@@ -559,8 +559,8 @@ With --json: {"living": [...], "granted": [...]}.`,
 
 // workspaceAgentsJSON is `afy workspaces agents --json`.
 type workspaceAgentsJSON struct {
-	Living  []api.Agent        `json:"living"`
-	Granted []api.GrantedAgent `json:"granted"`
+	Living  []api.WorkspaceAgent `json:"living"`
+	Granted []api.GrantedAgent   `json:"granted"`
 }
 
 func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
@@ -590,7 +590,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 	// Always arrays, never null: a script reads the same shape for an empty
 	// workspace as for a full one.
 	if living == nil {
-		living = []api.Agent{}
+		living = []api.WorkspaceAgent{}
 	}
 	if granted == nil {
 		granted = []api.GrantedAgent{}
@@ -648,7 +648,7 @@ func runWorkspacesAgents(cmd *cobra.Command, args []string) error {
 
 // livingLevel is a living agent's level here, and whether it follows the
 // workspace's default.
-func livingLevel(a api.Agent) string {
+func livingLevel(a api.WorkspaceAgent) string {
 	if a.AccessLevel == nil {
 		return ""
 	}
@@ -746,8 +746,8 @@ func runWorkspacesRegions(cmd *cobra.Command, args []string) error {
 		}{name, change, op})
 	}
 
-	if change.Status == "no_op" {
-		output.PrintInfo("No change: workspace '%s' already allows %s.", name, strings.Join(change.CurrentRegions, ", "))
+	if change.NoOp {
+		output.PrintInfo("No change: workspace '%s' already allows %s.", name, strings.Join(change.ToRegions, ", "))
 		return nil
 	}
 	if op != nil {

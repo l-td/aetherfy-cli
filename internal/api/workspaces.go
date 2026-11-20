@@ -6,9 +6,35 @@ import (
 	"time"
 )
 
+// WorkspaceAgent is one agent that LIVES in a workspace, as the workspace's
+// agent list answers it (the control plane's WorkspaceAgentResponse): a summary,
+// narrower than an Agent. It has its own struct so that `afy workspaces agents
+// --json` prints what the server sent and nothing it did not.
+type WorkspaceAgent struct {
+	ID             string  `json:"id"`
+	Name           string  `json:"name"`
+	AgentType      string  `json:"agent_type"`
+	Status         string  `json:"status"`
+	Deployed       bool    `json:"deployed"`
+	Awake          bool    `json:"awake"`
+	URL            *string `json:"url"`
+	IsDegraded     bool    `json:"is_degraded"`
+	RegionsTotal   int     `json:"regions_total"`
+	RegionsReady   int     `json:"regions_ready"`
+	DegradedReason *string `json:"degraded_reason"`
+	FailureCode    *string `json:"failure_code"`
+	FailureMessage *string `json:"failure_message"`
+	// AccessLevel is the agent's level in its own workspace: its own setting
+	// (AccessLevelSetting) or, when that is null, the workspace's default.
+	AccessLevel        *string   `json:"access_level"`
+	AccessLevelSetting *string   `json:"access_level_setting"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
 // ListWorkspaceAgents returns the agents that LIVE in a workspace.
-func (c *Client) ListWorkspaceAgents(workspaceName string) ([]Agent, error) {
-	var agents []Agent
+func (c *Client) ListWorkspaceAgents(workspaceName string) ([]WorkspaceAgent, error) {
+	var agents []WorkspaceAgent
 	err := c.Get("/workspaces/"+url.PathEscape(workspaceName)+"/agents", &agents)
 	if err != nil {
 		return nil, err

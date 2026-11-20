@@ -231,7 +231,7 @@ func printDeployments(client *api.Client, agentID string) error {
 // history above is already printed.
 func printPushLines(client *api.Client, agentID string) {
 	agent, err := client.GetAgent(agentID)
-	if err != nil || agent == nil || agent.GitHub == nil {
+	if err != nil || agent == nil {
 		return
 	}
 	if agent.GitHub.PushInClone == nil && agent.GitHub.WaitingPush == nil {

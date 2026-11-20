@@ -30,7 +30,8 @@ type AgentAccess struct {
 	AllowedWorkspaces        []string              `json:"allowed_workspaces"`
 	AllowedWorkspaceRefs     []LeveledWorkspaceRef `json:"allowed_workspace_refs"`
 	SecretsAccess            bool                  `json:"secrets_access"`
-	Changed                  *bool                 `json:"changed"`
+	// NoOp, on a change: true when it was already so. Nil on a read.
+	NoOp *bool `json:"no_op"`
 }
 
 // LeveledWorkspaceRef is a workspace the agent reaches, with its level there:

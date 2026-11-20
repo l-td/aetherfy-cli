@@ -652,12 +652,13 @@ func agentsAccessSecrets(r *vecRun, agent, state string, yes bool, stdin io.Read
 	return 0
 }
 
+// secretsJSON says "nothing changed" the way the control plane does: no_op.
 func secretsJSON(a *api.AgentAccess, changed bool) interface{} {
 	return struct {
 		Agent         string `json:"agent"`
 		SecretsAccess bool   `json:"secrets_access"`
-		Changed       bool   `json:"changed"`
-	}{Agent: a.Agent, SecretsAccess: a.SecretsAccess, Changed: changed}
+		NoOp          bool   `json:"no_op"`
+	}{Agent: a.Agent, SecretsAccess: a.SecretsAccess, NoOp: !changed}
 }
 
 func init() {

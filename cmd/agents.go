@@ -992,17 +992,15 @@ func printSpawnRelationships(client *api.Client, agent *api.Agent) {
 //
 // SILENT FOR AN UNLINKED AGENT. Most agents have no link, and a permanent
 // "GitHub: not linked" line would be a fact about nothing on every status
-// anyone ever runs. Silent too for an agent that carries no link object at all,
-// which is a control plane older than the nested field: it said nothing, so
-// there is nothing to report.
+// anyone ever runs.
 //
 // THE FAULT WARNINGS (disconnected, branch deleted) SAY WHAT THE DASHBOARD SAYS, deliberately: they describe one
 // server-side fact each, and two surfaces wording it differently is two surfaces
 // that can be read as disagreeing about what is wrong. The CLI names a command
 // where the dashboard names a settings page — that is the one difference, and
 // it is the remedy being spelled for the surface the reader is on.
-func printAgentGitHubLink(agentName string, link *api.GitHubLinkStatus) {
-	if link == nil || !link.Linked {
+func printAgentGitHubLink(agentName string, link api.GitHubLinkStatus) {
+	if !link.Linked {
 		return
 	}
 
@@ -1366,7 +1364,7 @@ func runScheduleToggle(name string, pause bool) error {
 	}
 
 	switch {
-	case !resp.Changed:
+	case resp.NoOp:
 		state := "live"
 		if resp.CronPaused {
 			state = "paused"

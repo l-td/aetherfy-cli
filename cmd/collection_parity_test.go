@@ -148,7 +148,7 @@ func TestAccessJSONCarriesTheWorkspacePairs(t *testing.T) {
 		`"granted_workspaces":["beta"],"granted_workspace_refs":[{"id":"w-b","name":"beta"}],` +
 		`"allowed_workspaces":["alpha","beta"],` +
 		`"allowed_workspace_refs":[{"id":"w-a","name":"alpha"},{"id":"w-b","name":"beta"}],` +
-		`"changed":null}`
+		`"no_op":null}`
 	cp := cpFake(t, map[string]func(vecRequest) (int, string){
 		"GET " + accessPath: func(vecRequest) (int, string) { return 200, withRefs },
 	})

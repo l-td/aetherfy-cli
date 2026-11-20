@@ -15,12 +15,7 @@ type Agent struct {
 	Runtime       string `json:"runtime,omitempty"`
 	WorkspaceID   string `json:"workspace_id,omitempty"`
 	WorkspaceName string `json:"workspace_name,omitempty"`
-	// AccessLevel is its level in its own workspace, and AccessLevelSetting
-	// its own setting there (nil: it follows the workspace's default). Only
-	// GET /workspaces/{workspace}/agents answers them.
-	AccessLevel        *string `json:"access_level,omitempty"`
-	AccessLevelSetting *string `json:"access_level_setting,omitempty"`
-	SpawnEnabled       bool    `json:"spawn_enabled"`
+	SpawnEnabled  bool   `json:"spawn_enabled"`
 	// TWO FIELDS, TWO QUESTIONS (server AgentResponse).
 	//
 	// Deployed — does this agent hold a live app? True for a scheduled task,
@@ -92,14 +87,11 @@ type Agent struct {
 	PendingRegions []string `json:"pending_regions,omitempty"`
 	// The agent's GitHub link, carried on the agent itself (server
 	// AgentResponse.github — the same object GET /agents/{id}/github serves on
-	// its own), so `afy status` has it from the one agent read.
-	//
-	// A POINTER, AND OMITEMPTY ON THE POINTER ONLY. A control plane that predates
-	// the nested object leaves it nil, and nil must stay distinguishable from a
-	// link that says `linked: false`: decoded as a value it would be all zeros,
-	// and `--json` would claim an unlinked, disconnected agent the server said
-	// nothing about. Nothing INSIDE the object may take omitempty.
-	GitHub *GitHubLinkStatus `json:"github,omitempty"`
+	// its own), so `afy status` has it from the one agent read. Every agent
+	// answer carries it (`linked: false` when there is no link), so it is a
+	// value, and nothing inside it takes omitempty: `--json` prints the object
+	// the server sent.
+	GitHub GitHubLinkStatus `json:"github"`
 	// Cron scheduling (CP-4). Carried on the agent list + detail responses.
 	// CronSchedule is the 5-field UTC expression (empty = no schedule); the
 	// rest is scheduler-written fire-time telemetry feeding the CLI badges.
@@ -426,12 +418,12 @@ type RunsQuery struct {
 }
 
 // ScheduleStateResponse is the body from POST /agents/{id}/schedule/pause and
-// /schedule/resume. Changed is false when the schedule was already in the
-// requested pause state (idempotent no-op).
+// /schedule/resume. NoOp is true when the schedule was already in the
+// requested pause state (the one spelling of "nothing changed").
 type ScheduleStateResponse struct {
 	CronPaused    bool       `json:"cron_paused"`
 	CronNextRunAt *time.Time `json:"cron_next_run_at,omitempty"`
-	Changed       bool       `json:"changed"`
+	NoOp          bool       `json:"no_op"`
 }
 
 // UserInfo represents the authenticated user
@@ -489,13 +481,6 @@ type WorkspaceDeleteResponse struct {
 	SecretsDeleted int    `json:"secrets_deleted"`
 }
 
-// HealthResponse is the response from health check
-type HealthResponse struct {
-	Status    string `json:"status"`
-	Version   string `json:"version,omitempty"`
-	Timestamp string `json:"timestamp,omitempty"`
-}
-
 // GitHubInstallation is one GitHub account this Aetherfy account can deploy
 // from.
 //
@@ -507,12 +492,12 @@ type HealthResponse struct {
 // because the path encodes the account type and the personal form 404s for an
 // organization. It is empty when GitHub was unreachable.
 type GitHubInstallation struct {
-	InstallationID int64      `json:"installation_id"`
-	AccountID      int64      `json:"account_id"`
-	AccountLogin   string     `json:"account_login"`
-	AccountType    string     `json:"account_type"`
-	ConnectedAt    *time.Time `json:"connected_at,omitempty"`
-	ManageURL      string     `json:"manage_url,omitempty"`
+	InstallationID int64     `json:"installation_id"`
+	AccountID      int64     `json:"account_id"`
+	AccountLogin   string    `json:"account_login"`
+	AccountType    string    `json:"account_type"`
+	ConnectedAt    time.Time `json:"connected_at"`
+	ManageURL      string    `json:"manage_url,omitempty"`
 }
 
 // GitHubStatus represents the GitHub connection status for the authenticated

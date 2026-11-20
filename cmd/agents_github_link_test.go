@@ -138,30 +138,6 @@ func TestStatusSaysNothingAboutGitHubForAnUnlinkedAgent(t *testing.T) {
 	}
 }
 
-func TestStatusSaysNothingAboutGitHubWhenTheAgentCarriesNoLink(t *testing.T) {
-	// A control plane older than the nested object sends no "github" key. That
-	// reads as nothing to say — and `--json` must not invent an answer either:
-	// a zero-valued object would claim `linked: false` and `account_connected:
-	// false` about an agent the server said nothing about.
-	out, _ := runStatus(t, "text", "")
-	if !strings.Contains(out, "reporter") {
-		t.Fatalf("the status block did not print at all; got:\n%s", out)
-	}
-	for _, unwanted := range append([]string{"pushes are not deploying"}, sectionLabels...) {
-		if strings.Contains(out, unwanted) {
-			t.Errorf("an agent with no link object printed %q:\n%s", unwanted, out)
-		}
-	}
-
-	raw, _ := runStatus(t, "json", "")
-	if !strings.Contains(raw, `"id": "a1"`) {
-		t.Fatalf("`afy status --json` did not print the agent; got:\n%s", raw)
-	}
-	if strings.Contains(raw, `"github"`) {
-		t.Errorf("an agent with no link object still emitted a github key, which reads as an answer:\n%s", raw)
-	}
-}
-
 func TestStatusWarnsWhenTheAccountIsDisconnected(t *testing.T) {
 	// Linked, and inert. Nothing on GitHub reports this: announcing a skipped
 	// push means reporting a check on the commit, which needs the installation

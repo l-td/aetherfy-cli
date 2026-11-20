@@ -281,9 +281,7 @@ func printGitHubConnection(status *api.GitHubStatus, headline string) {
 		// field a person can act on.
 		output.KeyValue("Account", inst.AccountLogin+githubAccountKind(inst.AccountType))
 		output.KeyValue("Installation ID", fmt.Sprintf("%d", inst.InstallationID))
-		if inst.ConnectedAt != nil {
-			output.KeyValue("Connected at", inst.ConnectedAt.Local().Format(time.RFC1123))
-		}
+		output.KeyValue("Connected at", inst.ConnectedAt.Local().Format(time.RFC1123))
 		if inst.ManageURL != "" {
 			output.Printf("To change which repositories Aetherfy can see on %s: %s\n",
 				inst.AccountLogin, inst.ManageURL)

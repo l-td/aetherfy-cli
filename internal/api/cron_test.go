@@ -182,7 +182,7 @@ func TestPauseResumeSchedule_PathsAndResponse(t *testing.T) {
 				gotPath = r.URL.Path
 				gotMethod = r.Method
 				w.Header().Set("Content-Type", "application/json")
-				_, _ = w.Write([]byte(`{"cron_paused":true,"cron_next_run_at":"2026-07-18T03:00:00Z","changed":true}`))
+				_, _ = w.Write([]byte(`{"cron_paused":true,"cron_next_run_at":"2026-07-18T03:00:00Z","no_op":false}`))
 			}))
 			defer srv.Close()
 
@@ -203,7 +203,7 @@ func TestPauseResumeSchedule_PathsAndResponse(t *testing.T) {
 			if gotPath != tc.path {
 				t.Errorf("path = %s, want %s", gotPath, tc.path)
 			}
-			if !resp.Changed || !resp.CronPaused {
+			if resp.NoOp || !resp.CronPaused {
 				t.Errorf("resp = %+v", resp)
 			}
 		})

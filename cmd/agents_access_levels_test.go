@@ -30,7 +30,7 @@ func botAccess(own, def, beta string, secrets bool) string {
 	return `{"agent":"bot","own_workspace":"alpha","own_workspace_level":"` + ownLevel + `",` +
 		`"own_workspace_level_setting":` + setting + `,"workspace_default_level":"` + def + `",` +
 		`"granted_workspaces":["beta"],"granted_workspace_refs":[{"id":"b","name":"beta","level":"` + beta + `"}],` +
-		`"allowed_workspaces":["alpha","beta"],"secrets_access":` + sec + `,"changed":true}`
+		`"allowed_workspaces":["alpha","beta"],"secrets_access":` + sec + `,"no_op":false}`
 }
 
 // levelCP answers bot's access as `read`, and every change with `after`.
@@ -295,7 +295,7 @@ func TestSecretsAlreadySoUnderJSONWithoutYesIsNoChange(t *testing.T) {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
 	var got map[string]interface{}
-	if err := json.Unmarshal([]byte(out.String()), &got); err != nil || got["changed"] != false {
+	if err := json.Unmarshal([]byte(out.String()), &got); err != nil || got["no_op"] != true {
 		t.Errorf("stdout %q (%v)", out.String(), err)
 	}
 	if len(cp.got()) != 1 {
@@ -312,7 +312,7 @@ func TestSecretsJSONShape(t *testing.T) {
 	if err := json.Unmarshal([]byte(out.String()), &got); err != nil {
 		t.Fatalf("not one JSON object: %v\n%s", err, out.String())
 	}
-	if len(got) != 3 || got["agent"] != "bot" || got["secrets_access"] != true || got["changed"] != true {
+	if len(got) != 3 || got["agent"] != "bot" || got["secrets_access"] != true || got["no_op"] != false {
 		t.Errorf("json = %v", got)
 	}
 }

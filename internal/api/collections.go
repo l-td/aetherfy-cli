@@ -60,18 +60,17 @@ func (p *RegionsChangePreview) RefusalError() *APIError {
 	return e
 }
 
-// CollectionChange is PATCH /collections/{id}'s answer: 200 with NoOp, or
-// 202 with the operation that carries it out.
+// CollectionChange is PATCH /collections/{id}'s answer to a regions change or a
+// move: 200 with NoOp true, or 202 with the operation that carries it out
+// (the control plane's CollectionRegionsChange and CollectionMove, one shape
+// each for both answers). It decodes only the fields both answers share and
+// the CLI reads: what a change adds or removes was already shown from the
+// preview, and where a move goes is the command's own argument.
 type CollectionChange struct {
-	OperationID       string                `json:"operation_id"`
-	CollectionID      string                `json:"collection_id"`
-	NoOp              bool                  `json:"no_op"`
-	Regions           []string              `json:"regions"`
-	RegionsToAdd      []string              `json:"regions_to_add"`
-	RegionsToRemove   []string              `json:"regions_to_remove"`
-	SourceWorkspaceID *string               `json:"source_workspace_id"`
-	TargetWorkspaceID *string               `json:"target_workspace_id"`
-	Plan              *RegionsChangePreview `json:"plan"`
+	OperationID  string   `json:"operation_id"`
+	CollectionID string   `json:"collection_id"`
+	NoOp         bool     `json:"no_op"`
+	Regions      []string `json:"regions"`
 }
 
 // CollectionProtection is PATCH /collections/{id}'s answer to a `protected`
@@ -121,12 +120,12 @@ func (c *Client) GetCollectionRecentAgents(id string) (*RecentAgents, error) {
 	return &out, nil
 }
 
-// WorkspaceRegionsChange is PATCH /workspaces/{name}/regions's answer:
-// Status "no_op" with CurrentRegions, or 202 with the operation.
+// WorkspaceRegionsChange is PATCH /workspaces/{name}/regions's answer, one
+// shape for both: 200 with NoOp true (ToRegions are the regions it already
+// has), or 202 with the operation.
 type WorkspaceRegionsChange struct {
+	NoOp            bool     `json:"no_op"`
 	OperationID     string   `json:"operation_id"`
-	Status          string   `json:"status"`
-	CurrentRegions  []string `json:"current_regions"`
 	FromRegions     []string `json:"from_regions"`
 	ToRegions       []string `json:"to_regions"`
 	RegionsToAdd    []string `json:"regions_to_add"`
@@ -210,13 +209,17 @@ type CollectionOperation struct {
 	AcceptedAt      string        `json:"accepted_at"`
 }
 
+// CollectionOperationAnswer is the body of GET /collections/{id}/operation:
+// the change running on the collection, null when none runs.
+type CollectionOperationAnswer struct {
+	Operation *CollectionOperation `json:"operation"`
+}
+
 // GetCollectionOperation reads the change running on a collection, by its id,
 // or nil when none runs. It is the same in-flight change the control plane's
 // 409 names, so a client that did not start it can still see it.
 func (c *Client) GetCollectionOperation(collectionID string) (*CollectionOperation, error) {
-	var out struct {
-		Operation *CollectionOperation `json:"operation"`
-	}
+	var out CollectionOperationAnswer
 	if err := c.Get(fmt.Sprintf("/collections/%s/operation", collectionID), &out); err != nil {
 		return nil, err
 	}

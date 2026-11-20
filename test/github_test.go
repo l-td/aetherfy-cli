@@ -23,7 +23,7 @@ func TestGitHubStatusType(t *testing.T) {
 	s := &api.GitHubStatus{
 		Connected: true,
 		Installations: []api.GitHubInstallation{
-			{InstallationID: 12345678, AccountID: 170044470, AccountLogin: "l-td", AccountType: "User", ConnectedAt: &now},
+			{InstallationID: 12345678, AccountID: 170044470, AccountLogin: "l-td", AccountType: "User", ConnectedAt: now},
 			{InstallationID: 12345679, AccountID: 330816932, AccountLogin: "acme", AccountType: "Organization"},
 		},
 	}
@@ -38,7 +38,7 @@ func TestGitHubStatusType(t *testing.T) {
 	if s.Installations[0].InstallationID != 12345678 {
 		t.Errorf("unexpected installation_id: %v", s.Installations[0].InstallationID)
 	}
-	if s.Installations[0].ConnectedAt == nil {
+	if s.Installations[0].ConnectedAt.IsZero() {
 		t.Error("expected ConnectedAt to be set")
 	}
 	if s.Installations[1].AccountType != "Organization" {

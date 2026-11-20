@@ -16,11 +16,11 @@ const (
 	botInAlphaGranted = `{"agent":"bot","own_workspace":"alpha","own_workspace_level":"full",` +
 		`"own_workspace_level_setting":null,"workspace_default_level":"full","granted_workspaces":["beta"],` +
 		`"granted_workspace_refs":[{"id":"b","name":"beta","level":"read"}],` +
-		`"allowed_workspaces":["alpha","beta"],"secrets_access":false,"changed":null}`
+		`"allowed_workspaces":["alpha","beta"],"secrets_access":false,"no_op":null}`
 	botAfterGamma = `{"agent":"bot","own_workspace":"alpha","own_workspace_level":"full",` +
 		`"own_workspace_level_setting":null,"workspace_default_level":"full","granted_workspaces":["beta","gamma"],` +
 		`"granted_workspace_refs":[{"id":"b","name":"beta","level":"read"},{"id":"g","name":"gamma","level":"read"}],` +
-		`"allowed_workspaces":["alpha","beta","gamma"],"secrets_access":false,"changed":true}`
+		`"allowed_workspaces":["alpha","beta","gamma"],"secrets_access":false,"no_op":false}`
 )
 
 // accessCP answers the access routes; every call is recorded by the server.

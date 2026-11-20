@@ -11,22 +11,3 @@ func (c *Client) ValidateAPIKey() (*UserInfo, error) {
 
 	return &userInfo, nil
 }
-
-// GetHealth checks if the API is reachable
-func (c *Client) GetHealth() (*HealthResponse, error) {
-	var health HealthResponse
-	// Health endpoint is at root, not under /api/v1
-	resp, err := c.http.R().
-		SetResult(&health).
-		Get(c.baseURL + "/../health")
-
-	if err != nil {
-		return nil, err
-	}
-
-	if resp.IsError() {
-		return nil, parseAPIError(resp)
-	}
-
-	return &health, nil
-}
