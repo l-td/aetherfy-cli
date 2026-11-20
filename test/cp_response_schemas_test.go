@@ -104,7 +104,7 @@ var answerPairs = []answerPair{
 	{"ListKeys", "GET " + v1 + "/keys 200", "", typeOf(api.KeyList{})},
 	{"ListSecrets", "GET " + v1 + "/agents/{agent_id_or_name}/secrets 200", "", typeOf([]api.Secret{})},
 	{"ListWorkspaceSecrets", "GET " + v1 + "/workspaces/{workspace_name}/secrets 200", "", typeOf([]api.Secret{})},
-	{"GetUsage", "GET " + v1 + "/usage 200", "", typeOf(api.Usage{})},
+	{"GetUsage", "GET " + v1 + "/usage 200", "UsageMeterActive", typeOf(api.Usage{})},
 
 	{"ListWorkspaceAgents", "GET " + v1 + "/workspaces/{workspace_name}/agents 200", "", typeOf([]api.WorkspaceAgent{})},
 	{"ListWorkspaceGrantedAgents", "GET " + v1 + "/workspaces/{workspace_name}/granted-agents 200", "", typeOf([]api.GrantedAgent{})},
@@ -206,13 +206,26 @@ var answerWaivers = []cpschemas.Waiver{
 		Fields: []string{"key"},
 		Reason: "nil on the pending answer, which the same struct decodes"},
 
-	// A body the control plane passes through.
-	{Kind: cpschemas.KindNotSent, Type: "Usage", Schema: "UsageMeter",
-		Fields: []string{"agents", "awakeBudgetNote", "currentTotalLabel", "forecast", "gaugeLabel", "gaugePercent",
-			"inOverage", "overageDollars", "overageLabel", "periodEnd", "periodStart", "reason", "tier", "today",
-			"totalCompositionLabel"},
-		Reason: "the control plane passes the dashboard's usage meter through unchanged (UsageMeter allows extra fields " +
-			"and names only hasActivePeriod); these are the dashboard's fields, which no control-plane schema can hold"},
+	// The usage meter: afy usage shows the sentences and the gauge; the dollars behind them are in `--json`, which
+	// prints the answer whole (Usage.Raw).
+	{Kind: cpschemas.KindNotSent, Type: "Usage", Schema: "UsageMeterActive",
+		Fields: []string{"reason"},
+		Reason: "reason is the no-period meter's (UsageMeterNoPeriod); the same struct decodes both"},
+	{Kind: cpschemas.KindNotDecoded, Type: "Usage", Schema: "UsageMeterActive",
+		Fields: []string{"currentTotalDollars", "meteredNote", "planBaseDollars", "showDollars", "spendCap"},
+		Reason: "afy usage prints the dashboard's sentences; the spend cap and the dollar figures behind them are in --json"},
+	{Kind: cpschemas.KindNotDecoded, Type: "Usage.forecast", Schema: "MeterForecastAvailable|MeterForecastUnavailable",
+		Fields: []string{"available", "crossesLimit", "limitKind", "projectedDollars", "projectedLabel", "reachDateLabel"},
+		Reason: "afy usage prints the forecast's message; its figures are in --json"},
+	{Kind: cpschemas.KindNotDecoded, Type: "Usage.today", Schema: "MeterToday",
+		Fields: []string{"dollars", "inOverage", "percent"},
+		Reason: "afy usage prints today's label; its figures are in --json"},
+	{Kind: cpschemas.KindNotDecoded, Type: "UsageAgent", Schema: "MeterAgent",
+		Fields: []string{"dollars", "percent", "sortKey"},
+		Reason: "an agent's row is printed as the dashboard words it (display); the figures are in --json"},
+	{Kind: cpschemas.KindNotDecoded, Type: "UsageAwake", Schema: "MeterAwakeLine",
+		Fields: []string{"share"},
+		Reason: "the line prints the whole-percent figure and the sentence; the unrounded share is in --json"},
 }
 
 // answerAwaiting names pairs whose route declares no shape in the committed

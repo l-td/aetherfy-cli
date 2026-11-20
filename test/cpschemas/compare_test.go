@@ -191,8 +191,12 @@ func TestAUnionNeedsItsMemberNamed(t *testing.T) {
 		Kind string `json:"kind"`
 		A    int    `json:"a"`
 	}
-	if ps := c.Check(reflect.TypeOf(a{}), union, "", "call"); len(ps) != 1 || ps[0].Kind != KindType {
-		t.Fatalf("a union with no member named must be reported, got %v", ps)
+	// Decoded whole, a union is read as the union of its members: `b` is a property of member B the struct lacks.
+	if ps := c.Check(reflect.TypeOf(a{}), union, "", "call"); kinds(ps) != KindNotDecoded+":b" {
+		t.Fatalf("a struct decoding a union reads all its members, got %q", kinds(ps))
+	}
+	if ps := c.Check(reflect.TypeOf(""), union, "", "call"); len(ps) != 1 || ps[0].Kind != KindType {
+		t.Fatalf("a union a Go string cannot read must be reported, got %v", ps)
 	}
 	if ps := c.CheckMember(reflect.TypeOf(a{}), union, "A", "call"); len(ps) != 0 {
 		t.Fatalf("member A fits, got %v", ps)
@@ -224,5 +228,55 @@ func TestValidateRefusesAThinOrDanglingExtraction(t *testing.T) {
 	delete(full, "Thing")
 	if err := Validate(&Extraction{Operations: ops, Schemas: full}); err == nil || !strings.Contains(err.Error(), "Thing") {
 		t.Fatalf("a dangling reference must be refused, got %v", err)
+	}
+}
+
+func TestAUnionFieldIsReadAsTheUnionOfItsMembersWithATagInNoMemberReported(t *testing.T) {
+	doc := `{"Holder": {"type": "object", "required": ["f"], "properties": {"f": {"oneOf": [
+	  {"$ref": "#/components/schemas/A"}, {"$ref": "#/components/schemas/B"}]}}},
+	  "A": {"type": "object", "required": ["kind", "a"], "properties": {"kind": {"type": "string"}, "a": {"type": "integer"}}},
+	  "B": {"type": "object", "required": ["kind"], "properties": {"kind": {"type": "string"}, "b": {"type": "string"}}}}`
+	c := &Checker{Schemas: schemas(t, doc)}
+	ref := map[string]interface{}{"$ref": "#/components/schemas/Holder"}
+
+	type reads struct {
+		F struct {
+			Kind string `json:"kind"`
+			A    *int   `json:"a"`
+			B    string `json:"b"`
+		} `json:"f"`
+	}
+	if ps := c.Check(reflect.TypeOf(reads{}), ref, "", "call"); len(ps) != 0 {
+		t.Fatalf("a struct reading every member's properties is clean (a is optional in the union), got %v", ps)
+	}
+	// CONTROL: a tag no member declares is reported, and a property of a member nothing reads is too.
+	type wrong struct {
+		F struct {
+			Kind string `json:"kind"`
+			A    *int   `json:"a"`
+			Zed  string `json:"zed"`
+		} `json:"f"`
+	}
+	if ps := c.Check(reflect.TypeOf(wrong{}), ref, "", "call"); kinds(ps) != KindNotSent+":zed "+KindNotDecoded+":b" {
+		t.Fatalf("want not-sent:zed and not-decoded:b, got %q", kinds(ps))
+	}
+}
+
+func TestAnIntegerOrNumberUnionIsOneNumber(t *testing.T) {
+	doc := `{"M": {"type": "object", "required": ["n"], "properties": {"n": {"anyOf": [{"type": "integer"}, {"type": "number"}]}}}}`
+	c := &Checker{Schemas: schemas(t, doc)}
+	ref := map[string]interface{}{"$ref": "#/components/schemas/M"}
+	type ok struct {
+		N float64 `json:"n"`
+	}
+	if ps := c.Check(reflect.TypeOf(ok{}), ref, "", "call"); len(ps) != 0 {
+		t.Fatalf("a float64 reads a figure, got %v", ps)
+	}
+	// CONTROL: a string does not.
+	type bad struct {
+		N string `json:"n"`
+	}
+	if ps := c.Check(reflect.TypeOf(bad{}), ref, "", "call"); kinds(ps) != KindType+":n" {
+		t.Fatalf("a string cannot read a figure, got %q", kinds(ps))
 	}
 }

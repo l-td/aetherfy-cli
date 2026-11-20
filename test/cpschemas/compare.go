@@ -142,6 +142,11 @@ func (c *Checker) resolve(raw interface{}, name string) (node, error) {
 				s = rest[0]
 				continue
 			}
+			if allPlainNumbers(rest) {
+				// A figure the control plane keeps whole when it is whole (an integer or a number): one number.
+				s = map[string]interface{}{"type": "number"}
+				continue
+			}
 			n.union = rest
 			n.schema = s
 			return n, nil
@@ -270,8 +275,17 @@ func (c *Checker) checkNode(t reflect.Type, n node, at string) []Problem {
 		return nil // decodes anything
 	}
 	if n.union != nil {
-		return []Problem{{Kind: KindType, Type: at, Schema: n.name,
-			Detail: fmt.Sprintf("the schema is a union of %d models; name the member the CLI decodes", len(n.union))}}
+		// A struct that decodes a union reads the union of its members: a tag must be a property of some member, and
+		// every property of any member is decoded or waived. (A call that decodes ONE member names it: CheckMember.)
+		if t.Kind() != reflect.Struct {
+			return []Problem{{Kind: KindType, Type: at, Schema: n.name,
+				Detail: fmt.Sprintf("the schema is a union of %d models, which Go %s cannot read", len(n.union), t)}}
+		}
+		merged, err := c.mergeUnion(n)
+		if err != nil {
+			return []Problem{{Kind: KindType, Type: at, Schema: n.name, Detail: err.Error()}}
+		}
+		return c.checkStruct(t, merged, at)
 	}
 	s := n.schema
 	if isAny(s) {
@@ -336,6 +350,67 @@ func (c *Checker) checkNode(t reflect.Type, n node, at string) []Problem {
 		return c.checkStruct(t, n, at)
 	}
 	return []Problem{{Kind: KindType, Type: at, Schema: n.name, Detail: fmt.Sprintf("Go %s is not a decodable kind", t)}}
+}
+
+// allPlainNumbers: every member is a bare integer or number schema.
+func allPlainNumbers(members []map[string]interface{}) bool {
+	for _, m := range members {
+		if _, hasRef := m["$ref"]; hasRef {
+			return false
+		}
+		if t := m["type"]; t != "integer" && t != "number" {
+			return false
+		}
+	}
+	return len(members) > 0
+}
+
+// mergeUnion makes one object node of a union's members: the properties of every member, and as required only
+// what every member requires. Each member must be an object.
+func (c *Checker) mergeUnion(n node) (node, error) {
+	props := map[string]interface{}{}
+	var required map[string]bool
+	var names []string
+	for _, m := range n.union {
+		member, err := c.resolve(m, "")
+		if err != nil {
+			return n, err
+		}
+		if member.union != nil || (member.schema["type"] != "object" && member.schema["properties"] == nil) {
+			return n, fmt.Errorf("a member of the union is not an object (%s)", member.name)
+		}
+		names = append(names, member.name)
+		memberProps, _ := member.schema["properties"].(map[string]interface{})
+		for k, v := range memberProps {
+			props[k] = v
+		}
+		has := map[string]bool{}
+		if req, ok := member.schema["required"].([]interface{}); ok {
+			for _, r := range req {
+				if s, ok := r.(string); ok {
+					has[s] = true
+				}
+			}
+		}
+		if required == nil {
+			required = has
+		} else {
+			for k := range required {
+				if !has[k] {
+					delete(required, k)
+				}
+			}
+		}
+	}
+	reqList := make([]interface{}, 0, len(required))
+	for k := range required {
+		reqList = append(reqList, k)
+	}
+	return node{
+		schema:   map[string]interface{}{"type": "object", "properties": props, "required": reqList},
+		name:     strings.Join(names, "|"),
+		nullable: n.nullable,
+	}, nil
 }
 
 func (c *Checker) checkStruct(t reflect.Type, n node, at string) []Problem {
