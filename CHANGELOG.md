@@ -7,6 +7,13 @@ so an entry here is written for the version the owner tags next.
 
 ### Added
 
+- `afy messages list <run-id>` and `afy messages send <run-id> <body>`: a run's mailbox. `list` prints every
+  message the run was sent, in order, read or not, with who sent it (the account, or another run of its tree) and
+  whether the run has read it. `send` sends one: the body is JSON when it reads as JSON (`'{"approved": true}'`,
+  `42`) and the text as given otherwise, with an id of its own, so a send repeated after a lost answer is stored
+  once. A run waiting for a message is shown as `awaiting_message` in `afy runs`, and `afy run --wait` keeps
+  following it. Release this CLI after the control plane that serves the mailbox routes.
+
 - `include:` in aetherfy.yaml: `afy deploy` of an agent whose yaml lists repository paths to deploy with
   it (`include: [../../shared]`, relative to the agent's folder) uploads an archive rooted at the
   repository (the nearest folder holding `.git`) holding the folder and each path at its place, and sends

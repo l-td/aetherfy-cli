@@ -103,6 +103,7 @@ func jsonCases() []jsonCase {
 		{class: "list", args: []string{"workspaces", "list"}, ok: []route{{"GET", "/workspaces", 200, `[` + wsRow + `]`}}, refuse: []string{"GET /workspaces"}},
 		{class: "list", args: []string{"runs", "bot"}, ok: []route{{"GET", "/agents/bot/runs", 200, `[]`}}, refuse: []string{"GET /agents/bot/runs"}},
 		{class: "list", args: []string{"logs", "bot"}, ok: []route{{"GET", "/agents/bot/logs", 200, `[]`}}, refuse: []string{"GET /agents/bot/logs"}},
+		{class: "list", args: []string{"messages", "list", "run-1"}, ok: []route{{"GET", "/deployments/run-1/messages", 200, `{"messages":[],"next_after":null}`}}, refuse: []string{"GET /deployments/run-1/messages"}},
 		{class: "list", args: []string{"workspaces", "agents", "acme"}, ok: []route{
 			{"GET", "/workspaces/acme/agents", 200, `[]`}, {"GET", "/workspaces/acme/granted-agents", 200, `[]`}},
 			refuse: []string{"GET /workspaces/acme/agents"}},
@@ -120,6 +121,7 @@ func jsonCases() []jsonCase {
 			{"GET", "/workspaces/acme", 200, wsRow}, {"POST", "/agents", 201, agentRow}}, refuse: []string{"POST /agents"}},
 		{class: "mutate", args: []string{"delete", "bot", "--yes"}, ok: []route{{"DELETE", "/agents/bot", 200, `{}`}}, refuse: []string{"DELETE /agents/bot"}},
 		{class: "mutate", args: []string{"stop", "bot"}, ok: []route{{"POST", "/agents/bot/stop", 200, `{}`}}, refuse: []string{"POST /agents/bot/stop"}},
+		{class: "mutate", args: []string{"messages", "send", "run-1", "hi"}, ok: []route{{"POST", "/deployments/run-1/messages", 201, `{"message":{"id":"m1","seq":1,"sender":"person","created_at":"2026-11-19T10:00:00Z"},"recipient":{"id":"run-1","agent_id":"a-1","agent":"reviewer","state":"awaiting_message"}}`}}, refuse: []string{"POST /deployments/run-1/messages"}},
 		{class: "mutate", args: []string{"start", "bot"}, ok: []route{{"POST", "/agents/bot/start", 200, `{"readiness":"serving"}`}}, refuse: []string{"POST /agents/bot/start"}},
 		{class: "mutate", args: []string{"archive", "bot"}, ok: []route{{"POST", "/agents/bot/archive", 200, `{}`}}, refuse: []string{"POST /agents/bot/archive"}},
 		{class: "mutate", args: []string{"restore", "bot"}, ok: []route{{"POST", "/agents/bot/restore", 200, `{}`}}, refuse: []string{"POST /agents/bot/restore"}},

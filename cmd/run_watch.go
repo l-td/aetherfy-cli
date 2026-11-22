@@ -75,6 +75,8 @@ var (
 // nor the ending ones is one this CLI does not know, which is followed too.
 var inFlightRunStates = map[string]bool{
 	"waiting": true, "queued": true, "building": true, "deploying": true, "active": true, "running": true,
+	// Alive, waiting for a message: followed like any run in progress.
+	"awaiting_message": true,
 }
 
 // followRun reads the run to the state it ends in, saying each change of state

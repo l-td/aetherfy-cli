@@ -1926,7 +1926,9 @@ func formatRunState(state string, position *int) string {
 		return output.Warning.Sprint("waiting" + inLine(position))
 	case "cancelled":
 		return output.Dim.Sprint("cancelled")
-	case "queued", "building", "deploying", "active", "running":
+	case "queued", "building", "deploying", "active", "running", "awaiting_message":
+		// awaiting_message: the run is alive and waiting for a message (its
+		// receive()); 'afy messages send' sends it one.
 		return output.Warning.Sprint(state)
 	default:
 		return state
