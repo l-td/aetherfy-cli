@@ -62,7 +62,7 @@ func standardCP(t *testing.T, preview string) *vecServer {
 	return cpFake(t, map[string]func(vecRequest) (int, string){
 		"POST " + previewPath: func(vecRequest) (int, string) { return 200, preview },
 		"PATCH " + changePath: func(vecRequest) (int, string) {
-			return 202, `{"operation_id":"op-1","collection_id":"c-1","regions":["us-east-1","eu-central-1"]}`
+			return 202, `{"operation_id":"op-1","collection_id":"c-1","to_regions":["us-east-1","eu-central-1"]}`
 		},
 		"GET /api/v1/operations/op-1": func(vecRequest) (int, string) {
 			return 200, `{"operation_id":"op-1","status":"succeeded"}`
@@ -299,7 +299,7 @@ func TestCollectionsRegionsWaitFollowsTheOperationToItsEnd(t *testing.T) {
 
 func TestCollectionsMoveAsksNothingAndSendsTheTargetsID(t *testing.T) {
 	moved := func(vecRequest) (int, string) {
-		return 202, `{"operation_id":"op-2","collection_id":"c-1","regions":["us-east-1"]}`
+		return 202, `{"operation_id":"op-2","collection_id":"c-1","to_regions":["us-east-1"]}`
 	}
 
 	t.Run("into a workspace: its id, from its name", func(t *testing.T) {
@@ -373,5 +373,29 @@ func TestHumanBytesMatchesTheDashboard(t *testing.T) {
 		if got := humanBytes(n); got != want {
 			t.Errorf("humanBytes(%d) = %q, want %q", n, got, want)
 		}
+	}
+}
+
+// The regions after the change are `to_regions` on every control-plane answer that carries them (a workspace's change, a
+// collection's regions change and a collection's move), and `collections move --json` says them under that one name.
+func TestCollectionsMoveJSONSaysTheRegionsAfterTheMoveAsToRegions(t *testing.T) {
+	cp := cpFake(t, map[string]func(vecRequest) (int, string){
+		"GET /api/v1/workspaces/research": func(vecRequest) (int, string) { return 200, `{"id":"w-9","name":"research"}` },
+		"PATCH " + changePath: func(vecRequest) (int, string) {
+			return 202, `{"no_op":false,"operation_id":"op-2","collection_id":"c-1","workspace_id":"w-9",` +
+				`"source_workspace_id":"w-1","to_regions":["us-east-1","eu-central-1"]}`
+		},
+	})
+	r, stdout, stderr := runWithCP(vecWithArticles(t), cp, true)
+	if code := collectionsMove(r, "articles", "research", true, false); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	out := decode(t, stdout.String())
+	got, ok := out["to_regions"].([]interface{})
+	if !ok || len(got) != 2 || got[0] != "us-east-1" || got[1] != "eu-central-1" {
+		t.Errorf("to_regions = %v, want the answer's regions", out["to_regions"])
+	}
+	if _, old := out["regions"]; old {
+		t.Errorf("--json still carries `regions`, a name no control-plane answer has: %v", out)
 	}
 }

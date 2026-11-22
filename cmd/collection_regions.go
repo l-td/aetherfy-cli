@@ -290,10 +290,10 @@ func collectionsMove(r *vecRun, name, to string, toSet, wait bool) int {
 			Collection  string         `json:"collection"`
 			To          string         `json:"to"`
 			NoOp        bool           `json:"no_op"`
-			Regions     []string       `json:"regions"`
+			ToRegions   []string       `json:"to_regions"`
 			OperationID *string        `json:"operation_id"`
 			Operation   *api.Operation `json:"operation"`
-		}{vecEnvelope: r.envelope(), Collection: name, To: to, NoOp: change.NoOp, Regions: change.Regions, Operation: op}
+		}{vecEnvelope: r.envelope(), Collection: name, To: to, NoOp: change.NoOp, ToRegions: change.ToRegions, Operation: op}
 		if change.OperationID != "" {
 			id := change.OperationID
 			out.OperationID = &id

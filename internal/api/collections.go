@@ -70,7 +70,7 @@ type CollectionChange struct {
 	OperationID  string   `json:"operation_id"`
 	CollectionID string   `json:"collection_id"`
 	NoOp         bool     `json:"no_op"`
-	Regions      []string `json:"regions"`
+	ToRegions    []string `json:"to_regions"`
 }
 
 // CollectionProtection is PATCH /collections/{id}'s answer to a `protected`
