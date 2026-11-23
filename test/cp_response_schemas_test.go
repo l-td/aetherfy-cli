@@ -231,12 +231,6 @@ var answerWaivers = []cpschemas.Waiver{
 		Reason: "the line prints the whole-percent figure and the sentence; the unrounded share is in --json"},
 }
 
-func pairKey(p answerPair) string {
-	if p.Member != "" {
-		return p.Op + " " + p.Member
-	}
-	return p.Op
-}
 
 // holdPairs runs every pair against an extraction and returns the problems and
 // the outdated waivers.
