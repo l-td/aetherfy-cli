@@ -1,0 +1,5581 @@
+{
+  "$comment": "The control plane's response schemas: every 2xx answer of its app and the component schemas they reference, read from app.openapi() of the sibling aetherfy-control-plane repo. Do not edit by hand. Consumed by test/cp_response_schemas_test.go, which holds every struct internal/api decodes an answer into to its route's schema. Regenerate with `go run ./scripts/cp-response-schemas-snapshot`.",
+  "generator": "scripts/cp-response-schemas-snapshot",
+  "schemaVersion": 1,
+  "source": {
+    "commit": "50d8f880666a883696e018b592583f37edddcf9b",
+    "branch": "integration-2026-11-17"
+  },
+  "operations": {
+    "DELETE /api/v1/agents/{agent_id_or_name} 202": {
+      "$ref": "#/components/schemas/AgentTransitionResponse"
+    },
+    "DELETE /api/v1/agents/{agent_id_or_name}/access/workspaces/{workspace_name} 200": {
+      "$ref": "#/components/schemas/AgentAccessResponse"
+    },
+    "DELETE /api/v1/agents/{agent_id_or_name}/github 204": null,
+    "DELETE /api/v1/agents/{agent_id_or_name}/secrets/{secret_key} 204": null,
+    "DELETE /api/v1/auth/github 204": null,
+    "DELETE /api/v1/auth/github/installations/{installation_id} 204": null,
+    "DELETE /api/v1/keys/{key_id} 200": {
+      "$ref": "#/components/schemas/RevokeKeyResponse"
+    },
+    "DELETE /api/v1/workspaces/{workspace_name} 200": {
+      "$ref": "#/components/schemas/WorkspaceDeleteResponse"
+    },
+    "DELETE /api/v1/workspaces/{workspace_name}/secrets/{secret_key} 204": null,
+    "GET / 200": {
+      "$ref": "#/components/schemas/ServiceInfo"
+    },
+    "GET /api/v1/agents 200": {
+      "items": {
+        "$ref": "#/components/schemas/AgentResponse"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/agents/{agent_id_or_name} 200": {
+      "$ref": "#/components/schemas/AgentResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/access 200": {
+      "$ref": "#/components/schemas/AgentAccessResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/deployments 200": {
+      "$ref": "#/components/schemas/DeploymentListResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/github 200": {
+      "$ref": "#/components/schemas/GitHubLinkStatusResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/logs 200": {
+      "items": {
+        "$ref": "#/components/schemas/AgentLogEntry"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/peers 200": {
+      "$ref": "#/components/schemas/PeersResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/peers/{peer_name} 200": {
+      "$ref": "#/components/schemas/PeerResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/runs 200": {
+      "items": {
+        "$ref": "#/components/schemas/AgentRunRow"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/runs/{deployment_id}/tree 200": {
+      "$ref": "#/components/schemas/RunTreeResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/secrets 200": {
+      "items": {
+        "$ref": "#/components/schemas/SecretKeyResponse"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/status 200": {
+      "$ref": "#/components/schemas/AgentStatusResponse"
+    },
+    "GET /api/v1/agents/{agent_id_or_name}/yaml 200": {},
+    "GET /api/v1/auth/github 200": {
+      "$ref": "#/components/schemas/GitHubConnectURLResponse"
+    },
+    "GET /api/v1/auth/github/callback 200": {},
+    "GET /api/v1/auth/github/oauth/callback 200": {},
+    "GET /api/v1/auth/github/repositories 200": {
+      "$ref": "#/components/schemas/GitHubRepositoriesResponse"
+    },
+    "GET /api/v1/auth/github/status 200": {
+      "$ref": "#/components/schemas/GitHubStatusResponse"
+    },
+    "GET /api/v1/auth/me 200": {
+      "$ref": "#/components/schemas/UserInfoResponse"
+    },
+    "GET /api/v1/collections/{collection_id}/operation 200": {
+      "$ref": "#/components/schemas/CollectionOperationResponse"
+    },
+    "GET /api/v1/collections/{collection_id}/recent-agents 200": {
+      "$ref": "#/components/schemas/RecentAgentsResponse"
+    },
+    "GET /api/v1/deploy-options 200": {
+      "$ref": "#/components/schemas/DeployOptionsResponse"
+    },
+    "GET /api/v1/deployments 200": {
+      "$ref": "#/components/schemas/DeploymentListResponse"
+    },
+    "GET /api/v1/deployments/{deployment_id} 200": {
+      "$ref": "#/components/schemas/DeploymentResponse"
+    },
+    "GET /api/v1/deployments/{deployment_id}/messages 200": {
+      "$ref": "#/components/schemas/MessageHistoryResponse"
+    },
+    "GET /api/v1/deployments/{deployment_id}/payload 200": {
+      "$ref": "#/components/schemas/SpawnPayloadResponse"
+    },
+    "GET /api/v1/deployments/{deployment_id}/wait 200": {
+      "$ref": "#/components/schemas/DeploymentResponse"
+    },
+    "GET /api/v1/health 200": {
+      "$ref": "#/components/schemas/HealthResponse"
+    },
+    "GET /api/v1/keys 200": {
+      "$ref": "#/components/schemas/KeyListResponse"
+    },
+    "GET /api/v1/liveness 200": {
+      "$ref": "#/components/schemas/LivenessResponse"
+    },
+    "GET /api/v1/operations/{operation_id} 200": {
+      "$ref": "#/components/schemas/OperationResponse"
+    },
+    "GET /api/v1/readiness 200": {
+      "$ref": "#/components/schemas/ReadinessResponse"
+    },
+    "GET /api/v1/usage 200": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/UsageMeterActive"
+        },
+        {
+          "$ref": "#/components/schemas/UsageMeterNoPeriod"
+        }
+      ]
+    },
+    "GET /api/v1/usage/agent/{agent_id}/events 200": {
+      "items": {
+        "$ref": "#/components/schemas/LifecycleEventRow"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/users/me/region-changes 200": {
+      "$ref": "#/components/schemas/RegionChangeUsage"
+    },
+    "GET /api/v1/workspaces 200": {
+      "items": {
+        "$ref": "#/components/schemas/WorkspaceResponse"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/workspaces/{workspace_name} 200": {
+      "$ref": "#/components/schemas/WorkspaceResponse"
+    },
+    "GET /api/v1/workspaces/{workspace_name}/agents 200": {
+      "items": {
+        "$ref": "#/components/schemas/WorkspaceAgentResponse"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/workspaces/{workspace_name}/granted-agents 200": {
+      "items": {
+        "$ref": "#/components/schemas/GrantedAgentResponse"
+      },
+      "type": "array"
+    },
+    "GET /api/v1/workspaces/{workspace_name}/secrets 200": {
+      "items": {
+        "$ref": "#/components/schemas/SecretKeyResponse"
+      },
+      "type": "array"
+    },
+    "PATCH /api/v1/agents/{agent_id_or_name} 200": {
+      "$ref": "#/components/schemas/AgentResponse"
+    },
+    "PATCH /api/v1/collections/{collection_id} 200": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/CollectionProtected"
+        },
+        {
+          "$ref": "#/components/schemas/CollectionRegionsChange"
+        },
+        {
+          "$ref": "#/components/schemas/CollectionMove"
+        }
+      ]
+    },
+    "PATCH /api/v1/collections/{collection_id} 202": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/CollectionRegionsChange"
+        },
+        {
+          "$ref": "#/components/schemas/CollectionMove"
+        }
+      ]
+    },
+    "PATCH /api/v1/workspaces/{workspace_name} 200": {
+      "$ref": "#/components/schemas/WorkspaceResponse"
+    },
+    "PATCH /api/v1/workspaces/{workspace_name}/regions 200": {
+      "$ref": "#/components/schemas/WorkspaceRegionsChange"
+    },
+    "PATCH /api/v1/workspaces/{workspace_name}/regions 202": {
+      "$ref": "#/components/schemas/WorkspaceRegionsChange"
+    },
+    "POST /api/v1/agents 201": {
+      "$ref": "#/components/schemas/AgentResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/access/workspaces 200": {
+      "$ref": "#/components/schemas/AgentAccessResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/archive 202": {
+      "$ref": "#/components/schemas/AgentTransitionResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/deploy 202": {
+      "$ref": "#/components/schemas/DeploymentResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/deployments/{version}/cancel 202": {
+      "$ref": "#/components/schemas/DeploymentResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/deployments/{version}/redeploy 202": {
+      "$ref": "#/components/schemas/DeploymentResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/deployments/{version}/rollback 202": {
+      "$ref": "#/components/schemas/DeploymentResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/github 201": {
+      "$ref": "#/components/schemas/GitHubLinkResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/github/pause 200": {
+      "$ref": "#/components/schemas/GitHubAutoDeployResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/github/resume 200": {
+      "$ref": "#/components/schemas/GitHubAutoDeployResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/move 200": {
+      "$ref": "#/components/schemas/AgentMoveResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/restore 202": {
+      "$ref": "#/components/schemas/AgentTransitionResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/run 202": {
+      "$ref": "#/components/schemas/RunAcceptedResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/schedule/pause 200": {
+      "$ref": "#/components/schemas/ScheduleStateResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/schedule/resume 200": {
+      "$ref": "#/components/schemas/ScheduleStateResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/secrets 201": {
+      "$ref": "#/components/schemas/SecretResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/secrets/{secret_key}/rotate 200": {
+      "$ref": "#/components/schemas/SecretResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/spawn 202": {
+      "$ref": "#/components/schemas/SpawnResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/start 202": {
+      "$ref": "#/components/schemas/StartAgentResponse"
+    },
+    "POST /api/v1/agents/{agent_id_or_name}/stop 202": {
+      "$ref": "#/components/schemas/StopAgentResponse"
+    },
+    "POST /api/v1/auth/device 201": {
+      "$ref": "#/components/schemas/DeviceAuthorizationResponse"
+    },
+    "POST /api/v1/auth/device/token 200": {
+      "anyOf": [
+        {
+          "$ref": "#/components/schemas/DevicePending"
+        },
+        {
+          "$ref": "#/components/schemas/DeviceApproved"
+        }
+      ]
+    },
+    "POST /api/v1/auth/device/token 202": {
+      "$ref": "#/components/schemas/DevicePending"
+    },
+    "POST /api/v1/collections/{collection_id}/regions/preview 200": {
+      "$ref": "#/components/schemas/RegionsChangePreview"
+    },
+    "POST /api/v1/deployments/{deployment_id}/cancel 200": {
+      "$ref": "#/components/schemas/RunCancelResponse"
+    },
+    "POST /api/v1/deployments/{deployment_id}/messages 201": {
+      "$ref": "#/components/schemas/MessageSentResponse"
+    },
+    "POST /api/v1/deployments/{deployment_id}/messages/receive 200": {
+      "$ref": "#/components/schemas/MessageReceiveResponse"
+    },
+    "POST /api/v1/webhooks/github 204": null,
+    "POST /api/v1/webhooks/github/{agent_id} 204": null,
+    "POST /api/v1/workspaces 201": {
+      "$ref": "#/components/schemas/WorkspaceResponse"
+    },
+    "POST /api/v1/workspaces/{workspace_name}/secrets 201": {
+      "$ref": "#/components/schemas/WorkspaceSecretResponse"
+    },
+    "PUT /api/v1/agents/{agent_id_or_name}/access/own-workspace 200": {
+      "$ref": "#/components/schemas/AgentAccessResponse"
+    },
+    "PUT /api/v1/agents/{agent_id_or_name}/access/secrets 200": {
+      "$ref": "#/components/schemas/AgentAccessResponse"
+    }
+  },
+  "schemas": {
+    "AgentAccessResponse": {
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "allowed_workspace_refs": {
+          "items": {
+            "$ref": "#/components/schemas/LeveledWorkspaceRef"
+          },
+          "type": "array"
+        },
+        "allowed_workspaces": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "granted_workspace_refs": {
+          "items": {
+            "$ref": "#/components/schemas/LeveledWorkspaceRef"
+          },
+          "type": "array"
+        },
+        "granted_workspaces": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "no_op": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "own_workspace": {
+          "type": "string"
+        },
+        "own_workspace_level": {
+          "enum": [
+            "read",
+            "read_write",
+            "full"
+          ],
+          "type": "string"
+        },
+        "own_workspace_level_setting": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "read_write",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "own_workspace_ref": {
+          "$ref": "#/components/schemas/WorkspaceRef"
+        },
+        "secrets_access": {
+          "type": "boolean"
+        },
+        "workspace_default_level": {
+          "enum": [
+            "read",
+            "read_write",
+            "full"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent",
+        "own_workspace",
+        "own_workspace_ref",
+        "own_workspace_level",
+        "own_workspace_level_setting",
+        "workspace_default_level",
+        "granted_workspaces",
+        "granted_workspace_refs",
+        "allowed_workspaces",
+        "allowed_workspace_refs",
+        "secrets_access"
+      ],
+      "type": "object"
+    },
+    "AgentCreate": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "AgentLogEntry": {
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "level": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "timestamp",
+        "stream",
+        "level",
+        "message"
+      ],
+      "type": "object"
+    },
+    "AgentMoveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "workspace_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_name": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentMoveResponse": {
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "agent_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "deployment": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/DeploymentResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "previous_workspace": {
+          "$ref": "#/components/schemas/WorkspaceRef"
+        },
+        "redeployed": {
+          "type": "boolean"
+        },
+        "workspace": {
+          "$ref": "#/components/schemas/WorkspaceRef"
+        }
+      },
+      "required": [
+        "agent_id",
+        "agent",
+        "workspace",
+        "previous_workspace",
+        "no_op",
+        "redeployed"
+      ],
+      "type": "object"
+    },
+    "AgentResponse": {
+      "properties": {
+        "agent_type": {
+          "$ref": "#/components/schemas/AgentTypeEnum"
+        },
+        "allowed_workers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "awake": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "cron_deadline_minutes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cron_last_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cron_last_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cron_last_status": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cron_next_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cron_paused": {
+          "type": "boolean"
+        },
+        "cron_schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "degraded_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deployed": {
+          "type": "boolean"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "github": {
+          "$ref": "#/components/schemas/GitHubLinkStatusResponse"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "idle_timeout_minutes": {
+          "type": "integer"
+        },
+        "include": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "is_degraded": {
+          "type": "boolean"
+        },
+        "keep_alive": {
+          "type": "boolean"
+        },
+        "last_run": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/LastRunResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "machines_recreated": {
+          "type": "integer"
+        },
+        "memory_mb": {
+          "type": "integer"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pending_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions_ready": {
+          "type": "integer"
+        },
+        "regions_total": {
+          "type": "integer"
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResumeStateResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime": {
+          "$ref": "#/components/schemas/RuntimeEnum"
+        },
+        "serves_websocket": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawn_enabled": {
+          "type": "boolean"
+        },
+        "status": {
+          "$ref": "#/components/schemas/AgentStatusEnum"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "user_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/AgentWarning"
+          },
+          "type": "array"
+        },
+        "workspace_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "workspace_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "user_id",
+        "name",
+        "description",
+        "agent_type",
+        "runtime",
+        "memory_mb",
+        "idle_timeout_minutes",
+        "keep_alive",
+        "status",
+        "entrypoint",
+        "spawn_enabled",
+        "allowed_workers",
+        "workspace_id",
+        "workspace_name",
+        "deployed",
+        "url",
+        "created_at",
+        "updated_at",
+        "github"
+      ],
+      "type": "object"
+    },
+    "AgentRunRow": {
+      "properties": {
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_result": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "machine_started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "machine_stopped_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "messages_unacked": {
+          "type": "integer"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AttemptRetry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawned_by": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SpawnedBy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawned_count": {
+          "type": "integer"
+        },
+        "state": {
+          "type": "string"
+        },
+        "trigger_source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "trigger_source",
+        "state",
+        "created_at",
+        "messages_unacked",
+        "has_result",
+        "spawned_count",
+        "cursor"
+      ],
+      "type": "object"
+    },
+    "AgentStatusEnum": {
+      "enum": [
+        "pending",
+        "building",
+        "deploying",
+        "running",
+        "failed",
+        "stopped",
+        "paused",
+        "usage_paused",
+        "suspended",
+        "archived",
+        "deleting",
+        "deleted"
+      ],
+      "type": "string"
+    },
+    "AgentStatusResponse": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "machines": {
+          "items": {
+            "$ref": "#/components/schemas/MachineStatusResponse"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "agent_id",
+        "name",
+        "status",
+        "url",
+        "machines"
+      ],
+      "type": "object"
+    },
+    "AgentTransitionResponse": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "deleting",
+            "archiving",
+            "restoring"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "AgentTypeEnum": {
+      "enum": [
+        "service",
+        "job"
+      ],
+      "type": "string"
+    },
+    "AgentUpdate": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgentWarning": {
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "deploys_stop_on": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "replacement": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtime": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "runtime",
+        "deploys_stop_on"
+      ],
+      "type": "object"
+    },
+    "ApiKeyRow": {
+      "properties": {
+        "created_at": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "is_system_managed": {
+          "type": "boolean"
+        },
+        "key_prefix": {
+          "type": "string"
+        },
+        "last_used_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "key_prefix",
+        "created_at",
+        "last_used_at",
+        "is_system_managed"
+      ],
+      "type": "object"
+    },
+    "AttemptRetry": {
+      "properties": {
+        "attempt": {
+          "type": "integer"
+        },
+        "code": {
+          "type": "string"
+        },
+        "max_attempts": {
+          "type": "integer"
+        },
+        "next_attempt_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "attempt",
+        "max_attempts",
+        "next_attempt_at"
+      ],
+      "type": "object"
+    },
+    "Body_deploy_agent_api_v1_agents__agent_id_or_name__deploy_post": {
+      "properties": {
+        "code_archive": {
+          "contentMediaType": "application/octet-stream",
+          "type": "string"
+        },
+        "code_root": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "code_archive"
+      ],
+      "type": "object"
+    },
+    "CollectionMove": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source_workspace_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "to_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workspace_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "no_op",
+        "operation_id",
+        "collection_id",
+        "workspace_id",
+        "source_workspace_id",
+        "to_regions"
+      ],
+      "type": "object"
+    },
+    "CollectionMoveRequest": {
+      "properties": {
+        "protected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "CollectionOperation": {
+      "properties": {
+        "accepted_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "from_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "target_workspace": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/WorkspaceRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "to_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "operation_id",
+        "kind",
+        "status",
+        "from_regions",
+        "to_regions",
+        "target_workspace",
+        "accepted_at"
+      ],
+      "type": "object"
+    },
+    "CollectionOperationResponse": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        },
+        "operation": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/CollectionOperation"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "collection_id",
+        "operation"
+      ],
+      "type": "object"
+    },
+    "CollectionProtected": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "protected": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "collection_id",
+        "protected",
+        "no_op"
+      ],
+      "type": "object"
+    },
+    "CollectionRegionsChange": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RegionsChangePreview"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regions_to_add": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions_to_remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "to_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "no_op",
+        "operation_id",
+        "collection_id",
+        "to_regions",
+        "regions_to_add",
+        "regions_to_remove",
+        "plan"
+      ],
+      "type": "object"
+    },
+    "CollectionRegionsPreviewRequest": {
+      "properties": {
+        "regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "regions"
+      ],
+      "type": "object"
+    },
+    "DeployOptionsResponse": {
+      "properties": {
+        "default_runtimes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "max_memory_mb": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_regions": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "memory_mb": {
+          "items": {
+            "$ref": "#/components/schemas/MemoryOption"
+          },
+          "type": "array"
+        },
+        "regions": {
+          "items": {
+            "$ref": "#/components/schemas/RegionOption"
+          },
+          "type": "array"
+        },
+        "runtime_details": {
+          "additionalProperties": {
+            "$ref": "#/components/schemas/RuntimeDetail"
+          },
+          "type": "object"
+        },
+        "runtime_labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "runtimes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workspace_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "regions",
+        "runtimes",
+        "runtime_labels",
+        "runtime_details",
+        "default_runtimes",
+        "max_regions",
+        "memory_mb",
+        "max_memory_mb"
+      ],
+      "type": "object"
+    },
+    "DeploymentListResponse": {
+      "properties": {
+        "deployments": {
+          "items": {
+            "$ref": "#/components/schemas/DeploymentResponse"
+          },
+          "type": "array"
+        },
+        "next_before_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "deployments"
+      ],
+      "type": "object"
+    },
+    "DeploymentResponse": {
+      "properties": {
+        "admitted_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agent_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "attempt": {
+          "type": "integer"
+        },
+        "build_failure_detail": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "can_redeploy": {
+          "type": "boolean"
+        },
+        "can_rollback": {
+          "type": "boolean"
+        },
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cancellation_requested": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deployed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_result": {
+          "type": "boolean"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "image_size_mb": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "is_degraded": {
+          "type": "boolean"
+        },
+        "is_ephemeral": {
+          "type": "boolean"
+        },
+        "is_serving": {
+          "type": "boolean"
+        },
+        "messages_unacked": {
+          "type": "integer"
+        },
+        "pending_region_alert_stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pending_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "queue_position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions_ready": {
+          "type": "integer"
+        },
+        "regions_total": {
+          "type": "integer"
+        },
+        "release_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "result_error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AttemptRetry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rollback_notice": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawned_by_deployment_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawned_count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/components/schemas/DeploymentStateEnum"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "warnings": {
+          "items": {
+            "$ref": "#/components/schemas/AgentWarning"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "agent_id",
+        "version",
+        "state",
+        "image_size_mb",
+        "regions",
+        "pending_regions",
+        "queue_position",
+        "created_at",
+        "started_at",
+        "deployed_at",
+        "error_message"
+      ],
+      "type": "object"
+    },
+    "DeploymentStateEnum": {
+      "enum": [
+        "queued",
+        "building",
+        "deploying",
+        "active",
+        "failed",
+        "rolled_back",
+        "superseded",
+        "completed",
+        "archived",
+        "waiting",
+        "cancelled",
+        "awaiting_message"
+      ],
+      "type": "string"
+    },
+    "DeviceApproved": {
+      "properties": {
+        "api_key": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "key": {
+          "$ref": "#/components/schemas/ApiKeyRow"
+        },
+        "status": {
+          "const": "approved",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "api_key",
+        "key"
+      ],
+      "type": "object"
+    },
+    "DeviceAuthorizationResponse": {
+      "properties": {
+        "device_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "expires_in": {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        "interval": {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        "user_code": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "verification_uri": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "verification_uri_complete": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "device_code",
+        "user_code",
+        "verification_uri",
+        "verification_uri_complete",
+        "expires_in",
+        "interval"
+      ],
+      "type": "object"
+    },
+    "DevicePending": {
+      "properties": {
+        "interval": {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        "status": {
+          "const": "pending",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "interval"
+      ],
+      "type": "object"
+    },
+    "DevicePollRequest": {
+      "properties": {
+        "device_code": {
+          "maxLength": 256,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "device_code"
+      ],
+      "type": "object"
+    },
+    "DeviceStartRequest": {
+      "properties": {
+        "device_name": {
+          "type": "string"
+        },
+        "key_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "device_name"
+      ],
+      "type": "object"
+    },
+    "EndedChild": {
+      "properties": {
+        "run_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/components/schemas/DeploymentStateEnum"
+        }
+      },
+      "required": [
+        "run_id",
+        "state"
+      ],
+      "type": "object"
+    },
+    "GitHubAutoDeployResponse": {
+      "properties": {
+        "account_connected": {
+          "type": "boolean"
+        },
+        "account_login": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auto_deploy_paused_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_deleted_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "installation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "linked": {
+          "type": "boolean"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "push_in_clone": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PushInCloneResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "waiting_push": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/WaitingPushResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webhook_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "linked",
+        "no_op"
+      ],
+      "type": "object"
+    },
+    "GitHubConnectURLResponse": {
+      "properties": {
+        "connect_url": {
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "connect_url",
+        "expires_at"
+      ],
+      "type": "object"
+    },
+    "GitHubInstallationResponse": {
+      "properties": {
+        "account_id": {
+          "type": "integer"
+        },
+        "account_login": {
+          "type": "string"
+        },
+        "account_type": {
+          "type": "string"
+        },
+        "connected_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "installation_id": {
+          "type": "integer"
+        },
+        "manage_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "installation_id",
+        "account_id",
+        "account_login",
+        "account_type",
+        "connected_at"
+      ],
+      "type": "object"
+    },
+    "GitHubLinkRequest": {
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "root_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "repo"
+      ],
+      "type": "object"
+    },
+    "GitHubLinkResponse": {
+      "properties": {
+        "branch": {
+          "type": "string"
+        },
+        "repo": {
+          "type": "string"
+        },
+        "root_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webhook_id": {
+          "type": "string"
+        },
+        "webhook_secret": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "branch",
+        "root_dir",
+        "webhook_id",
+        "webhook_secret"
+      ],
+      "type": "object"
+    },
+    "GitHubLinkStatusResponse": {
+      "properties": {
+        "account_connected": {
+          "type": "boolean"
+        },
+        "account_login": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "auto_deploy_paused_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "branch_deleted_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "installation_id": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "linked": {
+          "type": "boolean"
+        },
+        "push_in_clone": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/PushInCloneResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "repo": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root_dir": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "waiting_push": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/WaitingPushResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "webhook_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "linked"
+      ],
+      "type": "object"
+    },
+    "GitHubRepositoriesResponse": {
+      "properties": {
+        "repositories": {
+          "items": {
+            "$ref": "#/components/schemas/GitHubRepositoryChoice"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "repositories"
+      ],
+      "type": "object"
+    },
+    "GitHubRepositoryChoice": {
+      "properties": {
+        "account_login": {
+          "type": "string"
+        },
+        "account_type": {
+          "type": "string"
+        },
+        "default_branch": {
+          "type": "string"
+        },
+        "full_name": {
+          "type": "string"
+        },
+        "installation_id": {
+          "type": "integer"
+        },
+        "private": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "full_name",
+        "private",
+        "default_branch",
+        "installation_id",
+        "account_login",
+        "account_type"
+      ],
+      "type": "object"
+    },
+    "GitHubStatusResponse": {
+      "properties": {
+        "connected": {
+          "type": "boolean"
+        },
+        "installations": {
+          "items": {
+            "$ref": "#/components/schemas/GitHubInstallationResponse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "connected",
+        "installations"
+      ],
+      "type": "object"
+    },
+    "GrantedAgentResponse": {
+      "properties": {
+        "granted_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "read",
+            "read_write",
+            "full"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "granted_at",
+        "level"
+      ],
+      "type": "object"
+    },
+    "HTTPValidationError": {
+      "properties": {
+        "detail": {
+          "items": {
+            "$ref": "#/components/schemas/ValidationError"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "HealthResponse": {
+      "properties": {
+        "database": {
+          "enum": [
+            "healthy",
+            "unhealthy"
+          ],
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "release_sha": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "ok",
+            "degraded"
+          ],
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "service",
+        "version",
+        "release_sha",
+        "environment",
+        "database",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    "HistoryMessage": {
+      "properties": {
+        "acked_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "body": {},
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sender": {
+          "enum": [
+            "run",
+            "person"
+          ],
+          "type": "string"
+        },
+        "sender_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "seq",
+        "sender",
+        "sender_run_id",
+        "body",
+        "created_at",
+        "acked_at"
+      ],
+      "type": "object"
+    },
+    "KeyListResponse": {
+      "properties": {
+        "keys": {
+          "items": {
+            "$ref": "#/components/schemas/ApiKeyRow"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "keys"
+      ],
+      "type": "object"
+    },
+    "LastRunResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "release_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AttemptRetry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "$ref": "#/components/schemas/DeploymentStateEnum"
+        },
+        "trigger_source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "trigger_source",
+        "state",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "LeveledWorkspaceRef": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "level": {
+          "enum": [
+            "read",
+            "read_write",
+            "full"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "level"
+      ],
+      "type": "object"
+    },
+    "LifecycleEventRow": {
+      "properties": {
+        "event_id": {
+          "type": "string"
+        },
+        "event_timestamp": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "event_type": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "machine_id": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "event_id",
+        "machine_id",
+        "event_type",
+        "event_timestamp",
+        "region",
+        "source"
+      ],
+      "type": "object"
+    },
+    "LivenessResponse": {
+      "properties": {
+        "status": {
+          "const": "alive",
+          "type": "string"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    "MachineStatusResponse": {
+      "properties": {
+        "health": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "instance_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "last_check": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "region": {
+          "type": "string"
+        },
+        "run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "source": {
+          "enum": [
+            "live",
+            "cached"
+          ],
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "region",
+        "run_id",
+        "state",
+        "source",
+        "health",
+        "last_check",
+        "instance_id"
+      ],
+      "type": "object"
+    },
+    "MemoryOption": {
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "memory_mb": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "memory_mb",
+        "allowed"
+      ],
+      "type": "object"
+    },
+    "MessageHistoryResponse": {
+      "properties": {
+        "messages": {
+          "items": {
+            "$ref": "#/components/schemas/HistoryMessage"
+          },
+          "type": "array"
+        },
+        "next_after": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "messages"
+      ],
+      "type": "object"
+    },
+    "MessageReceiveRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "ack": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "maxItems": 1000,
+          "type": "array"
+        },
+        "from_run": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "instance_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wait_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "wait_id"
+      ],
+      "type": "object"
+    },
+    "MessageReceiveResponse": {
+      "properties": {
+        "ended": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/EndedChild"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ReceivedMessage"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wait_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "waiting": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "MessageRecipient": {
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "agent_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/components/schemas/DeploymentStateEnum"
+        }
+      },
+      "required": [
+        "id",
+        "agent_id",
+        "agent",
+        "state"
+      ],
+      "type": "object"
+    },
+    "MessageSendRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "body": {},
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "body"
+      ],
+      "type": "object"
+    },
+    "MessageSentResponse": {
+      "properties": {
+        "message": {
+          "$ref": "#/components/schemas/SentMessage"
+        },
+        "recipient": {
+          "$ref": "#/components/schemas/MessageRecipient"
+        }
+      },
+      "required": [
+        "message",
+        "recipient"
+      ],
+      "type": "object"
+    },
+    "MeterAgent": {
+      "properties": {
+        "agentId": {
+          "type": "string"
+        },
+        "agentName": {
+          "type": "string"
+        },
+        "awakeTime": {
+          "items": {
+            "$ref": "#/components/schemas/MeterAwakeLine"
+          },
+          "type": "array"
+        },
+        "display": {
+          "type": "string"
+        },
+        "dollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sortKey": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "usagePaused": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "agentId",
+        "agentName",
+        "state",
+        "display",
+        "dollars",
+        "percent",
+        "sortKey",
+        "usagePaused",
+        "awakeTime"
+      ],
+      "type": "object"
+    },
+    "MeterAwakeLine": {
+      "properties": {
+        "label": {
+          "type": "string"
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "region": {
+          "type": "string"
+        },
+        "share": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "required": [
+        "region",
+        "percent",
+        "share",
+        "label"
+      ],
+      "type": "object"
+    },
+    "MeterForecastAvailable": {
+      "properties": {
+        "available": {
+          "const": true,
+          "type": "boolean"
+        },
+        "crossesLimit": {
+          "type": "boolean"
+        },
+        "limitKind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectedDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "projectedLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reachDateLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "available",
+        "projectedDollars",
+        "projectedLabel",
+        "crossesLimit",
+        "limitKind",
+        "reachDateLabel",
+        "message"
+      ],
+      "type": "object"
+    },
+    "MeterForecastUnavailable": {
+      "properties": {
+        "available": {
+          "const": false,
+          "type": "boolean"
+        },
+        "crossesLimit": {
+          "type": "boolean"
+        },
+        "message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "projectedLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "available",
+        "projectedLabel",
+        "crossesLimit",
+        "message"
+      ],
+      "type": "object"
+    },
+    "MeterSpendCap": {
+      "properties": {
+        "amountDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "blocked": {
+          "type": "boolean"
+        },
+        "effectiveLimitDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "isUserCap": {
+          "type": "boolean"
+        },
+        "progressPercent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "systemCeilingDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "enabled",
+        "amountDollars",
+        "systemCeilingDollars",
+        "effectiveLimitDollars",
+        "isUserCap",
+        "blocked",
+        "progressPercent"
+      ],
+      "type": "object"
+    },
+    "MeterToday": {
+      "properties": {
+        "dollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "inOverage": {
+          "type": "boolean"
+        },
+        "label": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "percent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "inOverage",
+        "percent",
+        "dollars",
+        "label"
+      ],
+      "type": "object"
+    },
+    "OperationFailure": {
+      "properties": {
+        "attempts": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "collection_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sub_step": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "message",
+        "sub_step",
+        "type",
+        "region",
+        "attempts",
+        "collection_id"
+      ],
+      "type": "object"
+    },
+    "OperationResponse": {
+      "properties": {
+        "completed_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failures": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/components/schemas/OperationFailure"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "operation_id": {
+          "type": "string"
+        },
+        "regions_to_add": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions_to_remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "pending",
+            "in_progress",
+            "succeeded",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "target_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "operation_id",
+        "scope",
+        "target_id",
+        "status",
+        "regions_to_add",
+        "regions_to_remove",
+        "started_at",
+        "completed_at",
+        "failures"
+      ],
+      "type": "object"
+    },
+    "OwnWorkspaceLevelRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "read_write",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "level"
+      ],
+      "type": "object"
+    },
+    "PeerResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "url"
+      ],
+      "type": "object"
+    },
+    "PeersResponse": {
+      "additionalProperties": false,
+      "properties": {
+        "peers": {
+          "items": {
+            "$ref": "#/components/schemas/PeerResponse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "peers"
+      ],
+      "type": "object"
+    },
+    "PlanLimits": {
+      "properties": {
+        "always_on_allowed": {
+          "type": "boolean"
+        },
+        "dockerfile_runtime_allowed": {
+          "type": "boolean"
+        },
+        "max_agents": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_idle_timeout_minutes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_memory_mb": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "max_regions": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requests_per_minute": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "max_agents",
+        "max_memory_mb",
+        "requests_per_minute",
+        "always_on_allowed",
+        "dockerfile_runtime_allowed",
+        "max_idle_timeout_minutes",
+        "max_regions"
+      ],
+      "type": "object"
+    },
+    "PushInCloneResponse": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sha": {
+          "type": "string"
+        },
+        "since": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "sha",
+        "since"
+      ],
+      "type": "object"
+    },
+    "ReadinessResponse": {
+      "properties": {
+        "status": {
+          "const": "ready",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status"
+      ],
+      "type": "object"
+    },
+    "ReceivedMessage": {
+      "properties": {
+        "body": {},
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sender": {
+          "enum": [
+            "run",
+            "person"
+          ],
+          "type": "string"
+        },
+        "sender_run_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "seq": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "seq",
+        "sender",
+        "sender_run_id",
+        "body",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "RecentAgent": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "last_seen": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "name",
+        "last_seen"
+      ],
+      "type": "object"
+    },
+    "RecentAgentsResponse": {
+      "properties": {
+        "agents": {
+          "items": {
+            "$ref": "#/components/schemas/RecentAgent"
+          },
+          "type": "array"
+        },
+        "collection_id": {
+          "type": "string"
+        },
+        "window_days": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "collection_id",
+        "window_days",
+        "agents"
+      ],
+      "type": "object"
+    },
+    "RegionChangeCount": {
+      "properties": {
+        "limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "this_change": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "used": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "limit",
+        "used",
+        "this_change"
+      ],
+      "type": "object"
+    },
+    "RegionChangeLimits": {
+      "properties": {
+        "count": {
+          "$ref": "#/components/schemas/RegionChangeCount"
+        },
+        "counted": {
+          "type": "boolean"
+        },
+        "size": {
+          "$ref": "#/components/schemas/RegionChangeSize"
+        },
+        "window_days": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "counted",
+        "window_days",
+        "count",
+        "size"
+      ],
+      "type": "object"
+    },
+    "RegionChangeSize": {
+      "properties": {
+        "left_after_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "used_bytes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "limit_bytes",
+        "used_bytes",
+        "left_after_bytes"
+      ],
+      "type": "object"
+    },
+    "RegionChangeUsage": {
+      "properties": {
+        "count_limit": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "count_used": {
+          "type": "integer"
+        },
+        "frees_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_limit_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size_used_bytes": {
+          "type": "integer"
+        },
+        "window_days": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "window_days",
+        "count_used",
+        "count_limit",
+        "size_used_bytes",
+        "size_limit_bytes",
+        "frees_at"
+      ],
+      "type": "object"
+    },
+    "RegionOption": {
+      "properties": {
+        "allowed": {
+          "type": "boolean"
+        },
+        "code": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "allowed"
+      ],
+      "type": "object"
+    },
+    "RegionsChangePreview": {
+      "properties": {
+        "collection_id": {
+          "type": "string"
+        },
+        "copy_bytes": {
+          "type": "integer"
+        },
+        "data_deleted_from": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "from_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "limits": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/RegionChangeLimits"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "refusal": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regions_to_add": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions_to_remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "to_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "collection_id",
+        "from_regions",
+        "to_regions",
+        "regions_to_add",
+        "regions_to_remove",
+        "no_op",
+        "copy_bytes",
+        "data_deleted_from",
+        "limits",
+        "refusal"
+      ],
+      "type": "object"
+    },
+    "RegionsUpdateRequest": {
+      "properties": {
+        "regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "regions"
+      ],
+      "type": "object"
+    },
+    "ResumeStateResponse": {
+      "properties": {
+        "cause": {
+          "anyOf": [
+            {
+              "enum": [
+                "host_full",
+                "machines_slow"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "enum": [
+                "archived",
+                "deleted",
+                "billing_hold",
+                "agent_failed",
+                "stop_failed",
+                "start_failed",
+                "state_changed"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requested_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "queued",
+            "dropped"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "state",
+        "requested_at"
+      ],
+      "type": "object"
+    },
+    "RevokeKeyResponse": {
+      "properties": {
+        "success": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "success"
+      ],
+      "type": "object"
+    },
+    "RunAcceptedResponse": {
+      "properties": {
+        "deployment_id": {
+          "type": "string"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": [
+            "queued",
+            "waiting"
+          ],
+          "type": "string"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "deployment_id",
+        "version",
+        "job_id",
+        "status",
+        "position"
+      ],
+      "type": "object"
+    },
+    "RunCancelResponse": {
+      "properties": {
+        "cancelled_count": {
+          "type": "integer"
+        },
+        "message": {
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "cancelled",
+            "stopping",
+            "already_finished"
+          ],
+          "type": "string"
+        },
+        "run": {
+          "$ref": "#/components/schemas/DeploymentResponse"
+        }
+      },
+      "required": [
+        "run",
+        "outcome",
+        "message",
+        "cancelled_count"
+      ],
+      "type": "object"
+    },
+    "RunRequest": {
+      "properties": {
+        "payload": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "RunTreeAncestor": {
+      "properties": {
+        "agent": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/TreeAgent"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "created_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "gone": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "run",
+                "release"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "state": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "trigger_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "gone"
+      ],
+      "type": "object"
+    },
+    "RunTreeNode": {
+      "properties": {
+        "agent": {
+          "$ref": "#/components/schemas/TreeAgent"
+        },
+        "cancellation_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "children": {
+          "items": {
+            "$ref": "#/components/schemas/RunTreeNode"
+          },
+          "type": "array"
+        },
+        "children_total": {
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "cursor": {
+          "type": "string"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_result": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "run",
+            "release"
+          ],
+          "type": "string"
+        },
+        "messages_unacked": {
+          "type": "integer"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "release_version": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "retry": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/AttemptRetry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawned_by": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/SpawnedBy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "spawns_recorded_on": {
+          "enum": [
+            "run",
+            "release"
+          ],
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        },
+        "trigger_source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "version",
+        "agent",
+        "state",
+        "created_at",
+        "has_result",
+        "spawns_recorded_on",
+        "children_total",
+        "children",
+        "cursor"
+      ],
+      "type": "object"
+    },
+    "RunTreeResponse": {
+      "properties": {
+        "ancestors": {
+          "items": {
+            "$ref": "#/components/schemas/RunTreeAncestor"
+          },
+          "type": "array"
+        },
+        "limits": {
+          "$ref": "#/components/schemas/TreeLimits"
+        },
+        "next_before": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "root": {
+          "$ref": "#/components/schemas/RunTreeNode"
+        },
+        "truncated": {
+          "$ref": "#/components/schemas/TreeTruncated"
+        }
+      },
+      "required": [
+        "root",
+        "ancestors",
+        "limits",
+        "truncated"
+      ],
+      "type": "object"
+    },
+    "RuntimeDetail": {
+      "properties": {
+        "entrypoint": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string"
+        },
+        "typescript": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "language",
+        "version",
+        "typescript",
+        "entrypoint"
+      ],
+      "type": "object"
+    },
+    "RuntimeEnum": {
+      "enum": [
+        "python3.11",
+        "python3.12",
+        "python3.13",
+        "python3.14",
+        "python3.15",
+        "node22",
+        "node24",
+        "node26",
+        "node22-ts",
+        "node24-ts",
+        "node26-ts",
+        "bun",
+        "dockerfile"
+      ],
+      "type": "string"
+    },
+    "ScheduleStateResponse": {
+      "properties": {
+        "cron_next_run_at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cron_paused": {
+          "type": "boolean"
+        },
+        "no_op": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "cron_paused",
+        "cron_next_run_at",
+        "no_op"
+      ],
+      "type": "object"
+    },
+    "SecretCreate": {
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 512,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "key": {
+          "maxLength": 255,
+          "minLength": 1,
+          "type": "string"
+        },
+        "value": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "value"
+      ],
+      "type": "object"
+    },
+    "SecretKeyResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "key": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "SecretResponse": {
+      "properties": {
+        "agent_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "agent_id",
+        "key",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "SecretsAccessRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "enabled"
+      ],
+      "type": "object"
+    },
+    "SentMessage": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "sender": {
+          "enum": [
+            "run",
+            "person"
+          ],
+          "type": "string"
+        },
+        "seq": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "seq",
+        "sender",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "ServiceInfo": {
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        },
+        "status": {
+          "const": "running",
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "service",
+        "version",
+        "environment",
+        "status"
+      ],
+      "type": "object"
+    },
+    "SpawnPayloadResponse": {
+      "properties": {
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        }
+      },
+      "required": [
+        "payload"
+      ],
+      "type": "object"
+    },
+    "SpawnRequest": {
+      "properties": {
+        "child_agent_id": {
+          "type": "string"
+        },
+        "payload": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "request_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "child_agent_id"
+      ],
+      "type": "object"
+    },
+    "SpawnResponse": {
+      "properties": {
+        "child_agent_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "estimated_start": {
+          "type": "string"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "format": "uuid",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "position": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "region": {
+          "type": "string"
+        },
+        "spawn_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "workspace": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "spawn_id",
+        "job_id",
+        "child_agent_id",
+        "workspace",
+        "region",
+        "status",
+        "position",
+        "estimated_start"
+      ],
+      "type": "object"
+    },
+    "SpawnedBy": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "StartAgentResponse": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "readiness": {
+          "anyOf": [
+            {
+              "enum": [
+                "serving",
+                "starting",
+                "unconfirmed",
+                "load_failed",
+                "slow_start"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "resume": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/ResumeStateResponse"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "stop_bound_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wait_bound_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "agent_id",
+        "readiness",
+        "resume",
+        "stop_bound_seconds",
+        "wait_bound_seconds"
+      ],
+      "type": "object"
+    },
+    "StopAgentResponse": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "machines": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "machines",
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "TreeAgent": {
+      "properties": {
+        "agent_type": {
+          "enum": [
+            "service",
+            "job"
+          ],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "agent_type"
+      ],
+      "type": "object"
+    },
+    "TreeLimits": {
+      "properties": {
+        "max_children_per_node": {
+          "type": "integer"
+        },
+        "max_depth": {
+          "type": "integer"
+        },
+        "max_nodes": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "max_depth",
+        "max_nodes",
+        "max_children_per_node"
+      ],
+      "type": "object"
+    },
+    "TreeTruncated": {
+      "properties": {
+        "ancestors": {
+          "type": "boolean"
+        },
+        "depth": {
+          "type": "boolean"
+        },
+        "nodes": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "nodes",
+        "depth",
+        "ancestors"
+      ],
+      "type": "object"
+    },
+    "UsageMeterActive": {
+      "properties": {
+        "agents": {
+          "items": {
+            "$ref": "#/components/schemas/MeterAgent"
+          },
+          "type": "array"
+        },
+        "awakeBudgetNote": {
+          "type": "string"
+        },
+        "currentTotalDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "currentTotalLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "forecast": {
+          "anyOf": [
+            {
+              "$ref": "#/components/schemas/MeterForecastAvailable"
+            },
+            {
+              "$ref": "#/components/schemas/MeterForecastUnavailable"
+            }
+          ]
+        },
+        "gaugeLabel": {
+          "type": "string"
+        },
+        "gaugePercent": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "hasActivePeriod": {
+          "const": true,
+          "type": "boolean"
+        },
+        "inOverage": {
+          "type": "boolean"
+        },
+        "meteredNote": {
+          "type": "string"
+        },
+        "overageDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            }
+          ]
+        },
+        "overageLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "periodEnd": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "periodStart": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "planBaseDollars": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "showDollars": {
+          "type": "boolean"
+        },
+        "spendCap": {
+          "$ref": "#/components/schemas/MeterSpendCap"
+        },
+        "tier": {
+          "type": "string"
+        },
+        "today": {
+          "$ref": "#/components/schemas/MeterToday"
+        },
+        "totalCompositionLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "hasActivePeriod",
+        "tier",
+        "periodStart",
+        "periodEnd",
+        "gaugePercent",
+        "gaugeLabel",
+        "awakeBudgetNote",
+        "meteredNote",
+        "inOverage",
+        "overageDollars",
+        "overageLabel",
+        "showDollars",
+        "planBaseDollars",
+        "currentTotalDollars",
+        "currentTotalLabel",
+        "totalCompositionLabel",
+        "forecast",
+        "today",
+        "spendCap",
+        "agents"
+      ],
+      "type": "object"
+    },
+    "UsageMeterNoPeriod": {
+      "properties": {
+        "hasActivePeriod": {
+          "const": false,
+          "type": "boolean"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "tier": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "hasActivePeriod",
+        "reason",
+        "tier"
+      ],
+      "type": "object"
+    },
+    "UserInfoResponse": {
+      "properties": {
+        "email": {
+          "type": "string"
+        },
+        "is_test": {
+          "type": "boolean"
+        },
+        "limits": {
+          "$ref": "#/components/schemas/PlanLimits"
+        },
+        "subscription_status": {
+          "type": "string"
+        },
+        "tier": {
+          "type": "string"
+        },
+        "user_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "user_id",
+        "email",
+        "tier",
+        "subscription_status",
+        "is_test",
+        "limits"
+      ],
+      "type": "object"
+    },
+    "ValidationError": {
+      "properties": {
+        "ctx": {
+          "type": "object"
+        },
+        "input": {},
+        "loc": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "msg": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "loc",
+        "msg",
+        "type"
+      ],
+      "type": "object"
+    },
+    "WaitingPushResponse": {
+      "properties": {
+        "received_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "sha": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sha",
+        "received_at"
+      ],
+      "type": "object"
+    },
+    "WorkspaceAgentResponse": {
+      "properties": {
+        "access_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "read_write",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "access_level_setting": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "read_write",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "agent_type": {
+          "$ref": "#/components/schemas/AgentTypeEnum"
+        },
+        "awake": {
+          "type": "boolean"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "degraded_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deployed": {
+          "type": "boolean"
+        },
+        "failure_code": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "failure_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "is_degraded": {
+          "type": "boolean"
+        },
+        "name": {
+          "type": "string"
+        },
+        "regions_ready": {
+          "type": "integer"
+        },
+        "regions_total": {
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/components/schemas/AgentStatusEnum"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "agent_type",
+        "status",
+        "deployed",
+        "url",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "WorkspaceCreate": {
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "maxLength": 63,
+          "minLength": 3,
+          "type": "string"
+        },
+        "regions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "WorkspaceDeleteResponse": {
+      "properties": {
+        "secrets_deleted": {
+          "type": "integer"
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "secrets_deleted"
+      ],
+      "type": "object"
+    },
+    "WorkspaceGrantRequest": {
+      "properties": {
+        "level": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "read_write",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspace": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "workspace"
+      ],
+      "type": "object"
+    },
+    "WorkspaceRef": {
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "WorkspaceRegionsChange": {
+      "properties": {
+        "from_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "no_op": {
+          "type": "boolean"
+        },
+        "operation_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "regions_to_add": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "regions_to_remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "scope": {
+          "const": "workspace",
+          "type": "string"
+        },
+        "to_regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "workspace_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "no_op",
+        "operation_id",
+        "scope",
+        "from_regions",
+        "to_regions",
+        "regions_to_add",
+        "regions_to_remove",
+        "workspace_name"
+      ],
+      "type": "object"
+    },
+    "WorkspaceResponse": {
+      "properties": {
+        "agent_access_level": {
+          "enum": [
+            "read",
+            "read_write",
+            "full"
+          ],
+          "type": "string"
+        },
+        "agent_count": {
+          "type": "integer"
+        },
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "regions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "regions",
+        "agent_count",
+        "agent_access_level",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "WorkspaceSecretResponse": {
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "key": {
+          "type": "string"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "user_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "workspace_name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "workspace_name",
+        "user_id",
+        "key",
+        "description",
+        "created_at",
+        "updated_at"
+      ],
+      "type": "object"
+    },
+    "WorkspaceUpdate": {
+      "properties": {
+        "agent_access_level": {
+          "anyOf": [
+            {
+              "enum": [
+                "read",
+                "read_write",
+                "full"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "name": {
+          "anyOf": [
+            {
+              "maxLength": 63,
+              "minLength": 3,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    }
+  }
+}

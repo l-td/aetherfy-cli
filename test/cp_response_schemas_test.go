@@ -86,6 +86,8 @@ var answerPairs = []answerPair{
 	{"ListDeploymentsPage", "GET " + v1 + "/agents/{agent_id_or_name}/deployments 200", "", typeOf(api.DeploymentsPage{})},
 	{"CancelDeployment", "POST " + v1 + "/agents/{agent_id_or_name}/deployments/{version}/cancel 202", "", typeOf(api.Deployment{})},
 	{"CancelRun", "POST " + v1 + "/deployments/{deployment_id}/cancel 200", "", typeOf(api.RunCancelResponse{})},
+	{"ListRunMessages", "GET " + v1 + "/deployments/{deployment_id}/messages 200", "", typeOf(api.RunMessagesPage{})},
+	{"SendRunMessage", "POST " + v1 + "/deployments/{deployment_id}/messages 201", "", typeOf(api.SentRunMessage{})},
 	{"Redeploy", "POST " + v1 + "/agents/{agent_id_or_name}/deployments/{version}/redeploy 202", "", typeOf(api.RollbackResponse{})},
 	{"Rollback", "POST " + v1 + "/agents/{agent_id_or_name}/deployments/{version}/rollback 202", "", typeOf(api.RollbackResponse{})},
 	{"GetAgentLogs", "GET " + v1 + "/agents/{agent_id_or_name}/logs 200", "", typeOf([]api.LogEntry{})},
@@ -160,23 +162,24 @@ var answerWaivers = []cpschemas.Waiver{
 		Fields: []string{"max_memory_mb", "runtime_labels", "workspace_id"},
 		Reason: "the CLI checks a memory size by its own `allowed` flag in memory_mb, names a runtime by its id, and asked for the workspace by id"},
 	{Kind: cpschemas.KindNotDecoded, Type: "DeployResponse", Schema: "DeploymentResponse",
-		Fields: []string{"admitted_at", "build_failure_detail", "can_redeploy", "can_rollback", "cancellation_reason",
+		Fields: []string{"admitted_at", "attempt", "build_failure_detail", "can_redeploy", "can_rollback", "cancellation_reason",
 			"cancellation_requested", "created_at", "deployed_at", "error_message", "failure_code", "has_result",
-			"image_size_mb", "is_degraded", "is_ephemeral", "is_serving", "pending_region_alert_stage", "pending_regions",
-			"position", "regions", "regions_ready", "regions_total", "release_version", "result", "result_error", "retry",
-			"rollback_notice", "spawned_count", "started_at"},
+			"image_size_mb", "is_degraded", "is_ephemeral", "is_serving", "messages_unacked", "pending_region_alert_stage",
+			"pending_regions", "position", "regions", "regions_ready", "regions_total", "release_version", "result",
+			"result_error", "retry", "rollback_notice", "spawned_by_deployment_id", "spawned_count", "started_at"},
 		Reason: "afy deploy reads the new release's id, version, state, queue place and warnings, then follows the release with GetDeployment, which decodes the rest"},
 	{Kind: cpschemas.KindNotDecoded, Type: "Deployment", Schema: "DeploymentResponse",
-		Fields: []string{"has_result", "image_size_mb", "is_ephemeral", "is_serving", "pending_regions", "queue_position",
-			"result", "result_error", "rollback_notice", "spawned_count", "started_at"},
+		Fields: []string{"image_size_mb", "is_ephemeral", "is_serving", "pending_regions", "queue_position",
+			"result", "rollback_notice", "started_at"},
 		Reason: "the CLI's release and run views show state, failure, retry, regions and queue place (`position`); a run's " +
-			"result and the image size are the dashboard's, and the rollback notice is read by afy rollback (RollbackResponse)"},
+			"result body and the image size are the dashboard's (whether a result exists, and its refusal, are decoded, as on " +
+			"AgentRun), and the rollback notice is read by afy rollback (RollbackResponse)"},
 	{Kind: cpschemas.KindNotDecoded, Type: "RollbackResponse", Schema: "DeploymentResponse",
-		Fields: []string{"admitted_at", "build_failure_detail", "can_redeploy", "can_rollback", "cancellation_reason",
+		Fields: []string{"admitted_at", "attempt", "build_failure_detail", "can_redeploy", "can_rollback", "cancellation_reason",
 			"cancellation_requested", "deployed_at", "failure_code", "has_result", "image_size_mb", "is_degraded",
-			"is_ephemeral", "is_serving", "pending_region_alert_stage", "pending_regions", "position", "queue_position",
-			"regions", "regions_ready", "regions_total", "release_version", "result", "result_error", "retry",
-			"spawned_count", "started_at"},
+			"is_ephemeral", "is_serving", "messages_unacked", "pending_region_alert_stage", "pending_regions", "position",
+			"queue_position", "regions", "regions_ready", "regions_total", "release_version", "result", "result_error",
+			"retry", "spawned_by_deployment_id", "spawned_count", "started_at"},
 		Reason: "afy rollback and afy redeploy print the new release's version, state, notice and warnings; afy deployments shows the rest"},
 	{Kind: cpschemas.KindNotDecoded, Type: "Operation", Schema: "OperationResponse",
 		Fields: []string{"target_id"},
@@ -228,14 +231,6 @@ var answerWaivers = []cpschemas.Waiver{
 		Reason: "the line prints the whole-percent figure and the sentence; the unrounded share is in --json"},
 }
 
-// answerAwaiting names pairs whose route declares no shape in the committed
-// snapshot yet, with what it waits for. Once the snapshot carries the shape the
-// entry fails as outdated, so it leaves when its reason does.
-var answerAwaiting = map[string]string{
-	"GET " + v1 + "/agents/{agent_id_or_name}/runs 200": "the control plane models GET /runs after agent-messaging " +
-		"merges (AWAITING_MERGE in its tests/unit/test_every_route_declares_its_shape.py)",
-}
-
 func pairKey(p answerPair) string {
 	if p.Member != "" {
 		return p.Op + " " + p.Member
@@ -243,14 +238,11 @@ func pairKey(p answerPair) string {
 	return p.Op
 }
 
-// holdPairs runs every pair against an extraction and returns the problems,
-// the outdated waivers and the outdated awaiting entries.
-func holdPairs(ext *cpschemas.Extraction, pairs []answerPair, waivers []cpschemas.Waiver,
-	awaiting map[string]string) (problems []string, unused []string) {
+// holdPairs runs every pair against an extraction and returns the problems and
+// the outdated waivers.
+func holdPairs(ext *cpschemas.Extraction, pairs []answerPair, waivers []cpschemas.Waiver) (problems []string, unused []string) {
 	c := &cpschemas.Checker{Schemas: ext.Schemas, Waivers: waivers}
-	awaitUsed := map[string]bool{}
 	for _, p := range pairs {
-		key := pairKey(p)
 		raw, present := ext.Operations[p.Op]
 		if !present {
 			problems = append(problems, fmt.Sprintf("%s: the control plane has no operation %q", p.Call, p.Op))
@@ -258,10 +250,6 @@ func holdPairs(ext *cpschemas.Extraction, pairs []answerPair, waivers []cpschema
 		}
 		schema, _ := raw.(map[string]interface{})
 		if raw == nil || len(schema) == 0 {
-			if _, ok := awaiting[key]; ok {
-				awaitUsed[key] = true
-				continue
-			}
 			problems = append(problems, fmt.Sprintf("%s: %s declares no shape, so nothing holds %s to it",
 				p.Call, p.Op, p.Type))
 			continue
@@ -275,11 +263,6 @@ func holdPairs(ext *cpschemas.Extraction, pairs []answerPair, waivers []cpschema
 		problems = append(problems, grouped(p, found)...)
 	}
 	unused = c.Unused()
-	for key, why := range awaiting {
-		if !awaitUsed[key] {
-			unused = append(unused, fmt.Sprintf("awaiting %s (%s): the snapshot now declares its shape, or no pair reads it", key, why))
-		}
-	}
 	sort.Strings(problems)
 	sort.Strings(unused)
 	return problems, unused
@@ -330,7 +313,7 @@ func loadSchemaSnapshot(t *testing.T) *cpschemas.Snapshot {
 // THE PIN ITSELF.
 func TestEveryDecodedAnswerMatchesTheControlPlanesSchema(t *testing.T) {
 	snap := loadSchemaSnapshot(t)
-	problems, unused := holdPairs(snap.Extraction(), answerPairs, answerWaivers, answerAwaiting)
+	problems, unused := holdPairs(snap.Extraction(), answerPairs, answerWaivers)
 	if len(problems) > 0 {
 		t.Errorf("every struct must decode exactly what its answer declares (%d difference(s)):\n  %s",
 			len(problems), strings.Join(problems, "\n  "))

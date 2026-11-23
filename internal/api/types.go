@@ -245,6 +245,21 @@ type Deployment struct {
 	// Warnings: what the server says to know about this release (server DeploymentResponse.warnings), empty
 	// when there is nothing. A release read inside another answer (a move's redeploy) carries them too.
 	Warnings []Warning `json:"warnings"`
+	// The release's or run's attempt number (server DeploymentResponse.attempt): which try of the deployment this
+	// is, 1 on the first. No omitempty: `--json` says the number, as IsDegraded says its value.
+	Attempt int `json:"attempt"`
+	// Messages sent to this run's mailbox that its code has not yet read (server DeploymentResponse.messages_unacked;
+	// `afy messages list` reads the mailbox itself). No omitempty, for the reason Attempt has none.
+	MessagesUnacked int `json:"messages_unacked"`
+	// The run that spawned this deployment, by id; null on one that no run spawned. No omitempty: `--json` says
+	// null rather than dropping the key, as ReleaseVersion does.
+	SpawnedByDeploymentID *string `json:"spawned_by_deployment_id"`
+	// Whether the run stored a result, why it was refused (null when it was not), and how many runs it spawned
+	// (server DeploymentResponse). No omitempty: `afy cancel --run --json` prints a run as `afy runs --json` does
+	// (AgentRun carries the same three), so the two views of one run agree.
+	HasResult    bool    `json:"has_result"`
+	ResultError  *string `json:"result_error"`
+	SpawnedCount int     `json:"spawned_count"`
 }
 
 // DeployRequest is the request body for deploying
@@ -400,6 +415,17 @@ type AgentRun struct {
 	// The retry the platform is making of this run's attempt, null when none (see RetryState). No omitempty, for
 	// the reason ReleaseVersion has none.
 	Retry *RetryState `json:"retry"`
+	// The opaque cursor of THIS row: the `before` of the request for the page after it, as the server sent it.
+	Cursor string `json:"cursor"`
+	// Whether the run recorded a result, and why it recorded an error instead, as the server says (null when it
+	// recorded none). The result itself is read where the run is (GET /deployments/{run}); the row carries
+	// only that there is one. No omitempty on either, for the reason ReleaseVersion has none.
+	HasResult   bool    `json:"has_result"`
+	ResultError *string `json:"result_error"`
+	// How many runs this run spawned, and how many messages in its mailbox its code has not read (`afy messages
+	// list` reads the mailbox). No omitempty, for the reason ReleaseVersion has none.
+	SpawnedCount    int `json:"spawned_count"`
+	MessagesUnacked int `json:"messages_unacked"`
 }
 
 // RunSpawnedBy names the agent that spawned a run. Name is null when that agent's row is gone.

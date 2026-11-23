@@ -175,3 +175,37 @@ func TestRunsJSONCarriesSpawnedBy(t *testing.T) {
 		t.Errorf("--json lost spawned_by: %s", raw)
 	}
 }
+
+// --json carries every field of the run's row the control plane sends: the row's cursor, whether it recorded a
+// result (and the error it recorded instead), how many runs it spawned and how many messages it has not read.
+// A result_error the server sent as null stays null.
+func TestRunsJSONCarriesTheCursorTheResultMarkAndTheMessageCounts(t *testing.T) {
+	jsonRun(t, true)
+
+	out := runsTable(t, `[`+
+		`{"id":"run-err","trigger_source":"manual","state":"failed","created_at":"2026-09-17T12:20:09Z","cursor":"c-2",`+
+		`"has_result":false,"result_error":"the result was not JSON","spawned_count":2,"messages_unacked":3},`+
+		`{"id":"run-ok","trigger_source":"manual","state":"completed","created_at":"2026-09-17T12:00:21Z","cursor":"c-1",`+
+		`"has_result":true,"result_error":null,"spawned_count":0,"messages_unacked":0}]`)
+
+	var runs []map[string]any
+	if err := json.Unmarshal([]byte(out), &runs); err != nil {
+		t.Fatalf("afy runs --json printed no JSON: %v\n%s", err, out)
+	}
+	if len(runs) != 2 {
+		t.Fatalf("want two runs, got %v", runs)
+	}
+	want := map[string]any{"cursor": "c-2", "has_result": false, "result_error": "the result was not JSON",
+		"spawned_count": float64(2), "messages_unacked": float64(3)}
+	for key, value := range want {
+		if runs[0][key] != value {
+			t.Errorf("run-err: %s = %v, want %v", key, runs[0][key], value)
+		}
+	}
+	if value, present := runs[1]["result_error"]; !present || value != nil {
+		t.Errorf("a run with no result error must say null, not drop the key: %v", runs[1])
+	}
+	if runs[1]["has_result"] != true || runs[1]["cursor"] != "c-1" {
+		t.Errorf("run-ok lost its fields: %v", runs[1])
+	}
+}
